@@ -139,12 +139,14 @@ describe("obterQrCode", () => {
       base64: "data:image/png;base64,BBB",
       code: "2@abc",
       pairingCode: "ABCD-1234",
+      count: 3,
     });
 
     expect(await obterQrCode(INSTANCIA)).toEqual({
       base64: "data:image/png;base64,BBB",
       codigo: "2@abc",
       codigoPareamento: "ABCD-1234",
+      regeracoes: 3,
     });
   });
 
@@ -155,7 +157,16 @@ describe("obterQrCode", () => {
       base64: null,
       codigo: null,
       codigoPareamento: null,
+      regeracoes: null,
     });
+  });
+
+  it("preserva count zero, que significa 'ainda não gerou'", async () => {
+    // `?? null` trataria 0 como ausente e a tela perderia a diferença entre
+    // "nenhuma regeração" e "o servidor não informou".
+    capturar("get", `/instance/connect/${INSTANCIA}`, { base64: "x", count: 0 });
+
+    expect((await obterQrCode(INSTANCIA)).regeracoes).toBe(0);
   });
 });
 

@@ -1,6 +1,8 @@
+import { ScissorsIcon } from "lucide-react";
 import { criarClienteServidor, exigirUsuario } from "@/lib/supabase/server";
-import { FormularioServico } from "./formulario-servico";
 import { alternarServico } from "./actions";
+import { DialogoEditar } from "./dialogo-editar";
+import { FormularioServico } from "./formulario-servico";
 
 export const metadata = { title: "Serviços — AgendaZap" };
 
@@ -23,9 +25,8 @@ export default async function ServicosPage() {
   return (
     <>
       <h1 className="text-2xl font-semibold tracking-tight">Serviços</h1>
-      <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-        A duração é o que define os horários que o bot oferece. Serviço
-        desativado sai da lista do bot, mas o histórico de agendamentos
+      <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+        Serviço desativado sai da lista do bot, mas o histórico de agendamentos
         continua.
       </p>
 
@@ -34,55 +35,67 @@ export default async function ServicosPage() {
       </div>
 
       {servicos?.length ? (
-        <ul className="mt-6 divide-y divide-zinc-200 dark:divide-zinc-800">
+        <ul className="mt-6 divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
           {servicos.map((servico) => (
             <li
               key={servico.id}
-              className="flex flex-wrap items-center gap-x-4 gap-y-1 py-3"
+              className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3"
             >
               <span
                 className={
-                  servico.ativo ? "font-medium" : "font-medium text-zinc-400"
+                  servico.ativo
+                    ? "font-medium"
+                    : "font-medium text-muted-foreground"
                 }
               >
                 {servico.nome}
               </span>
-              <span className="text-sm text-zinc-600 dark:text-zinc-400">
+              <span className="text-sm tabular-nums text-muted-foreground">
                 {servico.duracao_minutos} min
               </span>
               {servico.preco !== null && (
-                <span className="text-sm text-zinc-600 dark:text-zinc-400">
+                <span className="text-sm tabular-nums text-muted-foreground">
                   {formatarPreco.format(servico.preco)}
                 </span>
               )}
               {!servico.ativo && (
-                <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+                <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
                   desativado
                 </span>
               )}
 
-              <form action={alternarServico} className="ml-auto">
-                <input type="hidden" name="id" value={servico.id} />
-                <input
-                  type="hidden"
-                  name="ativar"
-                  value={String(!servico.ativo)}
-                />
-                <button
-                  type="submit"
-                  className="text-sm text-zinc-600 underline-offset-4 hover:underline dark:text-zinc-400"
-                >
-                  {servico.ativo ? "Desativar" : "Ativar"}
-                </button>
-              </form>
+              <div className="ml-auto flex items-center gap-1">
+                <DialogoEditar servico={servico} />
+                <form action={alternarServico}>
+                  <input type="hidden" name="id" value={servico.id} />
+                  <input
+                    type="hidden"
+                    name="ativar"
+                    value={String(!servico.ativo)}
+                  />
+                  <button
+                    type="submit"
+                    className="rounded-md px-2 py-1 text-sm text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                  >
+                    {servico.ativo ? "Desativar" : "Ativar"}
+                  </button>
+                </form>
+              </div>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="mt-6 text-zinc-600 dark:text-zinc-400">
-          Nenhum serviço cadastrado ainda. O bot precisa de pelo menos um
-          serviço ativo para conseguir agendar.
-        </p>
+        <div className="mt-6 rounded-lg border border-dashed border-border p-8 text-center">
+          <ScissorsIcon
+            aria-hidden
+            className="mx-auto size-6 text-muted-foreground"
+          />
+          <p className="mt-3 font-medium">Nenhum serviço cadastrado</p>
+          <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
+            O bot precisa de pelo menos um serviço ativo para conseguir agendar.
+            Cadastre o primeiro no formulário acima.
+          </p>
+        </div>
       )}
     </>
   );

@@ -1,71 +1,96 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { nomeDoDia } from "@/lib/datas";
 import { criarClienteServidor, exigirUsuario } from "@/lib/supabase/server";
 import {
-  conflitaComGrade,
-  horarioSchema,
+  faixaInvertida,
+  faixasSobrepostas,
+  gradeSemanalSchema,
   primeiroErro,
+  type DiaDaGrade,
   type EstadoFormulario,
 } from "@/lib/validacao/agenda";
 
-export async function criarHorario(
+/**
+ * Substitui a grade semanal inteira.
+ *
+ * Antes eram duas ações por faixa (criar e excluir), e configurar a semana
+ * pedia sete submissões sem nenhuma poder ser editada depois. O editor manda a
+ * semana toda de uma vez.
+ *
+ * **Ordem de escrita: insere e só então apaga.** O `supabase-js` não abre
+ * transação, então os dois passos podem se separar. Apagando primeiro, uma falha
+ * no insert deixaria o estabelecimento sem horário nenhum e o bot pararia de
+ * oferecer agenda — o pior desfecho possível. Na ordem inversa, a falha deixa
+ * faixas duplicadas, que `calcularSlots` já deduplica por instante de início
+ * (ver `lib/bot/disponibilidade.ts`), e o dono conserta salvando de novo.
+ */
+export async function definirGrade(
   _estado: EstadoFormulario,
   formData: FormData,
 ): Promise<EstadoFormulario> {
   const usuarioId = await exigirUsuario();
 
-  const parsed = horarioSchema.safeParse({
-    diaSemana: formData.get("diaSemana"),
-    horaInicio: formData.get("horaInicio"),
-    horaFim: formData.get("horaFim"),
-  });
+  let bruto: unknown;
+  try {
+    bruto = JSON.parse(String(formData.get("grade") ?? ""));
+  } catch {
+    return { erro: "Não foi possível ler os horários enviados." };
+  }
+
+  const parsed = gradeSemanalSchema.safeParse(bruto);
   if (!parsed.success) return { erro: primeiroErro(parsed.error) };
+
+  const erroDeRegra = validarDias(parsed.data.dias);
+  if (erroDeRegra) return { erro: erroDeRegra };
 
   const supabase = await criarClienteServidor();
 
-  const { data: existentes } = await supabase
+  const { data: atuais } = await supabase
     .from("horarios_disponiveis")
-    .select("dia_semana, hora_inicio, hora_fim")
-    .eq("usuario_id", usuarioId)
-    .eq("dia_semana", parsed.data.diaSemana);
+    .select("id")
+    .eq("usuario_id", usuarioId);
 
-  if (conflitaComGrade(parsed.data, existentes ?? [])) {
-    return {
-      erro: "Essa faixa se sobrepõe a outra já cadastrada nesse dia.",
-    };
+  const linhas = parsed.data.dias.flatMap((dia) =>
+    dia.faixas.map((faixa) => ({
+      usuario_id: usuarioId,
+      dia_semana: dia.diaSemana,
+      hora_inicio: faixa.horaInicio,
+      hora_fim: faixa.horaFim,
+    })),
+  );
+
+  if (linhas.length > 0) {
+    const { error } = await supabase.from("horarios_disponiveis").insert(linhas);
+    if (error) return { erro: "Não foi possível salvar os horários." };
   }
 
-  const { error } = await supabase.from("horarios_disponiveis").insert({
-    usuario_id: usuarioId,
-    dia_semana: parsed.data.diaSemana,
-    hora_inicio: parsed.data.horaInicio,
-    hora_fim: parsed.data.horaFim,
-  });
-
-  if (error) return { erro: "Não foi possível salvar o horário." };
+  const idsAntigos = (atuais ?? []).map((linha) => linha.id);
+  if (idsAntigos.length > 0) {
+    await supabase
+      .from("horarios_disponiveis")
+      .delete()
+      .eq("usuario_id", usuarioId)
+      .in("id", idsAntigos);
+  }
 
   revalidatePath("/horarios");
   return { ok: true };
 }
 
-/**
- * Excluir faixa da grade é seguro: `horarios_disponiveis` é configuração de
- * disponibilidade futura, nada referencia essas linhas. Agendamentos já feitos
- * não são afetados.
- */
-export async function excluirHorario(formData: FormData) {
-  const usuarioId = await exigirUsuario();
+/** Regras que o schema não expressa: fim depois do início e sem sobreposição. */
+function validarDias(dias: DiaDaGrade[]): string | null {
+  for (const dia of dias) {
+    const invertida = faixaInvertida(dia.faixas);
+    if (invertida) {
+      return `Em ${nomeDoDia(dia.diaSemana)}, o horário de fim (${invertida.horaFim}) precisa ser depois do início (${invertida.horaInicio}).`;
+    }
 
-  const id = String(formData.get("id") ?? "");
-  if (!id) return;
+    if (faixasSobrepostas(dia.faixas)) {
+      return `Em ${nomeDoDia(dia.diaSemana)} há faixas que se sobrepõem.`;
+    }
+  }
 
-  const supabase = await criarClienteServidor();
-  await supabase
-    .from("horarios_disponiveis")
-    .delete()
-    .eq("id", id)
-    .eq("usuario_id", usuarioId);
-
-  revalidatePath("/horarios");
+  return null;
 }

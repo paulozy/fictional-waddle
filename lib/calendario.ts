@@ -5,6 +5,7 @@ import {
   instanteNoFuso,
   minutosDoDiaOuNulo,
 } from "@/lib/bot/disponibilidade";
+import { rotuloCurtoDoDia } from "@/lib/datas";
 
 /**
  * Layout do calendário de agendamentos. Módulo **puro**.
@@ -16,6 +17,23 @@ import {
 
 /** Uma linha do grid por intervalo de 30 minutos. */
 export const MINUTOS_POR_LINHA = 30;
+
+/**
+ * Altura de cada faixa de 30 minutos, em `rem`. A página aplica este mesmo
+ * valor no `grid-template-rows` — mora aqui porque é ele que decide se um bloco
+ * comporta o texto completo (ver `ALTURA_MINIMA_COMPLETA_REM`).
+ */
+export const ALTURA_LINHA_REM = 2.5;
+
+/**
+ * Altura mínima para o bloco caber hora + cliente + serviço empilhados.
+ *
+ * Três linhas de `text-xs` com `leading-tight` são ~2,8rem, mais padding, borda
+ * e margem. Abaixo disso o `overflow-hidden` cortava justamente a última linha
+ * — o nome do serviço — e um corte de 30 min sumia com o próprio nome. Blocos
+ * menores que isto entram no modo compacto, com tudo em uma linha só.
+ */
+const ALTURA_MINIMA_COMPLETA_REM = 3.6;
 
 export type AgendamentoParaCalendario = {
   id: string;
@@ -38,6 +56,31 @@ export type BlocoCalendario = {
   titulo: string;
   cliente: string;
   status: string;
+  /**
+   * O bloco é baixo demais para as três linhas de texto e deve ser renderizado
+   * em linha única. Mesma ideia do `fc-timegrid-event-short` do FullCalendar e
+   * do que o Google Agenda faz com compromisso curto.
+   */
+  compacto: boolean;
+};
+
+/**
+ * Onde desenhar a marca de "agora". `null` quando o dia corrente não está na
+ * semana exibida, ou quando a hora atual cai fora da faixa mostrada.
+ *
+ * Calculado aqui, no servidor, porque é aqui que já existem `agora` e
+ * `fusoHorario` — a página segue sem `'use client'`. O efeito colateral é que a
+ * marca só anda quando a página é recarregada; para a V0 isso basta.
+ */
+export type MarcaDeAgora = {
+  /** 1-based, casa com `grid-row`. */
+  linha: number;
+  /** 1-based, casa com `grid-column`. */
+  coluna: number;
+  /** Posição dentro da faixa de 30 min, de 0 a 100. */
+  percentual: number;
+  /** `"14:23"` — a hora corrente, para a calha. */
+  rotulo: string;
 };
 
 export type DiaDoCalendario = {
@@ -54,6 +97,7 @@ export type Calendario = {
   faixasHorarias: string[];
   primeiraLinhaMinutos: number;
   blocos: BlocoCalendario[];
+  agora: MarcaDeAgora | null;
 };
 
 export type ParametrosCalendario = {
@@ -103,7 +147,9 @@ export function montarCalendario(p: ParametrosCalendario): Calendario {
     const meioDia = new TZDate(`${data}T12:00:00`, p.fusoHorario);
     return {
       data,
-      rotuloDia: format(meioDia, "EEE"),
+      // `format(meioDia, "EEE")` sem locale imprimia `Mon`, `Tue`. Ver
+      // `lib/datas.ts` para por que não é o `EEEEEE` do date-fns.
+      rotuloDia: rotuloCurtoDoDia(meioDia.getDay()),
       rotuloNumero: format(meioDia, "dd/MM"),
       ehHoje: data === hoje,
     };
@@ -172,6 +218,8 @@ export function montarCalendario(p: ParametrosCalendario): Calendario {
         titulo: agendamento.servicos?.nome ?? "Agendamento",
         cliente: agendamento.clientes_finais?.nome ?? "Cliente",
         status: agendamento.status,
+        compacto:
+          linhasOcupadas * ALTURA_LINHA_REM < ALTURA_MINIMA_COMPLETA_REM,
       };
     })
     .sort((a, b) =>
@@ -185,6 +233,32 @@ export function montarCalendario(p: ParametrosCalendario): Calendario {
     faixasHorarias,
     primeiraLinhaMinutos: abertura,
     blocos,
+    agora: marcarAgora(p, indicePorData, hoje, abertura, fechamento),
+  };
+}
+
+function marcarAgora(
+  p: ParametrosCalendario,
+  indicePorData: Map<string, number>,
+  hoje: string,
+  abertura: number,
+  fechamento: number,
+): MarcaDeAgora | null {
+  const coluna = indicePorData.get(hoje);
+  // Semana passada ou futura: não existe "agora" para marcar.
+  if (coluna === undefined) return null;
+
+  const minutoAgora = minutosDeParede(p.agora, p.fusoHorario);
+  // Fora do expediente exibido a marca cairia fora do grid.
+  if (minutoAgora < abertura || minutoAgora > fechamento) return null;
+
+  const deslocamento = minutoAgora - abertura;
+
+  return {
+    linha: Math.floor(deslocamento / MINUTOS_POR_LINHA) + 1,
+    coluna: coluna + 1,
+    percentual: ((deslocamento % MINUTOS_POR_LINHA) / MINUTOS_POR_LINHA) * 100,
+    rotulo: rotularHora(minutoAgora),
   };
 }
 

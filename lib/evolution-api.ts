@@ -210,9 +210,19 @@ type RespostaConectar = {
   base64?: string;
   code?: string;
   pairingCode?: string | null;
+  count?: number;
 };
 
-/** QR code atual da instância, para exibir no dashboard. */
+/**
+ * QR code atual da instância, para exibir no dashboard.
+ *
+ * `count` é quantas vezes a Evolution já regerou o QR nesta sessão de
+ * pareamento. Importa por dois motivos: é o sinal de que o código anterior
+ * expirou (o QR do Baileys morre em segundos, e o tempo exato varia por versão
+ * e servidor — por isso a tela trata expiração como evento observado e não como
+ * temporizador chutado), e é o que se compara com o `QRCODE_LIMIT` da Evolution,
+ * default 30, depois do qual a instância desiste e fica presa em `connecting`.
+ */
 export async function obterQrCode(instancia: string) {
   const resposta = await chamar<RespostaConectar>(
     `/instance/connect/${encodeURIComponent(instancia)}`,
@@ -222,6 +232,7 @@ export async function obterQrCode(instancia: string) {
     base64: resposta.base64 ?? null,
     codigo: resposta.code ?? null,
     codigoPareamento: resposta.pairingCode ?? null,
+    regeracoes: typeof resposta.count === "number" ? resposta.count : null,
   };
 }
 

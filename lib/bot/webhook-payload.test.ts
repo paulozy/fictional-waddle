@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   classificarEvento,
+  extrairContagemQrCode,
   ehBroadcast,
   ehGrupo,
   extrairEstadoConexao,
@@ -44,18 +45,22 @@ function payloadMensagem(sobrescritas: {
 }
 
 describe("classificarEvento", () => {
-  it("reconhece os dois eventos que importam", () => {
+  it("reconhece os três eventos que importam", () => {
     expect(classificarEvento({ event: "messages.upsert" })).toBe("mensagem");
     expect(classificarEvento({ event: "MESSAGES_UPSERT" })).toBe("mensagem");
     expect(classificarEvento({ event: "connection.update" })).toBe("conexao");
     expect(classificarEvento({ event: "CONNECTION_UPDATE" })).toBe("conexao");
+    // Já era assinado em NOME_EVENTOS_WEBHOOK, mas caía em "ignorado": a
+    // aplicação recebia toda regeração de QR e descartava.
+    expect(classificarEvento({ event: "qrcode.updated" })).toBe("qrcode");
+    expect(classificarEvento({ event: "QRCODE_UPDATED" })).toBe("qrcode");
   });
 
   it("ignora eventos que não tratamos", () => {
     for (const event of [
-      "qrcode.updated",
       "messages.update",
       "contacts.upsert",
+      "presence.update",
       "",
     ]) {
       expect(classificarEvento({ event }), event).toBe("ignorado");
@@ -298,5 +303,31 @@ describe("extrairEstadoConexao", () => {
     expect(extrairEstadoConexao({ event: "connection.update", data: {} }))
       .toBeNull();
     expect(extrairEstadoConexao(null)).toBeNull();
+  });
+});
+
+describe("extrairContagemQrCode", () => {
+  it("lê a contagem aninhada em data.qrcode.count", () => {
+    expect(
+      extrairContagemQrCode({ event: "QRCODE_UPDATED", data: { qrcode: { count: 4 } } }),
+    ).toBe(4);
+  });
+
+  it("lê a contagem direta em data.count", () => {
+    // O campo muda de lugar entre versões da Evolution; ler os dois evita
+    // depender da versão instalada no servidor.
+    expect(
+      extrairContagemQrCode({ event: "QRCODE_UPDATED", data: { count: 7 } }),
+    ).toBe(7);
+  });
+
+  it("preserva zero", () => {
+    expect(extrairContagemQrCode({ data: { count: 0 } })).toBe(0);
+  });
+
+  it("devolve null quando não há contagem", () => {
+    for (const corpo of [null, {}, { data: null }, { data: {} }, { data: { count: "4" } }]) {
+      expect(extrairContagemQrCode(corpo)).toBeNull();
+    }
   });
 });

@@ -8,20 +8,6 @@ import { minutosDoDia, minutosDoDiaOuNulo } from "@/lib/bot/disponibilidade";
  * início).
  */
 
-const DIAS_SEMANA = [
-  "domingo",
-  "segunda",
-  "terça",
-  "quarta",
-  "quinta",
-  "sexta",
-  "sábado",
-] as const;
-
-export function nomeDoDia(diaSemana: number): string {
-  return DIAS_SEMANA[diaSemana] ?? "?";
-}
-
 /**
  * Preço é opcional: o dono pode não querer divulgar valor pelo WhatsApp.
  * Aceita vírgula decimal porque é o que se digita em teclado brasileiro.
@@ -138,9 +124,110 @@ export function conflitaComGrade(
     );
 }
 
-/** Erro de formulário no formato que os Client Components consomem. */
-export type EstadoFormulario = { erro: string } | { ok: true } | undefined;
+/**
+ * Erro de formulário no formato que os Client Components consomem.
+ *
+ * `campos` é opcional para os formulários que ainda mostram um erro só: quem
+ * adota o mapa passa a marcar o input culpado com `aria-invalid`, e quem não
+ * adota continua lendo `erro` como antes.
+ */
+export type EstadoFormulario =
+  | { erro: string; campos?: Record<string, string[]> }
+  | { ok: true }
+  | undefined;
 
 export function primeiroErro(erro: z.ZodError): string {
   return erro.issues[0].message;
+}
+
+/**
+ * Converte um `ZodError` em erro global + erro por campo.
+ *
+ * `z.flattenError` é a forma da Zod v4; `error.flatten()` ainda existe, mas é o
+ * caminho legado.
+ */
+export function errosDoFormulario(erro: z.ZodError): {
+  erro: string;
+  campos: Record<string, string[]>;
+} {
+  const { fieldErrors } = z.flattenError(erro);
+
+  return {
+    erro: primeiroErro(erro),
+    campos: fieldErrors as Record<string, string[]>,
+  };
+}
+
+/**
+ * Teto de faixas por dia.
+ *
+ * Não é limitação técnica: manhã, tarde e noite cobrem qualquer expediente real,
+ * e a quarta sobra para o caso esquisito. O limite existe para o editor não
+ * virar uma lista infinita e para o payload da ação ter tamanho previsível.
+ */
+export const MAX_FAIXAS_POR_DIA = 4;
+
+export const faixaSchema = z.object({
+  horaInicio: horaDoDia,
+  horaFim: horaDoDia,
+});
+
+export type Faixa = z.infer<typeof faixaSchema>;
+
+export const diaDaGradeSchema = z.object({
+  diaSemana: z.coerce
+    .number({ error: "Dia da semana inválido." })
+    .int()
+    .min(0, "Dia da semana inválido.")
+    .max(6, "Dia da semana inválido."),
+  faixas: z
+    .array(faixaSchema)
+    .max(MAX_FAIXAS_POR_DIA, `No máximo ${MAX_FAIXAS_POR_DIA} faixas por dia.`),
+});
+
+export type DiaDaGrade = z.infer<typeof diaDaGradeSchema>;
+
+/** A grade inteira: sempre os sete dias, mesmo os fechados (faixas vazias). */
+export const gradeSemanalSchema = z.object({
+  dias: z.array(diaDaGradeSchema).length(7, "A grade precisa dos sete dias."),
+});
+
+/**
+ * Primeira faixa cujo fim não é depois do início, ou `null`.
+ *
+ * Separado do schema porque o `refine` de objeto pode rodar mesmo com o regex
+ * de hora já tendo falhado, e uma exceção ali viraria 500 em vez de mensagem.
+ */
+export function faixaInvertida(faixas: Faixa[]): Faixa | null {
+  for (const faixa of faixas) {
+    const inicio = minutosDoDiaOuNulo(faixa.horaInicio);
+    const fim = minutosDoDiaOuNulo(faixa.horaFim);
+    if (inicio === null || fim === null) continue;
+    if (fim <= inicio) return faixa;
+  }
+
+  return null;
+}
+
+/**
+ * Detecta sobreposição **entre as faixas do próprio dia**.
+ *
+ * Intervalos semi-abertos: 09:00–12:00 e 12:00–18:00 se tocam e são legítimos —
+ * é exatamente como se modela o intervalo de almoço.
+ */
+export function faixasSobrepostas(faixas: Faixa[]): boolean {
+  const janelas = faixas
+    .map((faixa) => ({
+      inicio: minutosDoDiaOuNulo(faixa.horaInicio),
+      fim: minutosDoDiaOuNulo(faixa.horaFim),
+    }))
+    .filter(
+      (j): j is { inicio: number; fim: number } =>
+        j.inicio !== null && j.fim !== null,
+    )
+    .sort((a, b) => a.inicio - b.inicio);
+
+  return janelas.some(
+    (janela, i) => i > 0 && janela.inicio < janelas[i - 1].fim,
+  );
 }

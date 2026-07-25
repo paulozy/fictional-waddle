@@ -5,7 +5,7 @@ import { criarConta, entrar } from "./actions";
 import type { EstadoLogin } from "./schema";
 
 const CAMPO =
-  "mt-1 h-11 w-full rounded-lg border border-zinc-300 px-3 dark:border-zinc-700 dark:bg-zinc-900";
+  "mt-1 h-11 w-full rounded-md border border-input bg-transparent px-3 outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
 
 export function FormularioLogin() {
   const [estadoEntrar, acaoEntrar, entrando] = useActionState<
@@ -48,7 +48,7 @@ export function FormularioLogin() {
       </label>
 
       {erro && (
-        <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-400">
+        <p role="alert" className="mt-4 text-sm text-destructive">
           {erro}
         </p>
       )}
@@ -57,7 +57,7 @@ export function FormularioLogin() {
         type="submit"
         formAction={acaoEntrar}
         disabled={ocupado}
-        className="mt-6 h-11 w-full rounded-lg bg-emerald-700 font-medium text-white transition-colors hover:bg-emerald-800 disabled:opacity-60"
+        className="mt-6 h-11 w-full rounded-md bg-primary font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
       >
         {entrando ? "Entrando…" : "Entrar"}
       </button>
@@ -66,7 +66,7 @@ export function FormularioLogin() {
         type="submit"
         formAction={acaoCriar}
         disabled={ocupado}
-        className="mt-3 h-11 w-full rounded-lg border border-zinc-300 font-medium transition-colors hover:bg-zinc-50 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-900"
+        className="mt-3 h-11 w-full rounded-md border border-input font-medium transition-colors hover:bg-muted disabled:opacity-60"
       >
         {criando ? "Criando conta…" : "Criar conta"}
       </button>

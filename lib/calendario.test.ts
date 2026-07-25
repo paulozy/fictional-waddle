@@ -224,4 +224,108 @@ describe("montarCalendario", () => {
     expect(calendario.faixasHorarias.length).toBeGreaterThan(0);
     expect(calendario.faixasHorarias[0]).toBe("08:00");
   });
+
+  it("rotula os dias em português, abreviados", () => {
+    // O bug original: `format(data, "EEE")` sem locale imprimia `Mon`, `Tue`.
+    const calendario = montarCalendario(parametros());
+
+    expect(calendario.dias.map((d) => d.rotuloDia)).toEqual([
+      "seg",
+      "ter",
+      "qua",
+      "qui",
+      "sex",
+      "sáb",
+      "dom",
+    ]);
+  });
+});
+
+describe("montarCalendario · modo compacto do bloco", () => {
+  it("marca como compacto todo agendamento de menos de 60 minutos", () => {
+    // Uma faixa de 30 min não comporta hora + cliente + serviço empilhados: era
+    // exatamente aí que o nome do serviço sumia atrás do overflow.
+    for (const duracao of [10, 15, 30, 45]) {
+      const calendario = montarCalendario(
+        parametros({
+          agendamentos: [agendamento({ duracao_minutos: duracao })],
+        }),
+      );
+
+      expect(calendario.blocos[0].linhasOcupadas).toBeLessThanOrEqual(2);
+      expect({ duracao, compacto: calendario.blocos[0].compacto }).toEqual({
+        duracao,
+        // 45 min arredonda para duas faixas e já cabe completo.
+        compacto: duracao <= 30,
+      });
+    }
+  });
+
+  it("não marca como compacto agendamento de uma hora ou mais", () => {
+    for (const duracao of [60, 90, 120]) {
+      const calendario = montarCalendario(
+        parametros({
+          agendamentos: [agendamento({ duracao_minutos: duracao })],
+        }),
+      );
+
+      expect(calendario.blocos[0].compacto).toBe(false);
+    }
+  });
+});
+
+describe("montarCalendario · marca de agora", () => {
+  it("posiciona a marca na linha e coluna do momento atual", () => {
+    const calendario = montarCalendario(
+      parametros({ agora: instanteNoFuso(SEGUNDA, "10:00", FUSO) }),
+    );
+
+    // Faixa abre 08:00; 10:00 são 120 min depois, ou seja quatro faixas.
+    expect(calendario.agora).toEqual({
+      linha: 5,
+      coluna: 1,
+      percentual: 0,
+      rotulo: "10:00",
+    });
+  });
+
+  it("posiciona no meio da faixa quando a hora não é redonda", () => {
+    const calendario = montarCalendario(
+      parametros({ agora: instanteNoFuso("2026-08-12", "10:15", FUSO) }),
+    );
+
+    expect(calendario.agora).toMatchObject({
+      linha: 5,
+      // Quarta é a terceira coluna.
+      coluna: 3,
+      percentual: 50,
+      rotulo: "10:15",
+    });
+  });
+
+  it("não marca nada quando a semana exibida não contém hoje", () => {
+    const calendario = montarCalendario(
+      parametros({ agora: instanteNoFuso("2026-09-01", "10:00", FUSO) }),
+    );
+
+    expect(calendario.agora).toBeNull();
+  });
+
+  it("não marca nada fora do expediente exibido", () => {
+    // 06:00 é antes da abertura padrão (08:00): a marca cairia fora do grid.
+    const calendario = montarCalendario(
+      parametros({ agora: instanteNoFuso(SEGUNDA, "06:00", FUSO) }),
+    );
+
+    expect(calendario.agora).toBeNull();
+  });
+
+  it("usa a hora de parede do estabelecimento, não a do processo", () => {
+    // 13:00Z é 10:00 em São Paulo.
+    const calendario = montarCalendario(
+      parametros({ agora: new Date("2026-08-10T13:00:00.000Z") }),
+    );
+
+    expect(calendario.agora?.rotulo).toBe("10:00");
+  });
 });

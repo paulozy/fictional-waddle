@@ -15,6 +15,10 @@ export type ResultadoQrCode = {
   qrCodeBase64: string | null;
   codigoPareamento: string | null;
   erro: string | null;
+  /** Quantas vezes a Evolution já regerou o QR nesta sessão. Ver `obterQrCode`. */
+  regeracoes: number | null;
+  /** Verdadeiro quando a instância precisou ser criada — o caminho lento. */
+  instanciaCriada: boolean;
 };
 
 /** O nome da instância é sempre o usuario_id — mapeamento direto no webhook. */
@@ -76,6 +80,8 @@ export async function gerarQrCode(): Promise<ResultadoQrCode> {
         qrCodeBase64: qr.base64,
         codigoPareamento: qr.codigoPareamento,
         erro: null,
+        regeracoes: qr.regeracoes,
+        instanciaCriada: false,
       };
     }
 
@@ -84,13 +90,21 @@ export async function gerarQrCode(): Promise<ResultadoQrCode> {
     if (estado === "conectado") {
       await registrarEstado(instancia, "conectado");
       revalidatePath("/conexao-whatsapp");
-      return { qrCodeBase64: null, codigoPareamento: null, erro: null };
+      return {
+        qrCodeBase64: null,
+        codigoPareamento: null,
+        erro: null,
+        regeracoes: null,
+        instanciaCriada: false,
+      };
     }
 
     return {
       qrCodeBase64: null,
       codigoPareamento: null,
       erro: "O servidor não devolveu um QR code. Tente novamente.",
+      regeracoes: null,
+      instanciaCriada: false,
     };
   } catch (erro) {
     // 404 = instância ainda não existe: é o caminho do primeiro acesso.
@@ -101,6 +115,8 @@ export async function gerarQrCode(): Promise<ResultadoQrCode> {
       qrCodeBase64: null,
       codigoPareamento: null,
       erro: mensagemDeErro(erro),
+      regeracoes: null,
+      instanciaCriada: false,
     };
   }
 }
@@ -130,6 +146,8 @@ async function criarEConectar(instancia: string): Promise<ResultadoQrCode> {
         qrCodeBase64: criada.qrCodeBase64,
         codigoPareamento: null,
         erro: null,
+        regeracoes: 0,
+        instanciaCriada: true,
       };
     }
 
@@ -138,12 +156,16 @@ async function criarEConectar(instancia: string): Promise<ResultadoQrCode> {
       qrCodeBase64: qr.base64,
       codigoPareamento: qr.codigoPareamento,
       erro: qr.base64 ? null : "Não foi possível gerar o QR code.",
+      regeracoes: qr.regeracoes,
+      instanciaCriada: true,
     };
   } catch (erro) {
     return {
       qrCodeBase64: null,
       codigoPareamento: null,
       erro: mensagemDeErro(erro),
+      regeracoes: null,
+      instanciaCriada: true,
     };
   }
 }

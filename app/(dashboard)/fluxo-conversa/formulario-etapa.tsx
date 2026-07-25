@@ -5,7 +5,7 @@ import type { EstadoFormulario } from "@/lib/validacao/agenda";
 import { adicionarEtapa } from "./actions";
 
 const CAMPO =
-  "mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900";
+  "mt-1 w-full rounded-md border border-input bg-transparent px-3 py-2 outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
 
 export function FormularioEtapa() {
   const [estado, acao, enviando] = useActionState<EstadoFormulario, FormData>(
@@ -22,12 +22,12 @@ export function FormularioEtapa() {
   }, [estado]);
 
   return (
-    <details className="mt-6 rounded-xl border border-zinc-200 dark:border-zinc-800">
+    <details className="mt-6 rounded-lg border border-border bg-card">
       <summary className="cursor-pointer px-4 py-3 font-medium">
         Adicionar pergunta ao fluxo
       </summary>
 
-      <form ref={form} action={acao} className="border-t border-zinc-200 p-4 dark:border-zinc-800">
+      <form ref={form} action={acao} className="border-t border-border p-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block text-sm font-medium" htmlFor="tipo">
             Tipo de pergunta
@@ -56,7 +56,7 @@ export function FormularioEtapa() {
               maxLength={40}
               className={`${CAMPO} font-mono`}
             />
-            <span className="mt-1 block text-xs font-normal text-zinc-500">
+            <span className="mt-1 block text-xs font-normal text-muted-foreground">
               Onde a resposta fica guardada. Minúsculas, sem espaço.
             </span>
           </label>
@@ -88,7 +88,7 @@ export function FormularioEtapa() {
               placeholder={"Sim\nNão"}
               className={CAMPO}
             />
-            <span className="mt-1 block text-xs font-normal text-zinc-500">
+            <span className="mt-1 block text-xs font-normal text-muted-foreground">
               O bot numera as opções automaticamente. Mínimo de duas.
             </span>
           </label>
@@ -99,13 +99,13 @@ export function FormularioEtapa() {
           Exigir resposta para continuar
         </label>
 
-        <p className="mt-4 text-xs text-zinc-500">
+        <p className="mt-4 text-xs text-muted-foreground">
           A pergunta entra logo antes da confirmação. Depois é possível arrastar
           para outra posição.
         </p>
 
         {estado && "erro" in estado && (
-          <p role="alert" className="mt-3 text-sm text-red-600 dark:text-red-400">
+          <p role="alert" className="mt-3 text-sm text-destructive">
             {estado.erro}
           </p>
         )}
@@ -113,7 +113,7 @@ export function FormularioEtapa() {
         <button
           type="submit"
           disabled={enviando}
-          className="mt-4 h-10 rounded-lg bg-emerald-700 px-4 font-medium text-white transition-colors hover:bg-emerald-800 disabled:opacity-60"
+          className="mt-4 h-10 rounded-md bg-primary px-4 font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
         >
           {enviando ? "Adicionando…" : "Adicionar pergunta"}
         </button>

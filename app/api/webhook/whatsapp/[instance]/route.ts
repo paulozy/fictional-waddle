@@ -13,6 +13,7 @@ import {
 } from "@/lib/bot/engine-fluxo";
 import {
   classificarEvento,
+  extrairContagemQrCode,
   extrairEstadoConexao,
   extrairMensagem,
   jidPermitido,
@@ -84,6 +85,18 @@ export async function POST(
 
   // Instância desconhecida ou forjada: 200 sem efeito nenhum.
   if (!perfil) return ok("instância desconhecida");
+
+  /**
+   * QR regerado. Não há o que persistir — guardar o código exigiria coluna nova
+   * e migration, e a tela já busca o QR sob demanda. O valor aqui é observar que
+   * o pareamento está vivo e que a contagem não está caminhando para o
+   * `QRCODE_LIMIT`, quando o dono reclamar que "não conecta".
+   */
+  if (evento === "qrcode") {
+    const regeracoes = extrairContagemQrCode(payload);
+    console.info("qr code regerado", { usuario_id: perfil.id, regeracoes });
+    return ok(`qrcode regerado (${regeracoes ?? "sem contagem"})`);
+  }
 
   if (evento === "conexao") {
     const estado = traduzirEstado(extrairEstadoConexao(payload) ?? undefined);

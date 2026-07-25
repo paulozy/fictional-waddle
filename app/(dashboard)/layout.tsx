@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { sair } from "@/app/login/actions";
+import { AlternarTema } from "@/components/alternar-tema";
 import { obterClaims } from "@/lib/supabase/server";
 
 const NAVEGACAO = [
@@ -28,11 +29,11 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <header className="border-b border-zinc-200 dark:border-zinc-800">
+      <header className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-6 gap-y-2 px-6 py-4">
           <Link
             href="/agendamentos"
-            className="font-semibold tracking-tight text-emerald-700 dark:text-emerald-500"
+            className="font-heading text-lg font-semibold tracking-tight text-primary"
           >
             AgendaZap
           </Link>
@@ -41,20 +42,23 @@ export default async function DashboardLayout({
               <Link
                 key={href}
                 href={href}
-                className="text-zinc-600 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
+                className="text-muted-foreground transition-colors hover:text-foreground"
               >
                 {rotulo}
               </Link>
             ))}
           </nav>
-          <form action={sair} className="ml-auto">
-            <button
-              type="submit"
-              className="text-sm text-zinc-600 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
-            >
-              Sair
-            </button>
-          </form>
+          <div className="ml-auto flex items-center gap-1">
+            <AlternarTema />
+            <form action={sair}>
+              <button
+                type="submit"
+                className="rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Sair
+              </button>
+            </form>
+          </div>
         </div>
       </header>
 

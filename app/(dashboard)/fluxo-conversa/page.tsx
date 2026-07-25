@@ -24,7 +24,7 @@ export default async function FluxoConversaPage() {
       <h1 className="text-2xl font-semibold tracking-tight">
         Fluxo da conversa
       </h1>
-      <p className="mt-2 max-w-2xl text-sm text-zinc-600 dark:text-zinc-400">
+      <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
         Este é o roteiro que o bot segue com seu cliente. As três etapas cinzas
         são obrigatórias — o texto pode ser editado, mas elas não podem ser
         removidas. Entre elas você adiciona as perguntas que quiser.
@@ -34,7 +34,7 @@ export default async function FluxoConversaPage() {
 
       <FormularioEtapa />
 
-      <p className="mt-6 text-xs text-zinc-500">
+      <p className="mt-6 text-xs text-muted-foreground">
         Conversas já em andamento continuam no roteiro em que começaram — mudar o
         fluxo aqui não confunde quem está no meio do atendimento.
       </p>

@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   conflitaComGrade,
+  errosDoFormulario,
+  faixaInvertida,
+  faixasSobrepostas,
+  gradeSemanalSchema,
   horarioSchema,
-  nomeDoDia,
   servicoSchema,
   type EntradaHorario,
+  type Faixa,
 } from "./agenda";
 
 describe("servicoSchema", () => {
@@ -169,20 +174,119 @@ describe("conflitaComGrade", () => {
   });
 });
 
-describe("nomeDoDia", () => {
-  it("nomeia os sete dias com 0 = domingo", () => {
-    expect([0, 1, 2, 3, 4, 5, 6].map(nomeDoDia)).toEqual([
-      "domingo",
-      "segunda",
-      "terça",
-      "quarta",
-      "quinta",
-      "sexta",
-      "sábado",
-    ]);
+function faixa(horaInicio: string, horaFim: string): Faixa {
+  return { horaInicio, horaFim };
+}
+
+describe("faixasSobrepostas", () => {
+  it("não acusa faixas que apenas se tocam", () => {
+    // Intervalos semi-abertos: 09:00–12:00 e 12:00–18:00 é o intervalo de
+    // almoço, o caso mais comum da tela — acusar aqui inviabilizaria o cadastro.
+    expect(
+      faixasSobrepostas([faixa("09:00", "12:00"), faixa("12:00", "18:00")]),
+    ).toBe(false);
   });
 
-  it("não quebra com índice inválido", () => {
-    expect(nomeDoDia(9)).toBe("?");
+  it("acusa faixas que invadem uma à outra", () => {
+    expect(
+      faixasSobrepostas([faixa("09:00", "13:00"), faixa("12:00", "18:00")]),
+    ).toBe(true);
+  });
+
+  it("acusa sobreposição mesmo fora de ordem", () => {
+    expect(
+      faixasSobrepostas([faixa("14:00", "18:00"), faixa("09:00", "15:00")]),
+    ).toBe(true);
+  });
+
+  it("acusa faixa contida em outra", () => {
+    expect(
+      faixasSobrepostas([faixa("09:00", "18:00"), faixa("10:00", "11:00")]),
+    ).toBe(true);
+  });
+
+  it("aceita dia vazio ou com uma faixa só", () => {
+    expect(faixasSobrepostas([])).toBe(false);
+    expect(faixasSobrepostas([faixa("09:00", "18:00")])).toBe(false);
+  });
+
+  it("ignora hora malformada em vez de lançar", () => {
+    // O schema já reporta formato; lançar aqui viraria 500 em vez de mensagem.
+    expect(() => faixasSobrepostas([faixa("xx:yy", "18:00")])).not.toThrow();
+  });
+});
+
+describe("faixaInvertida", () => {
+  it("encontra a faixa cujo fim não é depois do início", () => {
+    expect(
+      faixaInvertida([faixa("09:00", "12:00"), faixa("18:00", "14:00")]),
+    ).toEqual(faixa("18:00", "14:00"));
+  });
+
+  it("trata início igual ao fim como inválido", () => {
+    expect(faixaInvertida([faixa("09:00", "09:00")])).toEqual(
+      faixa("09:00", "09:00"),
+    );
+  });
+
+  it("devolve null quando está tudo certo", () => {
+    expect(faixaInvertida([faixa("09:00", "12:00")])).toBeNull();
+  });
+});
+
+describe("gradeSemanalSchema", () => {
+  function semanaCompleta(faixasDaSegunda: Faixa[] = []) {
+    return {
+      dias: [0, 1, 2, 3, 4, 5, 6].map((diaSemana) => ({
+        diaSemana,
+        faixas: diaSemana === 1 ? faixasDaSegunda : [],
+      })),
+    };
+  }
+
+  it("aceita a semana inteira, inclusive dias fechados", () => {
+    const r = gradeSemanalSchema.safeParse(
+      semanaCompleta([faixa("09:00", "18:00")]),
+    );
+    expect(r.success).toBe(true);
+  });
+
+  it("exige os sete dias", () => {
+    const r = gradeSemanalSchema.safeParse({
+      dias: [{ diaSemana: 1, faixas: [] }],
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("recusa mais faixas do que o teto por dia", () => {
+    const cinco = Array.from({ length: 5 }, () => faixa("09:00", "10:00"));
+    expect(gradeSemanalSchema.safeParse(semanaCompleta(cinco)).success).toBe(
+      false,
+    );
+  });
+
+  it("recusa hora fora do formato HH:MM", () => {
+    const r = gradeSemanalSchema.safeParse(
+      semanaCompleta([faixa("25:00", "26:00")]),
+    );
+    expect(r.success).toBe(false);
+  });
+});
+
+describe("errosDoFormulario", () => {
+  it("devolve erro global e mapa por campo", () => {
+    const schema = z.object({
+      nome: z.string().min(1, "Informe o nome."),
+      duracao: z.number({ error: "Informe a duração." }),
+    });
+    const r = schema.safeParse({ nome: "" });
+
+    expect(r.success).toBe(false);
+    if (r.success) return;
+
+    const { erro, campos } = errosDoFormulario(r.error);
+    expect(erro).toBeTruthy();
+    expect(campos.nome).toEqual(["Informe o nome."]);
+    expect(campos.duracao).toEqual(["Informe a duração."]);
   });
 });

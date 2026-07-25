@@ -1,26 +1,219 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
+
+/**
+ * Tema "Caderno de agenda".
+ *
+ * A referência é o livro de horários de papel: fundo de papel quente, tinta
+ * pinho e régua. O acento é o cyan do vidro de Barbicide, presente em toda
+ * barbearia.
+ *
+ * O verde do WhatsApp (#25D366) é deliberadamente **ausente**: tem 1,98:1 sobre
+ * branco e reprova até o mínimo de 3:1 para componente de UI. O canal é
+ * sinalizado pelo glifo e pela cópia, nunca pela cor.
+ *
+ * Todo par de cor aqui foi medido. Ao alterar qualquer valor, rodar de novo a
+ * verificação de contraste antes de commitar — vários pares passam com folga
+ * pequena e um ajuste "só de tom" reprova sem aviso.
+ */
 
 @theme inline {
+  /* Fontes: três papéis, definidos em app/layout.tsx via next/font. */
+  --font-sans: var(--fonte-corpo), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--fonte-display), var(--fonte-corpo), sans-serif;
+  --font-mono: var(--fonte-mono), ui-monospace, monospace;
+
+  /* Tokens do shadcn — nomes do upstream, para os componentes herdarem. */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  /**
+   * Hover sólido, não `bg-primary/80`.
+   *
+   * Opacidade compõe em direção ao fundo: no tema claro isso **clareia** o
+   * botão e derruba o contraste do texto branco. Com a primária nova o
+   * `hover:bg-primary/80` que o shadcn traz por padrão dá 3,86:1 e reprova AA —
+   * hoje só passava porque a primária era escura demais. No tema escuro o hover
+   * precisa ir para o lado oposto, o que nenhuma opacidade única resolveria.
+   */
+  --color-primary-hover: var(--primary-hover);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Tokens de domínio — em português, como o resto do projeto. */
+  --color-agora: var(--agora);
+  --color-aviso: var(--aviso);
+  --color-aviso-suave: var(--aviso-suave);
+  --color-regua: var(--regua);
+  --color-regua-forte: var(--regua-forte);
+
+  /* Blocos do calendário, um trio por status de agendamento. */
+  --color-confirmado: var(--status-confirmado);
+  --color-confirmado-borda: var(--status-confirmado-borda);
+  --color-confirmado-tinta: var(--status-confirmado-tinta);
+  --color-concluido: var(--status-concluido);
+  --color-concluido-borda: var(--status-concluido-borda);
+  --color-concluido-tinta: var(--status-concluido-tinta);
+  --color-cancelado: var(--status-cancelado);
+  --color-cancelado-borda: var(--status-cancelado-borda);
+  --color-cancelado-tinta: var(--status-cancelado-tinta);
+  --color-falta: var(--status-falta);
+  --color-falta-borda: var(--status-falta-borda);
+  --color-falta-tinta: var(--status-falta-tinta);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  /* Raio contido: papel pautado tem canto vivo, não pílula. */
+  --radius: 0.5rem;
+
+  --background: oklch(0.9885 0.0057 84.57); /* #FDFBF7 papel */
+  --foreground: oklch(0.2508 0.0133 180.13); /* #1B2422 tinta — 15,37:1 */
+  --card: oklch(1 0 0); /* #FFFFFF */
+  --card-foreground: oklch(0.2508 0.0133 180.13);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2508 0.0133 180.13);
+
+  /**
+   * Primária a 5,75:1 de branco por cima, não 8,09:1.
+   *
+   * A versão anterior (#0E5A50) tinha quase o dobro do mínimo AA e era 47% mais
+   * contrastada que o accent do GitHub. Nesse nível o botão preenchido lê como
+   * bloco quase preto-esverdeado, e era ele que dava peso a toda tela com CTA.
+   */
+  --primary: oklch(0.5 0.0801 181.27); /* #1E7266 — 5,56:1 no papel */
+  --primary-foreground: oklch(1 0 0); /* 5,75:1 sobre a primária */
+  --primary-hover: oklch(0.4643 0.0763 177.8); /* #1A6759 — 6,71:1 */
+
+  --secondary: oklch(0.962 0.0115 84.58); /* #F6F2EA */
+  --secondary-foreground: oklch(0.37 0.0604 180.23); /* #0F4A41 */
+  --muted: oklch(0.962 0.0115 84.58);
+  --muted-foreground: oklch(0.4865 0.0183 176.43); /* #55635F — 6,09:1 */
+  --accent: oklch(0.9558 0.013 208.77); /* #E7F3F5 */
+  --accent-foreground: oklch(0.37 0.0604 180.23);
+  --destructive: oklch(0.4908 0.1591 31.19); /* #A8301F — 6,54:1 */
+  --destructive-foreground: oklch(1 0 0);
+
+  /* Divisor decorativo, sem piso WCAG. O default do shadcn some no papel. */
+  --border: oklch(0.9123 0.0207 81.78); /* #E9E1D3 — 1,26:1 */
+  /**
+   * Limite de campo: a WCAG 1.4.11 exige 3:1, e é onde o shadcn reprova.
+   *
+   * O tom é **neutro** de propósito. A versão anterior (#8D8069) passava, mas
+   * era quente — mesmo matiz do papel — e dava ao formulário aparência de
+   * carimbado. Mesma classe de luminosidade, sem o amarelado.
+   */
+  --input: oklch(0.6462 0.0098 179.43); /* #88908E — 3,16:1 */
+  --ring: oklch(0.5918 0.1027 217.68); /* #128CA6 — 3,81:1 */
+
+  --agora: oklch(0.5918 0.1027 217.68); /* cyan barbicide — só UI, nunca texto */
+  --aviso: oklch(0.5313 0.1172 64.17); /* #9A5B08 — 5,24:1 */
+  --aviso-suave: oklch(0.9696 0.0204 81.78); /* #FCF4E6 */
+  --regua: oklch(0.9354 0.0173 84.59); /* pauta da meia hora */
+  --regua-forte: oklch(0.9123 0.0207 81.78); /* pauta da hora cheia */
+
+  /* Recalibrados junto com o papel: foram escolhidos relativos a ele. */
+  --status-confirmado: oklch(0.9454 0.0215 174.99);
+  --status-confirmado-borda: oklch(0.8482 0.048 176.24);
+  --status-confirmado-tinta: oklch(0.3323 0.0545 180.05); /* 10,14:1 */
+  --status-concluido: oklch(0.9528 0.0127 86.83);
+  --status-concluido-borda: oklch(0.884 0.0245 85.79);
+  --status-concluido-tinta: oklch(0.4615 0.0185 176.35); /* 6,11:1 */
+  --status-cancelado: oklch(0.9738 0.0086 84.57);
+  --status-cancelado-borda: oklch(0.9269 0.019 83.06);
+  --status-cancelado-tinta: oklch(0.5252 0.018 176.53); /* 4,95:1 */
+  --status-falta: oklch(0.9478 0.0219 35.12);
+  --status-falta-borda: oklch(0.8515 0.0552 33.72);
+  --status-falta-tinta: oklch(0.4337 0.1354 31.51); /* 7,28:1 */
+}
+
+.dark {
+  /* Base near-black esverdeada, nunca #000 puro. */
+  --background: oklch(0.2074 0.0085 169.39); /* #141917 */
+  --foreground: oklch(0.9515 0.005 165); /* #ECF0EE */
+  --card: oklch(0.2484 0.0108 176.24); /* #1C2321 */
+  --card-foreground: oklch(0.9515 0.005 165);
+  --popover: oklch(0.2484 0.0108 176.24);
+  --popover-foreground: oklch(0.9515 0.005 165);
+
+  --primary: oklch(0.7935 0.1108 178.3); /* #5FD3BC — 9,76:1 */
+  --primary-foreground: oklch(0.2583 0.0411 181.87); /* #062A25 */
+  /* No escuro o hover vai para o lado oposto: mais claro, não mais escuro. */
+  --primary-hover: oklch(0.8225 0.103 178.93); /* #72DBC6 — 9,27:1 */
+  --secondary: oklch(0.2915 0.0136 173.15); /* #252E2B */
+  --secondary-foreground: oklch(0.9515 0.005 165);
+  --muted: oklch(0.2915 0.0136 173.15);
+  --muted-foreground: oklch(0.7504 0.0181 173.87); /* #A3B2AD — 8,07:1 */
+  --accent: oklch(0.3028 0.0279 218.7); /* #1E3238 */
+  --accent-foreground: oklch(0.8746 0.0699 209.68); /* #9FE3EF */
+  --destructive: oklch(0.7582 0.1448 29.02); /* #FF8A7A — 7,76:1 */
+  --destructive-foreground: oklch(0.2033 0.0516 31.97);
+
+  /* Borda mais clara que a superfície — o inverso do modo claro. */
+  --border: oklch(0.3382 0.0144 175.36); /* #303A37 */
+  --input: oklch(0.5495 0.0178 176.59); /* #677571 — 3,32:1 sobre o card */
+  --ring: oklch(0.7711 0.1152 210.97); /* #45C8DE */
+
+  --agora: oklch(0.7711 0.1152 210.97);
+  --aviso: oklch(0.7634 0.1239 74.98); /* #E0A64F — 8,24:1 */
+  --aviso-suave: oklch(0.2671 0.0322 79.98);
+  --regua: oklch(0.3115 0.0134 173.27);
+  --regua-forte: oklch(0.3382 0.0144 175.36);
+
+  --status-confirmado: oklch(0.2964 0.0369 178.46);
+  --status-confirmado-borda: oklch(0.4316 0.0537 177.72);
+  --status-confirmado-tinta: oklch(0.8746 0.0679 178.47); /* 9,56:1 */
+  --status-concluido: oklch(0.2774 0.0105 176.42);
+  --status-concluido-borda: oklch(0.3555 0.0172 173.09);
+  --status-concluido-tinta: oklch(0.7973 0.0144 174.05); /* 7,82:1 */
+  --status-cancelado: oklch(0.2367 0.0096 173.35);
+  --status-cancelado-borda: oklch(0.3115 0.0134 173.27);
+  --status-cancelado-tinta: oklch(0.6778 0.0206 176.12); /* 5,75:1 */
+  --status-falta: oklch(0.2691 0.0472 32.66);
+  --status-falta-borda: oklch(0.3594 0.0698 33.39);
+  --status-falta-tinta: oklch(0.8389 0.0895 31.79); /* 9,07:1 */
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
   }
-}
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+
+  /* O display é usado com restrição: só título de página e hero. */
+  h1,
+  h2 {
+    @apply font-heading;
+  }
+
+  /* Horário é dado tabular: sem isto os dígitos dançam entre as linhas. */
+  time,
+  [data-numerico] {
+    font-variant-numeric: tabular-nums;
+  }
 }

@@ -82,13 +82,13 @@ export function ListaEtapas({ etapas }: { etapas: EtapaDaLista[] }) {
       {erro && (
         <p
           role="alert"
-          className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300"
+          className="mt-4 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive"
         >
           {erro}
         </p>
       )}
 
-      <p className="mt-4 text-xs text-zinc-500">
+      <p className="mt-4 text-xs text-muted-foreground">
         Arraste para reordenar. Também funciona pelo teclado: foque a alça e use
         as setas.
         {salvando && " Salvando…"}
@@ -131,10 +131,10 @@ function CartaoEtapa({
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`rounded-xl border bg-white p-3 dark:bg-zinc-950 ${
+      className={`rounded-lg border bg-card p-3 ${
         isDragging
-          ? "border-emerald-400 shadow-lg"
-          : "border-zinc-200 dark:border-zinc-800"
+          ? "border-primary shadow-lg"
+          : "border-border"
       }`}
     >
       <div className="flex items-start gap-3">
@@ -143,12 +143,12 @@ function CartaoEtapa({
           {...attributes}
           {...listeners}
           aria-label={`Mover etapa ${numero}: ${etapa.pergunta_texto}`}
-          className="mt-0.5 cursor-grab rounded px-1 text-zinc-400 hover:text-zinc-600 active:cursor-grabbing dark:hover:text-zinc-300"
+          className="mt-0.5 cursor-grab rounded px-1 text-muted-foreground transition-colors hover:text-foreground active:cursor-grabbing"
         >
           ⠿
         </button>
 
-        <span className="mt-0.5 w-5 text-sm tabular-nums text-zinc-400">
+        <span className="mt-0.5 w-5 text-sm tabular-nums text-muted-foreground">
           {numero}
         </span>
 
@@ -157,19 +157,19 @@ function CartaoEtapa({
             <span
               className={`rounded-full px-2 py-0.5 text-xs ${
                 deSistema
-                  ? "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
-                  : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                  ? "bg-muted text-muted-foreground"
+                  : "bg-accent text-accent-foreground"
               }`}
             >
               {rotuloDoTipo(etapa.tipo)}
             </span>
             {etapa.campo_destino && (
-              <code className="font-mono text-xs text-zinc-500">
+              <code className="font-mono text-xs text-muted-foreground">
                 {etapa.campo_destino}
               </code>
             )}
             {!etapa.obrigatorio && (
-              <span className="text-xs text-zinc-400">opcional</span>
+              <span className="text-xs text-muted-foreground">opcional</span>
             )}
           </div>
 
@@ -186,7 +186,7 @@ function CartaoEtapa({
           )}
 
           {etapa.opcoes && etapa.opcoes.length > 0 && !editando && (
-            <ul className="mt-2 space-y-0.5 text-xs text-zinc-500">
+            <ul className="mt-2 space-y-0.5 text-xs text-muted-foreground">
               {etapa.opcoes.map((opcao, i) => (
                 <li key={opcao.valor}>
                   {i + 1}. {opcao.label}
@@ -196,7 +196,7 @@ function CartaoEtapa({
           )}
 
           {erro && (
-            <p role="alert" className="mt-2 text-xs text-red-600">
+            <p role="alert" className="mt-2 text-xs text-destructive">
               {erro}
             </p>
           )}
@@ -207,7 +207,7 @@ function CartaoEtapa({
             <button
               type="button"
               onClick={() => setEditando(true)}
-              className="text-zinc-600 underline-offset-4 hover:underline dark:text-zinc-400"
+              className="text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
             >
               Editar
             </button>
@@ -220,7 +220,7 @@ function CartaoEtapa({
               <input type="hidden" name="id" value={etapa.id} />
               <button
                 type="submit"
-                className="text-zinc-500 hover:text-red-600 dark:hover:text-red-400"
+                className="text-muted-foreground transition-colors hover:text-destructive"
               >
                 Remover
               </button>
@@ -264,20 +264,20 @@ function FormularioTexto({
         defaultValue={etapa.pergunta_texto}
         rows={2}
         maxLength={500}
-        className="w-full rounded-lg border border-zinc-300 p-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+        className="w-full rounded-md border border-input bg-transparent p-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
       />
       <div className="mt-2 flex gap-3 text-sm">
         <button
           type="submit"
           disabled={salvando}
-          className="rounded-lg bg-emerald-700 px-3 py-1 font-medium text-white disabled:opacity-60"
+          className="rounded-md bg-primary px-3 py-1 font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
         >
           {salvando ? "Salvando…" : "Salvar"}
         </button>
         <button
           type="button"
           onClick={onFim}
-          className="text-zinc-600 dark:text-zinc-400"
+          className="text-muted-foreground"
         >
           Cancelar
         </button>

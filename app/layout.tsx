@@ -1,15 +1,39 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import {
+  Bricolage_Grotesque,
+  Geist_Mono,
+  Instrument_Sans,
+} from "next/font/google";
+import { ProvedorTema } from "@/components/provedor-tema";
+import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+/**
+ * Três papéis tipográficos, não um só.
+ *
+ * `latin-ext` é obrigatório nos três: sem ele, `ã õ ç á ê` caem para a fonte de
+ * sistema e o texto fica com dois desenhos misturados na mesma palavra.
+ */
+
+/** Display — só título de página e hero, com restrição. */
+const fonteDisplay = Bricolage_Grotesque({
+  variable: "--fonte-display",
+  subsets: ["latin", "latin-ext"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+/** Corpo — todo o resto da interface. */
+const fonteCorpo = Instrument_Sans({
+  variable: "--fonte-corpo",
+  subsets: ["latin", "latin-ext"],
+  display: "swap",
+});
+
+/** Numérico — calha de horas do calendário, horários, códigos. */
+const fonteMono = Geist_Mono({
+  variable: "--fonte-mono",
+  subsets: ["latin", "latin-ext"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -26,9 +50,17 @@ export default function RootLayout({
   return (
     <html
       lang="pt-BR"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      // O `next-themes` põe a classe do tema no <html> antes da hidratação; sem
+      // isto o React reclama de divergência entre servidor e cliente.
+      suppressHydrationWarning
+      className={`${fonteDisplay.variable} ${fonteCorpo.variable} ${fonteMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="flex min-h-full flex-col">
+        <ProvedorTema>
+          {children}
+          <Toaster />
+        </ProvedorTema>
+      </body>
     </html>
   );
 }

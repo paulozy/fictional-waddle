@@ -6,7 +6,7 @@
  * novo `@lid` que não carrega telefone.
  */
 
-export type EventoWebhook = "mensagem" | "conexao" | "ignorado";
+export type EventoWebhook = "mensagem" | "conexao" | "qrcode" | "ignorado";
 
 export type MensagemWebhook = {
   /** `data.key.id` — chave de idempotência. */
@@ -32,14 +32,37 @@ function texto(valor: unknown): string | null {
   return typeof valor === "string" && valor.length > 0 ? valor : null;
 }
 
-/** Classifica o payload pelo campo `event` do corpo. */
+/**
+ * Classifica o payload pelo campo `event` do corpo.
+ *
+ * `QRCODE_UPDATED` já era assinado em `NOME_EVENTOS_WEBHOOK`, mas caía no
+ * `"ignorado"` — a aplicação recebia toda regeração de QR e jogava fora. Ele não
+ * altera dado nenhum; serve de sinal de vida durante o pareamento, quando o dono
+ * está olhando a tela sem saber se o servidor travou.
+ */
 export function classificarEvento(payload: unknown): EventoWebhook {
   const corpo = objeto(payload);
   const evento = texto(corpo?.event)?.toUpperCase().replace(/[.\-]/g, "_");
 
   if (evento === "MESSAGES_UPSERT") return "mensagem";
   if (evento === "CONNECTION_UPDATE") return "conexao";
+  if (evento === "QRCODE_UPDATED") return "qrcode";
   return "ignorado";
+}
+
+/**
+ * Quantas vezes o QR já foi regerado, quando o evento traz essa contagem.
+ *
+ * A Evolution manda em `data.qrcode.count` numa versão e em `data.count` em
+ * outra; ler as duas evita depender da versão do servidor.
+ */
+export function extrairContagemQrCode(payload: unknown): number | null {
+  const dados = objeto(objeto(payload)?.data);
+  const aninhado = objeto(dados?.qrcode)?.count;
+  const direto = dados?.count;
+  const valor = typeof aninhado === "number" ? aninhado : direto;
+
+  return typeof valor === "number" ? valor : null;
 }
 
 /**

@@ -8,7 +8,7 @@ export default function LoginPage() {
     <div className="flex flex-1 flex-col items-center justify-center px-6 py-16">
       <Link
         href="/"
-        className="text-sm font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-500"
+        className="font-heading text-sm font-semibold uppercase tracking-wide text-primary"
       >
         AgendaZap
       </Link>

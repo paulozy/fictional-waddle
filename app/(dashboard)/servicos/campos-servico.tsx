@@ -1,0 +1,189 @@
+"use client";
+
+import { useId, useState } from "react";
+
+/**
+ * Campos de serviço, compartilhados entre criar e editar.
+ *
+ * A duração aparece como atalhos, não como `input[type=number]` cru: o dono
+ * pensa em "meia hora", "uma hora", e digitar minuto a minuto é atrito puro. O
+ * campo livre continua ali para o serviço que não cai num dos presets.
+ */
+
+/** Durações que cobrem a maior parte de salão, barbearia e estética. */
+const PRESETS_DURACAO = [15, 30, 45, 60, 90, 120];
+
+export type ValoresServico = {
+  nome: string;
+  duracaoMinutos: number;
+  preco: string;
+};
+
+export function CamposServico({
+  inicial,
+  erros,
+}: {
+  inicial?: Partial<ValoresServico>;
+  erros?: Record<string, string[]>;
+}) {
+  const [duracao, setDuracao] = useState(inicial?.duracaoMinutos ?? 30);
+  const idNome = useId();
+  const idDuracao = useId();
+  const idPreco = useId();
+
+  const semPreset = !PRESETS_DURACAO.includes(duracao);
+
+  return (
+    <div className="grid gap-4">
+      <Campo
+        id={idNome}
+        rotulo="Serviço"
+        erros={erros?.nome}
+        render={(props) => (
+          <input
+            {...props}
+            name="nome"
+            required
+            maxLength={80}
+            defaultValue={inicial?.nome}
+            placeholder="Corte masculino"
+            className={CAMPO}
+          />
+        )}
+      />
+
+      <Campo
+        id={idDuracao}
+        rotulo="Duração"
+        dica="É a duração que define os horários que o bot oferece."
+        erros={erros?.duracaoMinutos}
+        render={() => (
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            {PRESETS_DURACAO.map((minutos) => (
+              <button
+                key={minutos}
+                type="button"
+                aria-pressed={duracao === minutos}
+                onClick={() => setDuracao(minutos)}
+                className={`h-9 rounded-md border px-3 text-sm tabular-nums transition-colors ${
+                  duracao === minutos
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-input hover:bg-muted"
+                }`}
+              >
+                {rotularDuracao(minutos)}
+              </button>
+            ))}
+
+            <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <span className="sr-only">Duração personalizada em minutos</span>
+              <input
+                id={idDuracao}
+                type="number"
+                min={5}
+                max={480}
+                step={5}
+                value={duracao}
+                onChange={(e) => setDuracao(Number(e.target.value))}
+                aria-invalid={erros?.duracaoMinutos ? true : undefined}
+                // O erro vence o destaque de "fora dos atalhos": a borda teal
+                // marca escolha, a vermelha marca problema, e a segunda importa
+                // mais.
+                className={`h-9 w-20 rounded-md border bg-transparent px-2 text-sm tabular-nums outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:bg-input/30 ${
+                  semPreset ? "border-primary" : "border-input"
+                }`}
+              />
+              min
+            </label>
+
+            {/* O valor que vai para a ação é sempre este, venha do chip ou do campo. */}
+            <input type="hidden" name="duracaoMinutos" value={duracao} />
+          </div>
+        )}
+      />
+
+      <Campo
+        id={idPreco}
+        rotulo="Preço"
+        dica="Opcional — deixe em branco para não divulgar valor pelo WhatsApp."
+        erros={erros?.preco}
+        render={(props) => (
+          <input
+            {...props}
+            name="preco"
+            inputMode="decimal"
+            defaultValue={inicial?.preco}
+            placeholder="60,00"
+            className={CAMPO}
+          />
+        )}
+      />
+    </div>
+  );
+}
+
+const CAMPO =
+  "mt-1 h-10 w-full rounded-md border border-input bg-transparent px-3 outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:bg-input/30";
+
+function rotularDuracao(minutos: number): string {
+  if (minutos < 60) return `${minutos} min`;
+  if (minutos === 60) return "1h";
+  return minutos % 60 === 0 ? `${minutos / 60}h` : `${Math.floor(minutos / 60)}h${minutos % 60}`;
+}
+
+/**
+ * Rótulo, campo, dica e erro — amarrados por `aria-describedby`.
+ *
+ * O formulário antes mostrava um erro global por vez, então quem errasse nome e
+ * duração juntos só descobria o segundo depois de corrigir o primeiro. Aqui cada
+ * campo carrega o próprio erro e é anunciado por leitor de tela.
+ */
+function Campo({
+  id,
+  rotulo,
+  dica,
+  erros,
+  render,
+}: {
+  id: string;
+  rotulo: string;
+  dica?: string;
+  erros?: string[];
+  render: (props: {
+    id: string;
+    "aria-invalid"?: true;
+    "aria-describedby"?: string;
+  }) => React.ReactNode;
+}) {
+  const idDica = `${id}-dica`;
+  const idErro = `${id}-erro`;
+  const descrito = [dica ? idDica : null, erros?.length ? idErro : null]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <div>
+      <label htmlFor={id} className="block text-sm font-medium">
+        {rotulo}
+      </label>
+
+      {render({
+        id,
+        "aria-invalid": erros?.length ? true : undefined,
+        "aria-describedby": descrito || undefined,
+      })}
+
+      {dica && (
+        <p id={idDica} className="mt-1 text-xs text-muted-foreground">
+          {dica}
+        </p>
+      )}
+
+      {erros?.length ? (
+        <p id={idErro} className="mt-1 text-xs text-destructive">
+          {erros[0]}
+        </p>
+      ) : null}
+    </div>
+  );
+}
