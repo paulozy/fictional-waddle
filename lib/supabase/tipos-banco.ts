@@ -1,0 +1,492 @@
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type Database = {
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+  public: {
+    Tables: {
+      agendamentos: {
+        Row: {
+          cliente_id: string
+          created_at: string
+          data_hora: string
+          data_hora_fim: string
+          duracao_minutos: number
+          id: string
+          respostas_extras: Json
+          servico_id: string
+          status: string
+          usuario_id: string
+        }
+        Insert: {
+          cliente_id: string
+          created_at?: string
+          data_hora: string
+          data_hora_fim: string
+          duracao_minutos: number
+          id?: string
+          respostas_extras?: Json
+          servico_id: string
+          status?: string
+          usuario_id: string
+        }
+        Update: {
+          cliente_id?: string
+          created_at?: string
+          data_hora?: string
+          data_hora_fim?: string
+          duracao_minutos?: number
+          id?: string
+          respostas_extras?: Json
+          servico_id?: string
+          status?: string
+          usuario_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agendamentos_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes_finais"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agendamentos_servico_id_fkey"
+            columns: ["servico_id"]
+            isOneToOne: false
+            referencedRelation: "servicos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clientes_finais: {
+        Row: {
+          created_at: string
+          id: string
+          nome: string | null
+          remote_jid: string
+          telefone: string | null
+          usuario_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          nome?: string | null
+          remote_jid: string
+          telefone?: string | null
+          usuario_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          nome?: string | null
+          remote_jid?: string
+          telefone?: string | null
+          usuario_id?: string
+        }
+        Relationships: []
+      }
+      conversas_estado: {
+        Row: {
+          atualizado_em: string
+          dados_temporarios: Json
+          etapa_atual_id: string | null
+          fluxo_snapshot: Json
+          id: string
+          remote_jid: string
+          telefone_cliente: string | null
+          ultima_mensagem_id: string | null
+          usuario_id: string
+          versao: number
+        }
+        Insert: {
+          atualizado_em?: string
+          dados_temporarios?: Json
+          etapa_atual_id?: string | null
+          fluxo_snapshot?: Json
+          id?: string
+          remote_jid: string
+          telefone_cliente?: string | null
+          ultima_mensagem_id?: string | null
+          usuario_id: string
+          versao?: number
+        }
+        Update: {
+          atualizado_em?: string
+          dados_temporarios?: Json
+          etapa_atual_id?: string | null
+          fluxo_snapshot?: Json
+          id?: string
+          remote_jid?: string
+          telefone_cliente?: string | null
+          ultima_mensagem_id?: string | null
+          usuario_id?: string
+          versao?: number
+        }
+        Relationships: []
+      }
+      fluxo_etapas: {
+        Row: {
+          ativo: boolean
+          campo_destino: string | null
+          created_at: string
+          id: string
+          obrigatorio: boolean
+          opcoes: Json | null
+          ordem: number
+          pergunta_texto: string
+          tipo: string
+          usuario_id: string
+        }
+        Insert: {
+          ativo?: boolean
+          campo_destino?: string | null
+          created_at?: string
+          id?: string
+          obrigatorio?: boolean
+          opcoes?: Json | null
+          ordem: number
+          pergunta_texto: string
+          tipo: string
+          usuario_id: string
+        }
+        Update: {
+          ativo?: boolean
+          campo_destino?: string | null
+          created_at?: string
+          id?: string
+          obrigatorio?: boolean
+          opcoes?: Json | null
+          ordem?: number
+          pergunta_texto?: string
+          tipo?: string
+          usuario_id?: string
+        }
+        Relationships: []
+      }
+      horarios_disponiveis: {
+        Row: {
+          created_at: string
+          dia_semana: number
+          hora_fim: string
+          hora_inicio: string
+          id: string
+          usuario_id: string
+        }
+        Insert: {
+          created_at?: string
+          dia_semana: number
+          hora_fim: string
+          hora_inicio: string
+          id?: string
+          usuario_id: string
+        }
+        Update: {
+          created_at?: string
+          dia_semana?: number
+          hora_fim?: string
+          hora_inicio?: string
+          id?: string
+          usuario_id?: string
+        }
+        Relationships: []
+      }
+      log_envio: {
+        Row: {
+          agendamento_id: string | null
+          data_envio: string
+          erro_detalhe: string | null
+          id: string
+          status_entrega: string
+          tipo: string
+          usuario_id: string
+        }
+        Insert: {
+          agendamento_id?: string | null
+          data_envio?: string
+          erro_detalhe?: string | null
+          id?: string
+          status_entrega?: string
+          tipo: string
+          usuario_id: string
+        }
+        Update: {
+          agendamento_id?: string | null
+          data_envio?: string
+          erro_detalhe?: string | null
+          id?: string
+          status_entrega?: string
+          tipo?: string
+          usuario_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "log_envio_agendamento_id_fkey"
+            columns: ["agendamento_id"]
+            isOneToOne: false
+            referencedRelation: "agendamentos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      perfis: {
+        Row: {
+          antecedencia_maxima_dias: number
+          antecedencia_minima_minutos: number
+          created_at: string
+          evolution_instance_name: string | null
+          fuso_horario: string
+          id: string
+          nome_estabelecimento: string | null
+          passo_slot_minutos: number
+          plano: string
+          status_assinatura: string
+          status_conexao_whatsapp: string
+        }
+        Insert: {
+          antecedencia_maxima_dias?: number
+          antecedencia_minima_minutos?: number
+          created_at?: string
+          evolution_instance_name?: string | null
+          fuso_horario?: string
+          id: string
+          nome_estabelecimento?: string | null
+          passo_slot_minutos?: number
+          plano?: string
+          status_assinatura?: string
+          status_conexao_whatsapp?: string
+        }
+        Update: {
+          antecedencia_maxima_dias?: number
+          antecedencia_minima_minutos?: number
+          created_at?: string
+          evolution_instance_name?: string | null
+          fuso_horario?: string
+          id?: string
+          nome_estabelecimento?: string | null
+          passo_slot_minutos?: number
+          plano?: string
+          status_assinatura?: string
+          status_conexao_whatsapp?: string
+        }
+        Relationships: []
+      }
+      servicos: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          duracao_minutos: number
+          id: string
+          nome: string
+          preco: number | null
+          usuario_id: string
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          duracao_minutos: number
+          id?: string
+          nome: string
+          preco?: number | null
+          usuario_id: string
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          duracao_minutos?: number
+          id?: string
+          nome?: string
+          preco?: number | null
+          usuario_id?: string
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      confirmar_agendamento: {
+        Args: {
+          p_data_hora: string
+          p_duracao_minutos: number
+          p_nome_cliente: string
+          p_remote_jid: string
+          p_respostas_extras?: Json
+          p_servico_id: string
+          p_telefone: string
+          p_usuario_id: string
+        }
+        Returns: string
+      }
+      faixa_horaria_multirange: { Args: never; Returns: unknown }
+      registrar_lembrete_pendente: {
+        Args: { p_agendamento_id: string; p_usuario_id: string }
+        Returns: string
+      }
+      reordenar_fluxo_etapas: { Args: { p_ids: string[] }; Returns: undefined }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
+  public: {
+    Enums: {},
+  },
+} as const
+

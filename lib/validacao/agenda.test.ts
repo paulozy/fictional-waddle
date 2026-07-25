@@ -1,0 +1,188 @@
+import { describe, expect, it } from "vitest";
+import {
+  conflitaComGrade,
+  horarioSchema,
+  nomeDoDia,
+  servicoSchema,
+  type EntradaHorario,
+} from "./agenda";
+
+describe("servicoSchema", () => {
+  it("aceita serviço completo", () => {
+    const resultado = servicoSchema.parse({
+      nome: "  Corte masculino ",
+      duracaoMinutos: "45",
+      preco: "60,00",
+    });
+
+    expect(resultado).toEqual({
+      nome: "Corte masculino",
+      duracaoMinutos: 45,
+      preco: 60,
+    });
+  });
+
+  it("aceita preço vazio como nulo", () => {
+    // O dono pode não querer divulgar valor pelo WhatsApp.
+    expect(servicoSchema.parse({ nome: "Corte", duracaoMinutos: "30", preco: "" }))
+      .toMatchObject({ preco: null });
+  });
+
+  it("aceita ponto decimal além de vírgula", () => {
+    expect(
+      servicoSchema.parse({ nome: "Corte", duracaoMinutos: "30", preco: "59.90" }),
+    ).toMatchObject({ preco: 59.9 });
+  });
+
+  it("rejeita nome vazio ou só espaços", () => {
+    for (const nome of ["", "   "]) {
+      const r = servicoSchema.safeParse({ nome, duracaoMinutos: "30", preco: "" });
+      expect(r.success).toBe(false);
+      expect(r.error!.issues[0].message).toMatch(/Informe o nome/);
+    }
+  });
+
+  it("rejeita duração fora de faixa e não inteira", () => {
+    const casos: [string, RegExp][] = [
+      ["0", /mínima é de 5/],
+      ["4", /mínima é de 5/],
+      ["481", /máxima é de 8 horas/],
+      // Vírgula é normalizada como no preço, então cai no .int() e não em NaN
+      ["45,5", /inteiro/],
+      ["45.5", /inteiro/],
+      ["", /Informe a duração/],
+      ["trinta", /Informe a duração/],
+    ];
+
+    for (const [duracaoMinutos, esperado] of casos) {
+      const r = servicoSchema.safeParse({
+        nome: "Corte",
+        duracaoMinutos,
+        preco: "",
+      });
+      expect(r.success, duracaoMinutos).toBe(false);
+      expect(r.error!.issues[0].message).toMatch(esperado);
+    }
+  });
+
+  it("rejeita preço negativo e preço não numérico", () => {
+    for (const preco of ["-10", "abc"]) {
+      const r = servicoSchema.safeParse({
+        nome: "Corte",
+        duracaoMinutos: "30",
+        preco,
+      });
+      expect(r.success, preco).toBe(false);
+      expect(r.error!.issues[0].message).toMatch(/Preço inválido/);
+    }
+  });
+});
+
+describe("horarioSchema", () => {
+  it("aceita janela válida", () => {
+    expect(
+      horarioSchema.parse({
+        diaSemana: "1",
+        horaInicio: "09:00",
+        horaFim: "18:00",
+      }),
+    ).toEqual({ diaSemana: 1, horaInicio: "09:00", horaFim: "18:00" });
+  });
+
+  it("aceita HH:MM:SS, formato que o Postgres devolve", () => {
+    expect(
+      horarioSchema.parse({
+        diaSemana: "0",
+        horaInicio: "09:00:00",
+        horaFim: "12:00:00",
+      }),
+    ).toMatchObject({ horaInicio: "09:00:00" });
+  });
+
+  it("rejeita fim antes ou igual ao início", () => {
+    for (const horaFim of ["09:00", "08:00"]) {
+      const r = horarioSchema.safeParse({
+        diaSemana: "1",
+        horaInicio: "09:00",
+        horaFim,
+      });
+      expect(r.success, horaFim).toBe(false);
+      expect(r.error!.issues[0].message).toMatch(/depois do início/);
+      expect(r.error!.issues[0].path).toEqual(["horaFim"]);
+    }
+  });
+
+  it("rejeita formato de hora inválido", () => {
+    for (const horaInicio of ["9:00", "25:00", "09:60", "manhã", ""]) {
+      const r = horarioSchema.safeParse({
+        diaSemana: "1",
+        horaInicio,
+        horaFim: "18:00",
+      });
+      expect(r.success, horaInicio).toBe(false);
+    }
+  });
+
+  it("rejeita dia da semana fora de 0..6", () => {
+    for (const diaSemana of ["-1", "7"]) {
+      const r = horarioSchema.safeParse({
+        diaSemana,
+        horaInicio: "09:00",
+        horaFim: "18:00",
+      });
+      expect(r.success, diaSemana).toBe(false);
+      expect(r.error!.issues[0].message).toMatch(/Dia da semana inválido/);
+    }
+  });
+});
+
+describe("conflitaComGrade", () => {
+  const grade = [
+    { dia_semana: 1, hora_inicio: "09:00:00", hora_fim: "12:00:00" },
+    { dia_semana: 2, hora_inicio: "14:00:00", hora_fim: "18:00:00" },
+  ];
+
+  const nova = (
+    diaSemana: number,
+    horaInicio: string,
+    horaFim: string,
+  ): EntradaHorario => ({ diaSemana, horaInicio, horaFim });
+
+  it("detecta sobreposição no mesmo dia", () => {
+    expect(conflitaComGrade(nova(1, "11:00", "13:00"), grade)).toBe(true);
+    expect(conflitaComGrade(nova(1, "08:00", "10:00"), grade)).toBe(true);
+    expect(conflitaComGrade(nova(1, "10:00", "11:00"), grade)).toBe(true);
+  });
+
+  it("não acusa conflito em dia diferente", () => {
+    expect(conflitaComGrade(nova(3, "09:00", "12:00"), grade)).toBe(false);
+    expect(conflitaComGrade(nova(2, "09:00", "12:00"), grade)).toBe(false);
+  });
+
+  it("permite janelas encostadas — é como se modela o intervalo de almoço", () => {
+    expect(conflitaComGrade(nova(1, "12:00", "18:00"), grade)).toBe(false);
+    expect(conflitaComGrade(nova(1, "07:00", "09:00"), grade)).toBe(false);
+  });
+
+  it("não acusa conflito com grade vazia", () => {
+    expect(conflitaComGrade(nova(1, "09:00", "12:00"), [])).toBe(false);
+  });
+});
+
+describe("nomeDoDia", () => {
+  it("nomeia os sete dias com 0 = domingo", () => {
+    expect([0, 1, 2, 3, 4, 5, 6].map(nomeDoDia)).toEqual([
+      "domingo",
+      "segunda",
+      "terça",
+      "quarta",
+      "quinta",
+      "sexta",
+      "sábado",
+    ]);
+  });
+
+  it("não quebra com índice inválido", () => {
+    expect(nomeDoDia(9)).toBe("?");
+  });
+});
