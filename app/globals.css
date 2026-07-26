@@ -11,13 +11,30 @@
  * pinho e régua. O acento é o cyan do vidro de Barbicide, presente em toda
  * barbearia.
  *
- * O verde do WhatsApp (#25D366) é deliberadamente **ausente**: tem 1,98:1 sobre
- * branco e reprova até o mínimo de 3:1 para componente de UI. O canal é
- * sinalizado pelo glifo e pela cópia, nunca pela cor.
- *
  * Todo par de cor aqui foi medido. Ao alterar qualquer valor, rodar de novo a
  * verificação de contraste antes de commitar — vários pares passam com folga
  * pequena e um ajuste "só de tom" reprova sem aviso.
+ *
+ * ## A fronteira entre marca e UI
+ *
+ * **Nenhum token daqui é verde ou roxo.** Não é acaso: verde de mensageria
+ * reprova como cor funcional (o do WhatsApp, #25D366, tem 1,98:1 sobre
+ * branco — bem abaixo do mínimo de 3:1 para componente de UI). Na interface o
+ * canal é sinalizado pelo glifo e pela cópia, nunca pela cor.
+ *
+ * A **marca** é outra coisa e segue outra regra. O símbolo em
+ * `public/agendazap-icon.png` é verde #0EC962 (2,13:1 no papel) e roxo
+ * #7947E4, e é assim de propósito. Logotipo não é componente de UI: o SC 1.4.3
+ * isenta texto de logo, e o SC 1.4.11 não alcança o símbolo porque ele não é
+ * "required to understand the content" — quem carrega o significado é a
+ * palavra "AgendaZap" ao lado, e o link permanece acessível por ela. Por isso
+ * `components/marca.tsx` usa `alt=""`: o símbolo é decorativo, e é essa
+ * decoratividade que sustenta a isenção.
+ *
+ * A isenção evapora no instante em que a cor virar funcional. Ícone de status,
+ * botão, borda de foco, indicador de estado — se herdarem verde ou roxo,
+ * voltam a exigir 3:1 e reprovam. Se precisar de um token novo, ele sai desta
+ * paleta, não do símbolo.
  */
 
 @theme inline {

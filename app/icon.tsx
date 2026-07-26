@@ -1,50 +1,56 @@
 import { ImageResponse } from "next/og";
+import { MarcaRecortada, lerPngDaMarca } from "@/lib/marca-servidor";
+import { OCUPACAO } from "@/lib/marca";
 
 /**
- * Ícone do aplicativo, gerado em build pelo `ImageResponse` do `next/og`.
+ * Ícones do navegador, derivados de `public/agendazap-icon.png`.
  *
- * Gerado e não commitado como PNG por dois motivos: não entra binário no
- * repositório, e a cor sai do mesmo lugar que o resto do tema — trocar a
- * primária em `app/globals.css` e esquecer de reexportar o ícone é o tipo de
- * divergência que ninguém percebe até ver o ícone antigo na tela inicial de um
- * cliente. `next/og` já vem no Next; não é dependência nova.
+ * Gerados em build em vez de commitados como binários: assim existe **uma**
+ * fonte (o PNG) e as regras de composição ficam em código versionado. Três
+ * PNGs derivados no repositório seriam três arquivos que ninguém sabe regerar
+ * quando o desenho mudar.
  *
- * O desenho é um monograma, de propósito. Um ícone bonito é trabalho de
- * designer e pode substituir este arquivo a qualquer momento — mas um produto
- * sem ícone nenhum aparece como um retângulo cinza na tela inicial, que é pior
- * do que simples.
- *
- * O `A` ocupa ~56% do quadro. Isso não é preciosismo de composição: a máscara
- * adaptativa do Android recorta até 20% de cada borda, e o manifesto declara
- * este mesmo arquivo como `maskable` — sem a margem, a letra sairia cortada em
- * ícone redondo.
+ * Todos com fundo **transparente**. Esta é a variante `any`, e o web.dev
+ * recomenda tratá-la como o favicon do site: "com regiões transparentes e sem
+ * padding extra". O ícone de fundo cheio que o Android precisa é outro
+ * arquivo, `app/icone-mascara/route.tsx`, e mora fora daqui de propósito —
+ * cada item de `generateImageMetadata` vira uma `<link rel="icon">` no
+ * `<head>`, e a variante mascarada não deve ser candidata a favicon de aba.
  */
 
-export const size = { width: 512, height: 512 };
 export const contentType = "image/png";
 
-export default function Icon() {
+/**
+ * O `32` é o favicon de aba e leva recorte mais apertado que os outros: a
+ * margem do arquivo de origem custa metade do quadro, e nesse tamanho o mark
+ * já é limítrofe mesmo preenchendo tudo. Os de 192 e 512 são os que
+ * `app/manifest.ts` referencia como `any`.
+ */
+export function generateImageMetadata() {
+  return [
+    { id: "32", size: { width: 32, height: 32 }, contentType },
+    { id: "192", size: { width: 192, height: 192 }, contentType },
+    { id: "512", size: { width: 512, height: 512 }, contentType },
+  ];
+}
+
+/**
+ * `id` chega como **Promise**, não como string.
+ *
+ * O wrapper que o Next gera para rotas de metadata dinâmica faz
+ * `handler({ params: restParamsPromise, id: idPromise })`
+ * (`next-metadata-route-loader.js`). Sem o `await`, `Number(id)` devolve `NaN`
+ * e o build quebra em "Expected positive integer for width".
+ */
+export default async function Icon({ id }: { id: Promise<string> }) {
+  const lado = Number(await id);
+
   return new ImageResponse(
-    (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          // #1E7266 — a primária do tema claro, em hex porque o motor do
-          // ImageResponse não resolve `oklch()` nem variável CSS.
-          background: "#1E7266",
-          color: "#FFFFFF",
-          fontSize: 288,
-          fontWeight: 700,
-          letterSpacing: "-0.04em",
-        }}
-      >
-        A
-      </div>
-    ),
-    size,
+    <MarcaRecortada
+      lado={lado}
+      ocupacao={lado <= 32 ? OCUPACAO.favicon : OCUPACAO.app}
+      png={await lerPngDaMarca()}
+    />,
+    { width: lado, height: lado },
   );
 }

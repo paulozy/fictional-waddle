@@ -201,6 +201,26 @@ O dono opera isto **entre atendimentos, no celular, com uma mão**. O dashboard 
 
 **O PWA para em ícone e standalone.** `app/manifest.ts` mais `app/icon.tsx` / `app/apple-icon.tsx`, gerados por `ImageResponse` (embutido no Next, sem binário no repositório e sem dependência nova). Não há offline nem push: os dois exigem service worker, que o Next não gera. `start_url` é `/agendamentos` e não `/` — quem instalou já é cliente.
 
+---
+
+## A marca
+
+**Uma fonte, quatro recortes.** `public/agendazap-icon.png` é 500×500 com fundo transparente, e o desenho ocupa só **51,8%** do quadro (medido: bbox de 259px, ~24% de margem em cada lado). Essa margem atrapalha em todo destino, então `lib/marca.ts` guarda a fração e a conta de ampliar-e-recortar; `lib/marca-servidor.tsx` compõe para os geradores de ícone e `components/marca.tsx` para a UI. **Ao trocar o PNG, remedir `FRACAO_DESENHO`** — `lib/marca.test.ts` trava o valor justamente para isso não passar em silêncio.
+
+**Ocupação por destino, e por quê:** favicon 94% (a 32px a margem é desperdício puro), ícone `any` 84% (o web.dev pede "sem padding extra"), `apple-icon` 70%, maskable 66%. As margens de `any` e `maskable` são **opostas** — por isso são arquivos diferentes, não o mesmo declarado duas vezes.
+
+**Fundo transparente quebra em dois lugares, e os dois foram corrigidos.** O iOS compõe `apple-touch-icon` sobre **preto**, então `app/apple-icon.tsx` tem fundo opaco. No Android, a spec do manifesto diz que o UA compõe sobre *"a solid fill of the user agent's choice"* — e **não** consulta o `background_color`; daí `app/icone-mascara/route.tsx`, com fundo opaco e o desenho a 66% (raio efetivo 33%, dentro da safe zone de 40%). Essa rota mora fora do `app/icon.tsx` de propósito: cada item de `generateImageMetadata` vira uma `<link rel="icon">` no `<head>`, e a variante de fundo cheio não deve concorrer a favicon de aba.
+
+**Dois detalhes que custam um build para descobrir.** Em rota de metadata dinâmica, `id` chega como **Promise** — `handler({ params, id: idPromise })`; sem `await`, `Number(id)` é `NaN`. E no `components/marca.tsx` o `max-w-none` é obrigatório: o reset do Tailwind põe `max-width: 100%` em imagem, o que encolheria a imagem ampliada de volta ao contêiner e anularia o recorte.
+
+**Ler o PNG com `readFile`, nunca `import`.** O `ImageResponse` tem teto de 500 KB de bundle e conta imagens; um `import` colocaria os 87 KB dentro do bundle de cada rota.
+
+**Verde e roxo vivem na marca; a UI é teal.** O símbolo é verde `#0EC962` (2,13:1 no papel) e roxo `#7947E4` — nenhum dos dois existe em `app/globals.css`, e não deve passar a existir. Logotipo não é componente de UI: o SC 1.4.3 isenta texto de logo, e o SC 1.4.11 não alcança o símbolo porque ele não é *"required to understand the content"* — quem carrega o significado é a palavra "AgendaZap" ao lado. É por isso que `components/marca.tsx` usa `alt=""`, e é essa decoratividade que sustenta a isenção. **A isenção evapora se a cor virar funcional**: ícone de status, botão ou borda de foco em verde voltam a exigir 3:1 e reprovam.
+
+A palavra ao lado do símbolo fica em `text-foreground`, não em `text-primary` — com o mark colorido, o teal na tipografia daria três famílias de cor no mesmo cabeçalho, e o teal precisa continuar significando "elemento interativo".
+
+**Reserva conhecida, não bloqueante:** o relógio roxo do desenho some abaixo de ~24px e fica em 2,92:1 contra o card escuro. Se o mark for refeito um dia, o pedido certo é "remover o relógio, manter balão + calendário + raio" — três elementos, não quatro.
+
 **O que só um navegador verifica.** O jsdom não tem engine de layout nem cascata CSS: `getBoundingClientRect()` devolve zero, `matchMedia` não existe e classe do Tailwind é string opaca. Um `toHaveClass("min-h-11")` afirma que a classe foi escrita, **não** que o pixel tem 44. Tamanho real de alvo, overflow, media query aplicando, zoom do iOS, safe area e teclado virtual pedem aparelho ou emulação de device — testar a 375×667 e 768×1024 ao mexer em layout. `@testing-library/jest-dom` e `user-event` **não** estão instalados: os testes de componente usam `fireEvent` e asserção sobre atributo.
 
 ---

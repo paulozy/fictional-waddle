@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Marca } from "@/components/marca";
 import { MenuSecoes } from "./menu-secoes";
 
 /**
@@ -23,10 +24,13 @@ export default function MarketingLayout({
     <div className="flex min-h-full flex-1 flex-col">
       <header className="sticky top-0 z-50 border-b border-border bg-background/85 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center gap-6 px-4 sm:px-6 py-3">
+          {/* `prioritaria` porque este header é `sticky top-0`: lazy-load num
+              elemento fixo no topo produz um pop visível no primeiro paint. */}
           <Link
             href="/"
-            className="font-heading text-lg font-semibold tracking-tight text-primary"
+            className="flex min-h-11 items-center gap-2 font-heading text-lg font-semibold tracking-tight text-foreground"
           >
+            <Marca tamanho={28} prioritaria />
             AgendaZap
           </Link>
 
@@ -64,7 +68,8 @@ export default function MarketingLayout({
 
       <footer className="border-t border-border">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-6 gap-y-2 px-4 sm:px-6 py-8 text-sm text-muted-foreground">
-          <span className="font-heading font-semibold text-foreground">
+          <span className="flex items-center gap-2 font-heading font-semibold text-foreground">
+            <Marca tamanho={24} />
             AgendaZap
           </span>
           <span>Agendamento pelo WhatsApp do seu estabelecimento.</span>

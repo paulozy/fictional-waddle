@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { sair } from "@/app/login/actions";
 import { AlternarTema } from "@/components/alternar-tema";
 import { BannerAssinatura } from "@/components/banner-assinatura";
+import { Marca } from "@/components/marca";
 import {
   NavegacaoDashboard,
   type ItemNavegacao,
@@ -83,10 +84,15 @@ export default async function DashboardLayout({
     <div className="flex min-h-full flex-1 flex-col">
       <header className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-5xl items-center gap-x-6 px-4 py-3 sm:px-6 md:py-4">
+          {/* A palavra fica em `text-foreground`, não em `text-primary`: com o
+              símbolo colorido ao lado, o teal na tipografia daria três famílias
+              de cor no mesmo cabeçalho — e o teal precisa continuar
+              significando "elemento interativo" na UI. */}
           <Link
             href="/agendamentos"
-            className="font-heading text-lg font-semibold tracking-tight text-primary"
+            className="flex min-h-11 items-center gap-2 font-heading text-lg font-semibold tracking-tight text-foreground"
           >
+            <Marca tamanho={28} />
             AgendaZap
           </Link>
 
