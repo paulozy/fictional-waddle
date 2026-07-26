@@ -1,4 +1,5 @@
 import { addDays } from "date-fns";
+import { assinaturaValida } from "@/lib/assinatura";
 import { ErroEvolutionApi, enviarTexto, traduzirEstado } from "@/lib/evolution-api";
 import { criarClienteAdmin } from "@/lib/supabase/admin";
 import {
@@ -16,10 +17,13 @@ import {
   extrairContagemQrCode,
   extrairEstadoConexao,
   extrairMensagem,
+  extrairMotivoDesconexao,
+  extrairNumeroDono,
   jidPermitido,
   lerListaPermitidos,
   type MensagemWebhook,
 } from "@/lib/bot/webhook-payload";
+import { hashNumeroWhatsapp } from "@/lib/trial-numero";
 
 /**
  * Adaptador de I/O em volta da engine de fluxo.
@@ -78,7 +82,7 @@ export async function POST(
   const { data: perfil } = await admin
     .from("perfis")
     .select(
-      "id, fuso_horario, passo_slot_minutos, antecedencia_minima_minutos, antecedencia_maxima_dias, status_conexao_whatsapp",
+      "id, fuso_horario, passo_slot_minutos, antecedencia_minima_minutos, antecedencia_maxima_dias, status_conexao_whatsapp, status_assinatura, trial_expira_em, trial_bloqueado_em",
     )
     .eq("evolution_instance_name", instance)
     .maybeSingle();
@@ -98,6 +102,28 @@ export async function POST(
     return ok(`qrcode regerado (${regeracoes ?? "sem contagem"})`);
   }
 
+  /**
+   * Motivo da queda. **Só registra** — guardar exigiria coluna nova e
+   * migration, e a tela ainda não usa a informação.
+   *
+   * O ganho é de suporte, e é imediato: quando o dono disser "não conecta", o
+   * log responde se foi `401` (ele desvinculou o aparelho, precisa re-parear)
+   * ou uma queda transitória que volta sozinha. Antes disto o app recebia o
+   * `CONNECTION_UPDATE` de queda e nunca o porquê.
+   *
+   * Próximo passo natural, quando incomodar: persistir e diferenciar o texto
+   * do box "WhatsApp desconectado" — hoje ele dá o mesmo conselho nos dois
+   * casos, e num deles o conselho não resolve.
+   */
+  if (evento === "status") {
+    const motivo = extrairMotivoDesconexao(payload);
+    console.info("status da instância", {
+      usuario_id: perfil.id,
+      motivo_desconexao: motivo,
+    });
+    return ok(`status (${motivo ?? "sem motivo"})`);
+  }
+
   if (evento === "conexao") {
     const estado = traduzirEstado(extrairEstadoConexao(payload) ?? undefined);
     await admin
@@ -107,6 +133,11 @@ export async function POST(
           estado === "conectado" ? "conectado" : "desconectado",
       })
       .eq("id", perfil.id);
+
+    // Pareou: é aqui, e só aqui, que o número do dono passa pelo nosso lado.
+    if (estado === "conectado") {
+      await reivindicarNumeroTrial(admin, perfil.id, payload);
+    }
 
     return ok(`conexão: ${estado}`);
   }
@@ -131,9 +162,116 @@ export async function POST(
       .from("perfis")
       .update({ status_conexao_whatsapp: "conectado" })
       .eq("id", perfil.id);
+
+    /**
+     * E reivindica o número aqui também, pelo mesmo motivo que este bloco existe:
+     * o `CONNECTION_UPDATE` **se perde** — é o que `verificarConexao` em
+     * `lib/evolution-api.ts` diz por escrito, e é por isso que a tela de QR faz
+     * polling. Se o evento de pareamento tiver caído (401 durante rotação do
+     * `WEBHOOK_SECRET`, cold start, 500 no meio de um rollout), a Evolution não
+     * reenvia, e sem este caminho o número nunca entraria no livro-caixa: a
+     * conta atenderia clientes com o trial fora do registro, e o número
+     * continuaria reivindicável pela próxima conta. Custa nada porque o `sender`
+     * de topo, que `extrairNumeroDono` já lê, vem em todo webhook.
+     */
+    await reivindicarNumeroTrial(admin, perfil.id, payload);
+  }
+
+  /**
+   * Gate de assinatura: trial expirado ou cancelada, o bot **silencia**.
+   *
+   * Silêncio e não mensagem de aviso: quem está do outro lado é o cliente do
+   * salão, não o dono. Responder "o estabelecimento não pagou a assinatura"
+   * exporia problema comercial nosso na frente do cliente dele e queimaria a
+   * reputação de quem nos paga. Sem resposta, o comportamento volta a ser o de
+   * antes do produto existir — o dono responde na mão — e quem vê o aviso é o
+   * dono, no banner do dashboard.
+   *
+   * Depois da correção de `status_conexao_whatsapp` de propósito: os eventos de
+   * conexão e QR code seguem sendo processados mesmo bloqueado, senão o painel
+   * passaria a mentir sobre a conexão justamente para quem precisa resolver a
+   * pendência.
+   */
+  if (!assinaturaValida(perfil, new Date())) {
+    console.info("bot silenciado: assinatura inválida", {
+      usuario_id: perfil.id,
+      status_assinatura: perfil.status_assinatura,
+    });
+    return ok("assinatura inválida");
   }
 
   return processarMensagem(admin, perfil, instance, mensagem);
+}
+
+/**
+ * Registra no livro-caixa que este número consumiu um trial, e bloqueia a conta
+ * se o número pertence a outra (`supabase/migrations/20260725121600_*`).
+ *
+ * Fail-safe **permissivo**, ao contrário do gate de assinatura: pepper ausente,
+ * `wuid` ausente ou RPC com erro apenas registram e seguem. O inverso é de
+ * propósito — aqui a falha é nossa (env var não configurada, payload de uma
+ * versão diferente da Evolution), e o custo de errar para o lado permissivo é um
+ * trial reciclável, enquanto errar para o lado restritivo bloquearia todo mundo
+ * que conecta, inclusive quem paga.
+ *
+ * Nunca loga o número nem o hash: identificar o tenant já basta para depurar.
+ */
+async function reivindicarNumeroTrial(
+  admin: ClienteAdmin,
+  usuarioId: string,
+  payload: unknown,
+) {
+  const pepper = process.env.TRIAL_HASH_PEPPER;
+  if (!pepper) {
+    // Não usa `envObrigatoria`: a ausência aqui é decisão de não bloquear, e não
+    // um erro que deva interromper a atualização de conexão.
+    console.error("TRIAL_HASH_PEPPER ausente: número não reivindicado", {
+      usuario_id: usuarioId,
+    });
+    return;
+  }
+
+  const dono = extrairNumeroDono(payload);
+  if (!dono) {
+    console.warn("conexão sem número do dono no payload", {
+      usuario_id: usuarioId,
+    });
+    return;
+  }
+
+  /**
+   * O dono deveria chegar sempre como telefone: o `wuid` da Evolution vem de
+   * `client.user.id`, que é `@s.whatsapp.net`. Se um upgrade passar a reportar
+   * `@lid`, a chave do livro-caixa muda de espaço sem mudar de forma (os dois
+   * viram só dígitos) e a proteção entre contas dos números já reivindicados
+   * cairia a zero — silenciosamente, se não fosse este aviso. Continuamos
+   * reivindicando: desligar a proteção seria pior que protegê-la parcialmente.
+   */
+  if (dono.dominio && dono.dominio !== "s.whatsapp.net") {
+    console.warn("número do dono em formato inesperado: livro-caixa em risco", {
+      usuario_id: usuarioId,
+      dominio: dono.dominio,
+    });
+  }
+
+  const { data, error } = await admin.rpc("reivindicar_numero_trial", {
+    p_usuario_id: usuarioId,
+    p_numero_hash: hashNumeroWhatsapp(dono.numero, pepper),
+  });
+
+  if (error) {
+    console.error("falha ao reivindicar número do trial", {
+      usuario_id: usuarioId,
+      codigo: error.code,
+    });
+    return;
+  }
+
+  if (data === "bloqueado") {
+    console.warn("trial bloqueado: número já usado por outra conta", {
+      usuario_id: usuarioId,
+    });
+  }
 }
 
 type ClienteAdmin = ReturnType<typeof criarClienteAdmin>;

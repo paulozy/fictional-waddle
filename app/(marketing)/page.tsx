@@ -78,7 +78,7 @@ const NO_PRECO = [
 export default function LandingPage() {
   return (
     <>
-      <section className="mx-auto max-w-5xl px-6 pb-16 pt-14 sm:pt-20">
+      <section className="mx-auto max-w-5xl px-4 sm:px-6 pb-16 pt-14 sm:pt-20">
         <div className="grid items-center gap-12 lg:grid-cols-[1.05fr_1fr]">
           <div>
             <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
@@ -117,7 +117,7 @@ export default function LandingPage() {
 
       {/* A pauta separa as seções, como a régua separa as horas no caderno. */}
       <section className="border-y border-border bg-card">
-        <div className="mx-auto max-w-5xl px-6 py-16">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 py-16">
           <h2 className="max-w-2xl font-heading text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
             Cada mensagem não respondida é uma cadeira vazia
           </h2>
@@ -130,7 +130,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="como-funciona" className="mx-auto max-w-5xl px-6 py-16">
+      <section id="como-funciona" className="mx-auto max-w-5xl px-4 sm:px-6 py-16">
         <h2 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
           Como funciona
         </h2>
@@ -155,7 +155,7 @@ export default function LandingPage() {
       </section>
 
       <section className="border-y border-border bg-card">
-        <div className="mx-auto max-w-5xl px-6 py-16">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 py-16">
           <dl className="grid gap-8 sm:grid-cols-3">
             {BENEFICIOS.map(({ titulo, texto }) => (
               <div key={titulo}>
@@ -169,7 +169,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-5xl px-6 py-16">
+      <section className="mx-auto max-w-5xl px-4 sm:px-6 py-16">
         <div className="grid gap-10 lg:grid-cols-2 lg:items-start">
           <div>
             <h2 className="font-heading text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
@@ -208,7 +208,7 @@ export default function LandingPage() {
       </section>
 
       <section id="preco" className="border-y border-border bg-card">
-        <div className="mx-auto max-w-5xl px-6 py-16">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 py-16">
           <h2 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
             Preço
           </h2>
@@ -248,7 +248,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="perguntas" className="mx-auto max-w-3xl px-6 py-16">
+      <section id="perguntas" className="mx-auto max-w-3xl px-4 sm:px-6 py-16">
         <h2 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
           Perguntas frequentes
         </h2>
@@ -258,7 +258,7 @@ export default function LandingPage() {
       </section>
 
       <section className="border-t border-border bg-card">
-        <div className="mx-auto max-w-5xl px-6 py-16 text-center">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 py-16 text-center">
           <h2 className="font-heading text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
             Comece hoje e não perca o próximo agendamento
           </h2>

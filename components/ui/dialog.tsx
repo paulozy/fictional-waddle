@@ -62,6 +62,31 @@ function DialogContent({
         data-slot="dialog-content"
         className={cn(
           "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          /**
+           * Teto de altura com rolagem própria.
+           *
+           * Sem isto, o diálogo de editar serviço (~420px) com o teclado
+           * virtual aberto num 375×667 (~350px sobrando) ficava cortado **e sem
+           * rolagem** — os botões Salvar/Cancelar simplesmente não existiam
+           * para quem estava no celular.
+           *
+           * `svh` e não `dvh`: `dvh` é remedido a cada retração da barra de
+           * ferramentas do Safari, e o diálogo mudaria de altura no meio da
+           * rolagem. `svh` é a viewport pequena, estável.
+           */
+          "max-h-[calc(100svh-2rem)] overflow-y-auto",
+          /**
+           * Em tela estreita o diálogo desce e ancora perto do polegar:
+           * centralizado ele nasce no meio da tela e o teclado o empurra para
+           * fora. Mesmo Radix Dialog, só reposicionado — não vale uma
+           * dependência de drawer por isto.
+           *
+           * Ancora com folga em vez de rente à borda. Rente exigiria
+           * `rounded-b-none` e um `pb` de safe-area, e o `-mb-4` do
+           * `DialogFooter` — que assume o `p-4` acima — abriria uma fresta
+           * exatamente do tamanho do inset. A folga resolve os dois de uma vez.
+           */
+          "max-sm:top-auto max-sm:bottom-[max(0.5rem,env(safe-area-inset-bottom))] max-sm:translate-y-0",
           className
         )}
         {...props}

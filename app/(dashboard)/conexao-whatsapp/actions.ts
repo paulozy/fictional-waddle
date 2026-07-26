@@ -58,11 +58,19 @@ function mensagemDeErro(erro: unknown): string {
  * Tenta conectar antes de criar: em reconexão (chip trocado, sessão caída) a
  * instância já existe e recriar perderia a configuração de webhook.
  */
-export async function gerarQrCode(): Promise<ResultadoQrCode> {
+export async function gerarQrCode(
+  /**
+   * Número do WhatsApp que vai ser pareado, já normalizado pela tela. Sem ele
+   * a Evolution devolve `pairingCode: null` e sobra só o QR — que no celular
+   * não é caminho nenhum, porque o código está no mesmo aparelho que
+   * precisaria lê-lo.
+   */
+  numero?: string,
+): Promise<ResultadoQrCode> {
   const instancia = await nomeDaInstancia();
 
   try {
-    const qr = await obterQrCode(instancia);
+    const qr = await obterQrCode(instancia, numero);
 
     if (qr.base64) {
       /**
@@ -109,7 +117,7 @@ export async function gerarQrCode(): Promise<ResultadoQrCode> {
   } catch (erro) {
     // 404 = instância ainda não existe: é o caminho do primeiro acesso.
     if (erro instanceof ErroEvolutionApi && erro.status === 404) {
-      return criarEConectar(instancia);
+      return criarEConectar(instancia, numero);
     }
     return {
       qrCodeBase64: null,
@@ -121,9 +129,12 @@ export async function gerarQrCode(): Promise<ResultadoQrCode> {
   }
 }
 
-async function criarEConectar(instancia: string): Promise<ResultadoQrCode> {
+async function criarEConectar(
+  instancia: string,
+  numero?: string,
+): Promise<ResultadoQrCode> {
   try {
-    const criada = await criarInstancia(instancia).catch(async (erro) => {
+    const criada = await criarInstancia(instancia, numero).catch(async (erro) => {
       /**
        * A instância já existia. Acontece quando uma tentativa anterior criou a
        * instância no servidor mas a resposta não chegou ao app (timeout de
@@ -132,7 +143,12 @@ async function criarEConectar(instancia: string): Promise<ResultadoQrCode> {
        */
       if (erro instanceof ErroEvolutionApi && erro.instanciaJaExiste) {
         await configurarWebhook(instancia);
-        return { qrCodeBase64: null, tokenInstancia: null };
+        return {
+          qrCodeBase64: null,
+          codigoPareamento: null,
+          regeracoes: null,
+          tokenInstancia: null,
+        };
       }
       throw erro;
     });
@@ -144,14 +160,19 @@ async function criarEConectar(instancia: string): Promise<ResultadoQrCode> {
     if (criada.qrCodeBase64) {
       return {
         qrCodeBase64: criada.qrCodeBase64,
-        codigoPareamento: null,
+        // Este é o caminho em que o código de pareamento de fato aparece: a
+        // criação com `number` é a única chamada que a Evolution honra
+        // enquanto a instância não está em `close`.
+        codigoPareamento: criada.codigoPareamento,
         erro: null,
-        regeracoes: 0,
+        // O `count` que o servidor informou, não um zero assumido: é a linha
+        // de base que diz se a próxima busca trouxe código novo ou cache.
+        regeracoes: criada.regeracoes,
         instanciaCriada: true,
       };
     }
 
-    const qr = await obterQrCode(instancia);
+    const qr = await obterQrCode(instancia, numero);
     return {
       qrCodeBase64: qr.base64,
       codigoPareamento: qr.codigoPareamento,
@@ -170,17 +191,33 @@ async function criarEConectar(instancia: string): Promise<ResultadoQrCode> {
   }
 }
 
-async function registrarEstado(usuarioId: string, estado: EstadoConexao) {
+/**
+ * Persiste o estado, **quando ele é uma conclusão**.
+ *
+ * `conectando` não é: é o estado em que o socket Baileys passa toda a sessão
+ * de pareamento. Gravá-lo como `desconectado` — que era o que
+ * `normalizarParaBanco` fazia, por a coluna só ter dois valores — significava
+ * escrever no banco a cada 2-5s durante todo o pareamento, dizendo "não
+ * conectado" sobre uma instância que está justamente conectando. Pior que o
+ * ruído: uma escrita em voo podia sobrescrever o `conectado` que o webhook
+ * `CONNECTION_UPDATE` acabara de gravar, e o dashboard voltava a mentir até o
+ * poll seguinte.
+ *
+ * Devolve se gravou, porque quem chama precisa saber se houve efeito.
+ */
+async function registrarEstado(
+  usuarioId: string,
+  estado: EstadoConexao,
+): Promise<boolean> {
+  if (estado === "conectando") return false;
+
   const supabase = await criarClienteServidor();
   await supabase
     .from("perfis")
-    .update({ status_conexao_whatsapp: normalizarParaBanco(estado) })
+    .update({ status_conexao_whatsapp: estado })
     .eq("id", usuarioId);
-}
 
-/** `conectando` é transitório e não é um valor válido na coluna. */
-function normalizarParaBanco(estado: EstadoConexao): string {
-  return estado === "conectado" ? "conectado" : "desconectado";
+  return true;
 }
 
 /**

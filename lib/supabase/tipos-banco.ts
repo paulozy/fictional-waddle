@@ -271,6 +271,8 @@ export type Database = {
           plano: string
           status_assinatura: string
           status_conexao_whatsapp: string
+          trial_bloqueado_em: string | null
+          trial_expira_em: string | null
         }
         Insert: {
           antecedencia_maxima_dias?: number
@@ -284,6 +286,8 @@ export type Database = {
           plano?: string
           status_assinatura?: string
           status_conexao_whatsapp?: string
+          trial_bloqueado_em?: string | null
+          trial_expira_em?: string | null
         }
         Update: {
           antecedencia_maxima_dias?: number
@@ -297,6 +301,8 @@ export type Database = {
           plano?: string
           status_assinatura?: string
           status_conexao_whatsapp?: string
+          trial_bloqueado_em?: string | null
+          trial_expira_em?: string | null
         }
         Relationships: []
       }
@@ -330,6 +336,24 @@ export type Database = {
         }
         Relationships: []
       }
+      trials_numero_whatsapp: {
+        Row: {
+          criado_em: string
+          numero_hash: string
+          usuario_id: string
+        }
+        Insert: {
+          criado_em?: string
+          numero_hash: string
+          usuario_id: string
+        }
+        Update: {
+          criado_em?: string
+          numero_hash?: string
+          usuario_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -351,6 +375,10 @@ export type Database = {
       faixa_horaria_multirange: { Args: never; Returns: unknown }
       registrar_lembrete_pendente: {
         Args: { p_agendamento_id: string; p_usuario_id: string }
+        Returns: string
+      }
+      reivindicar_numero_trial: {
+        Args: { p_numero_hash: string; p_usuario_id: string }
         Returns: string
       }
       reordenar_fluxo_etapas: { Args: { p_ids: string[] }; Returns: undefined }

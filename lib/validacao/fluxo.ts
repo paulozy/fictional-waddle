@@ -91,6 +91,62 @@ export function validarFluxo(
   return { valido: true };
 }
 
+export type Direcao = "cima" | "baixo";
+
+export type ResultadoMovimento<T> =
+  | { movido: true; etapas: T[] }
+  | { movido: false; erro: string | null };
+
+/**
+ * Move uma etapa uma posição, validando o resultado.
+ *
+ * Existe porque **arrastar não é um caminho utilizável no celular**. A alça
+ * tinha ~20×14px e o `PointerSensor` sem `touch-action` perdia o gesto para o
+ * scroll da página antes de completar o limiar de ativação — o texto da tela
+ * prometia arraste e o arraste não acontecia. Setas de uma posição resolvem
+ * toque, teclado e leitor de tela de uma vez, e ainda são testáveis, o que o
+ * drag do dnd-kit não é fora de um navegador.
+ *
+ * Devolve `erro: null` quando o movimento simplesmente não existe (topo, fim,
+ * índice inválido): a UI já desabilita o botão nesses casos, e mostrar "não dá
+ * para subir a primeira" seria ruído. `erro` com texto é a regra de negócio
+ * falando — serviço antes de horário, confirmação por último — e essa precisa
+ * aparecer, porque o botão parecia disponível.
+ */
+export function moverEtapa<T extends EtapaParaValidar>(
+  etapas: T[],
+  indice: number,
+  direcao: Direcao,
+): ResultadoMovimento<T> {
+  const destino = direcao === "cima" ? indice - 1 : indice + 1;
+
+  if (indice < 0 || indice >= etapas.length) {
+    return { movido: false, erro: null };
+  }
+  if (destino < 0 || destino >= etapas.length) {
+    return { movido: false, erro: null };
+  }
+
+  const proposta = [...etapas];
+  [proposta[indice], proposta[destino]] = [proposta[destino], proposta[indice]];
+
+  // Mesma função que a Server Action usa: a UI nunca oferece o que o servidor
+  // recusaria depois.
+  const validacao = validarFluxo(proposta);
+  if (!validacao.valido) return { movido: false, erro: validacao.erro };
+
+  return { movido: true, etapas: proposta };
+}
+
+/** O movimento é possível? É o que decide o `disabled` das setas. */
+export function podeMover<T extends EtapaParaValidar>(
+  etapas: T[],
+  indice: number,
+  direcao: Direcao,
+): boolean {
+  return moverEtapa(etapas, indice, direcao).movido;
+}
+
 export function rotuloDoTipo(tipo: TipoEtapa): string {
   switch (tipo) {
     case "servico":

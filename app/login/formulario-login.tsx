@@ -30,6 +30,7 @@ export function FormularioLogin() {
           type="email"
           required
           autoComplete="email"
+          enterKeyHint="next"
           className={CAMPO}
         />
       </label>
@@ -42,7 +43,17 @@ export function FormularioLogin() {
           type="password"
           required
           minLength={8}
+          /**
+           * `current-password` mesmo o campo servindo também ao "Criar conta".
+           *
+           * Um campo só não pode declarar as duas intenções, e trocar para
+           * `new-password` estragaria o caminho frequente: o gerenciador
+           * pararia de oferecer a senha salva justamente em quem já é cliente
+           * e entra todo dia. O custo do jeito atual é o gerenciador sugerir
+           * preencher em vez de gerar no cadastro, que acontece uma vez.
+           */
           autoComplete="current-password"
+          enterKeyHint="go"
           className={CAMPO}
         />
       </label>

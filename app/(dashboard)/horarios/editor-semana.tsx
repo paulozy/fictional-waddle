@@ -312,7 +312,20 @@ function CampoHora({
       value={valor}
       aria-label={rotulo}
       onChange={(e) => onChange(e.target.value)}
-      className="h-9 rounded-md border border-input bg-transparent px-2 font-mono text-sm tabular-nums outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+      /**
+       * `text-base` abaixo de `md`, não `text-sm` em toda largura.
+       *
+       * Com fonte menor que 16px o Safari do iPhone dá zoom ao focar o campo e
+       * **não desfaz** — e esta tela tem dois selects por faixa, sete dias.
+       * Cada toque deixava a página mais ampliada que a anterior. Resolver por
+       * fonte e não por `maximum-scale=1`: aquilo tiraria o zoom de quem
+       * precisa dele (WCAG 1.4.4).
+       *
+       * O `<select>` nativo já foi a escolha certa aqui: em iOS ele abre o
+       * seletor de roda, que é melhor para hora do que qualquer dropdown
+       * customizado.
+       */
+      className="h-9 rounded-md border border-input bg-transparent px-2 font-mono text-base tabular-nums outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 max-md:h-11 md:text-sm dark:bg-input/30"
     >
       {opcoes.map((hora) => (
         <option key={hora} value={hora}>
@@ -365,17 +378,20 @@ function DialogCopiar({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-2 gap-1">
+        {/* Uma coluna no celular: dois checkboxes lado a lado em 375px deixam
+            os alvos a poucos pixels um do outro, e a caixa tem 16px — falha o
+            teste de espaçamento do SC 2.5.8 mesmo com o `py` da label. */}
+        <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
           {outros.map((dia) => (
             <label
               key={dia}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm capitalize transition-colors hover:bg-muted"
+              className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-2 text-sm capitalize transition-colors hover:bg-muted sm:min-h-0 sm:gap-2 sm:py-1.5"
             >
               <input
                 type="checkbox"
                 checked={selecionados.includes(dia)}
                 onChange={() => alternar(dia)}
-                className="size-4 accent-primary"
+                className="size-5 accent-primary sm:size-4"
               />
               {nomeDoDia(dia)}
             </label>

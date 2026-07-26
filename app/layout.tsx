@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import {
   Bricolage_Grotesque,
   Geist_Mono,
@@ -40,6 +40,36 @@ export const metadata: Metadata = {
   title: "AgendaZap — agendamento pelo WhatsApp",
   description:
     "Seu cliente vê os horários livres e agenda pelo WhatsApp do seu estabelecimento, sem baixar app.",
+};
+
+/**
+ * `width=device-width, initial-scale=1` **não** aparece aqui de propósito: o
+ * Next já emite os dois por padrão (`createDefaultViewport`), e repetir só
+ * criaria um segundo lugar para divergir.
+ *
+ * O que falta ao default e importa em celular são estes três:
+ *
+ * - `viewportFit: "cover"` deixa a página ir até a borda física da tela. Sem
+ *   ele, `env(safe-area-inset-*)` **resolve para zero** — e a barra de abas
+ *   inferior do dashboard depende desse inset para não ficar embaixo da barra
+ *   de gestos do iPhone.
+ * - `themeColor` pinta a barra do navegador com o fundo do tema. São os mesmos
+ *   valores de `--background` em `app/globals.css`, um por esquema, para a
+ *   emenda não aparecer quando o dono troca de tema.
+ * - `colorScheme` informa o UA antes do primeiro paint, para que campo nativo,
+ *   barra de rolagem e o `<select>` do editor de horários nasçam no tema certo.
+ *
+ * `maximum-scale` / `user-scalable=no` estão fora por decisão, não por
+ * esquecimento: impedir zoom reprova a WCAG 1.4.4. O zoom de campo no iOS é
+ * resolvido com fonte de 16px, não tirando o zoom de quem enxerga mal.
+ */
+export const viewport: Viewport = {
+  viewportFit: "cover",
+  colorScheme: "light dark",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#FDFBF7" },
+    { media: "(prefers-color-scheme: dark)", color: "#141917" },
+  ],
 };
 
 export default function RootLayout({

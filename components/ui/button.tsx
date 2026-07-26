@@ -20,18 +20,37 @@ const buttonVariants = cva(
           "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
         link: "text-primary underline-offset-4 hover:underline",
       },
+      /**
+       * Cada tamanho tem um **piso de toque** em `max-md:`.
+       *
+       * Este é o estilo `radix-nova`, bem mais compacto que o shadcn clássico:
+       * o botão padrão tem 32px de altura e o `sm` tem 28px. Em mouse isso é
+       * uma escolha de densidade legítima; em toque é o produto inteiro abaixo
+       * do alvo confortável de 44px, e o `sm` abaixo até do mínimo AA de 24px
+       * uma vez contado o espaçamento entre botões vizinhos.
+       *
+       * O piso mora aqui, e não espalhado em `max-md:h-11` por doze arquivos,
+       * porque assim a régra é uma só e não tem como esquecer dela no próximo
+       * botão. Acima de `md` nada muda: a densidade original continua.
+       *
+       * `xs` e `icon-xs` ficam de fora de propósito — são de contexto denso
+       * (dentro de célula, de chip), onde crescer para 44px quebraria o
+       * layout. Onde forem usados em superfície de toque, resolver caso a caso
+       * com o idioma de `components/ui/switch.tsx`: área estendida por
+       * pseudo-elemento, sem mexer no desenho.
+       */
       size: {
         default:
-          "h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+          "h-8 gap-1.5 px-2.5 max-md:h-11 max-md:px-3.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
         xs: "h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
-        sm: "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
-        lg: "h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
-        icon: "size-8",
+        sm: "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] max-md:h-10 max-md:px-3 max-md:text-sm in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
+        lg: "h-9 gap-1.5 px-2.5 max-md:h-11 max-md:px-3.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+        icon: "size-8 max-md:size-11",
         "icon-xs":
           "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
         "icon-sm":
-          "size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",
-        "icon-lg": "size-9",
+          "size-7 rounded-[min(var(--radius-md),12px)] max-md:size-10 in-data-[slot=button-group]:rounded-lg",
+        "icon-lg": "size-9 max-md:size-11",
       },
     },
     defaultVariants: {

@@ -5,6 +5,13 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2Icon, QrCodeIcon, RefreshCwIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  SEGUNDOS_RETENTATIVA,
+  SEGUNDOS_VALIDADE_QR,
+  classificarLeituraQr,
+} from "@/lib/qr-pareamento";
+import { normalizarNumeroWhatsApp } from "@/lib/telefone";
 import type { EstadoConexao } from "@/lib/tipos";
 import { gerarQrCode, verificarConexao } from "./actions";
 
@@ -29,21 +36,18 @@ import { gerarQrCode, verificarConexao } from "./actions";
  */
 
 /**
- * Validade estimada do QR na tela.
- *
- * É heurística: o tempo real varia com a versão do Baileys e com o servidor. Por
- * isso o número peca por baixo — renovar um QR ainda válido é inofensivo, deixar
- * um morto na tela não é.
- */
-const SEGUNDOS_VALIDADE_QR = 40;
-
-/**
  * Renovações automáticas antes de exigir ação do dono.
  *
- * O `QRCODE_LIMIT` da Evolution (default 30) é o teto real da sessão de
- * pareamento: estourado, a instância desiste e fica presa em `connecting`.
- * Renovar para sempre enquanto a aba está aberta queimaria esse orçamento sem
- * ninguém olhando a tela.
+ * **Buscar o QR não consome o `QRCODE_LIMIT`** — o comentário anterior aqui
+ * dizia que sim, e estava errado. Medido contra a 2.3.7: três
+ * `GET /instance/connect` seguidos deixaram `count` em 4, porque numa
+ * instância em `connecting` o endpoint devolve o QR em cache e não força
+ * rotação nenhuma. Quem queima o orçamento é o relógio de 45s do próprio
+ * servidor, com ou sem aba aberta.
+ *
+ * O limite continua valendo, por outro motivo: parar de disparar Server Action
+ * numa aba que ficou esquecida aberta. Depois dele a tela passa a `qr_expirado`
+ * e espera um clique.
  */
 const MAX_RENOVACOES_AUTO = 3;
 
@@ -68,9 +72,24 @@ const LIMITE_POLLING_MS = 180_000;
 type Estado =
   | { nome: "ocioso" }
   | { nome: "preparando" }
-  | { nome: "qr_visivel"; qr: string; codigoPareamento: string | null }
+  | {
+      nome: "qr_visivel";
+      qr: string;
+      codigoPareamento: string | null;
+      /**
+       * Contador que sobe a cada código **novo** exibido.
+       *
+       * É o que ancora a contagem regressiva, e não o nome do estado.
+       * Ancorada em `estado.nome`, ela dependia de a renovação passar
+       * visivelmente por `preparando` para o efeito remontar — e quando a
+       * resposta chega rápido o React agrupa as duas atualizações, o nome
+       * nunca muda, o efeito não remonta e a contagem morre depois da
+       * primeira renovação, com o QR congelado na tela. Com a sequência a
+       * remontagem é explícita: código novo, contagem nova.
+       */
+      sequencia: number;
+    }
   | { nome: "qr_expirado" }
-  | { nome: "pareando" }
   | { nome: "erro"; mensagem: string };
 
 export function PainelConexao({
@@ -85,37 +104,97 @@ export function PainelConexao({
 
   // Em ref porque o polling não deve reiniciar quando a contagem muda.
   const renovacoesRef = useRef(0);
+  /**
+   * Número já normalizado da tentativa em curso, para a renovação automática
+   * reusar. Em ref e não em estado: nenhuma renderização depende dele, e em
+   * estado ele reiniciaria o efeito de contagem a cada renovação.
+   */
+  const numeroRef = useRef<string | undefined>(undefined);
+  /** O dono já conectado clicou em "Conectar outro número". */
+  const [trocando, setTrocando] = useState(false);
+
+  /** `count` do último código exibido — a linha de base da comparação. */
+  const regeracoesRef = useRef<number | null>(null);
+  /** Sobe a cada código novo na tela; é o que remonta a contagem. */
+  const sequenciaRef = useRef(0);
+  /**
+   * Há uma busca em voo. Sem isto, uma resposta mais lenta que o intervalo de
+   * retentativa empilharia chamadas à Evolution em paralelo.
+   */
+  const buscandoRef = useRef(false);
 
   const solicitar = useCallback(
-    async (motivo: "manual" | "renovacao") => {
-      if (motivo === "manual") renovacoesRef.current = 0;
-      else renovacoesRef.current += 1;
+    async (motivo: "manual" | "renovacao", numero?: string) => {
+      if (buscandoRef.current) return;
+      buscandoRef.current = true;
 
-      // Zerar aqui, e não num efeito: manipulador de evento pode chamar
-      // setState à vontade.
-      setContador(0);
-      setEstado({ nome: "preparando" });
+      try {
+        if (motivo === "manual") {
+          renovacoesRef.current = 0;
+          // Sessão nova: nada na tela com que comparar a contagem.
+          regeracoesRef.current = null;
+          /**
+           * Só sobrescreve com o que veio. "Gerar novo código" e "Tentar de
+           * novo" chamam com `numeroRef.current`, mas um `undefined` acidental
+           * apagaria o número da tentativa em curso — e sem número a Evolution
+           * volta a devolver `pairingCode: null`, deixando quem está no celular
+           * de novo sem caminho.
+           */
+          if (numero) numeroRef.current = numero;
 
-      const resultado = await gerarQrCode();
+          // Zerar aqui, e não num efeito: manipulador de evento pode chamar
+          // setState à vontade.
+          setContador(0);
+          setEstado({ nome: "preparando" });
+        }
+        /**
+         * A renovação **não** passa por `preparando`: o QR atual fica na tela
+         * durante a busca. Antes ela derrubava o código e mostrava o spinner a
+         * cada ciclo — e agora que a busca frequentemente volta em cache, isso
+         * viraria um piscar a cada dois segundos.
+         */
 
-      if (resultado.erro) {
-        setEstado({ nome: "erro", mensagem: resultado.erro });
-        return;
+        const resultado = await gerarQrCode(numeroRef.current);
+
+        if (resultado.erro) {
+          setEstado({ nome: "erro", mensagem: resultado.erro });
+          return;
+        }
+
+        if (!resultado.qrCodeBase64) {
+          // Sem QR e sem erro significa que a instância já está pareada.
+          setEstado({ nome: "ocioso" });
+          router.refresh();
+          return;
+        }
+
+        /**
+         * O servidor devolveu o mesmo código de antes? Então ele ainda não
+         * rodou o relógio de 45s dele, e reiniciar a contagem aqui seria
+         * exatamente o erro de fase que faz a tela exibir QR morto. Sai sem
+         * tocar em nada — o intervalo insiste daqui a pouco.
+         */
+        const decisao = classificarLeituraQr(
+          regeracoesRef.current,
+          resultado.regeracoes,
+        );
+        if (motivo === "renovacao" && decisao.tipo === "repetido") return;
+
+        regeracoesRef.current = resultado.regeracoes;
+        // Só código novo conta contra o teto: senão as retentativas de dois em
+        // dois segundos esgotariam as renovações em menos de dez.
+        if (motivo === "renovacao") renovacoesRef.current += 1;
+
+        setContador(SEGUNDOS_VALIDADE_QR);
+        setEstado({
+          nome: "qr_visivel",
+          qr: resultado.qrCodeBase64,
+          codigoPareamento: resultado.codigoPareamento,
+          sequencia: (sequenciaRef.current += 1),
+        });
+      } finally {
+        buscandoRef.current = false;
       }
-
-      if (!resultado.qrCodeBase64) {
-        // Sem QR e sem erro significa que a instância já está pareada.
-        setEstado({ nome: "ocioso" });
-        router.refresh();
-        return;
-      }
-
-      setContador(SEGUNDOS_VALIDADE_QR);
-      setEstado({
-        nome: "qr_visivel",
-        qr: resultado.qrCodeBase64,
-        codigoPareamento: resultado.codigoPareamento,
-      });
     },
     [router],
   );
@@ -129,37 +208,56 @@ export function PainelConexao({
   }, [estado.nome]);
 
   /**
+   * Âncora da contagem: muda quando um código **novo** entra na tela.
+   *
+   * Extraído para fora do array de dependências para ficar legível — é este
+   * valor, e não `estado.nome`, que precisa reiniciar o relógio.
+   */
+  const sequenciaDoQr =
+    estado.nome === "qr_visivel" ? estado.sequencia : null;
+
+  /**
    * QR na tela: conta para baixo e, no zero, renova ou desiste.
    *
    * A contagem vive numa variável local do efeito, não dentro do atualizador de
    * `setContador`. A diferença importa: atualizador precisa ser puro, e o React
    * pode executá-lo duas vezes em StrictMode — decidir a renovação lá dentro
-   * dispararia duas chamadas à Evolution e queimaria o dobro do `QRCODE_LIMIT`.
+   * dispararia duas chamadas à Evolution.
    *
    * Aqui a renovação sai do callback do intervalo, que é um sistema externo e o
    * único dos três lugares em que esse efeito colateral é legítimo.
+   *
+   * O intervalo **não** é cancelado ao chegar a zero, e isso é deliberado. Uma
+   * busca costuma voltar com o mesmo código em cache, porque o servidor roda o
+   * relógio dele; cancelar ali deixaria a tela com um QR morto e nenhum
+   * mecanismo vivo para trocá-lo. Em vez disso a contagem segue para números
+   * negativos, insistindo a cada `SEGUNDOS_RETENTATIVA`, até o servidor rodar
+   * — e aí `sequenciaDoQr` muda, o efeito remonta e o relógio recomeça cheio.
    */
   useEffect(() => {
-    if (estado.nome !== "qr_visivel") return;
+    if (sequenciaDoQr === null) return;
 
     let restante = SEGUNDOS_VALIDADE_QR;
 
     const timer = setInterval(() => {
       restante -= 1;
-      setContador(restante);
+      // Não mostrar número negativo: para o dono, "0s" e "faltam -6s" são a
+      // mesma informação, e só a primeira é legível.
+      setContador(Math.max(0, restante));
 
       if (restante > 0) return;
 
-      clearInterval(timer);
-      if (renovacoesRef.current < MAX_RENOVACOES_AUTO) {
-        void solicitar("renovacao");
-      } else {
+      if (renovacoesRef.current >= MAX_RENOVACOES_AUTO) {
+        clearInterval(timer);
         setEstado({ nome: "qr_expirado" });
+        return;
       }
+
+      if (restante % SEGUNDOS_RETENTATIVA === 0) void solicitar("renovacao");
     }, 1_000);
 
     return () => clearInterval(timer);
-  }, [estado.nome, solicitar]);
+  }, [sequenciaDoQr, solicitar]);
 
   /**
    * Polling do estado real da conexão.
@@ -170,10 +268,11 @@ export function PainelConexao({
    * oculta — antes eram 5s fixos para sempre, enquanto a aba existisse.
    */
   useEffect(() => {
+    // `qr_expirado` continua observado: o dono pode ter lido o código nos
+    // últimos segundos de validade, e a conexão chega depois de a tela já ter
+    // desistido de renovar.
     const observando =
-      estado.nome === "qr_visivel" ||
-      estado.nome === "qr_expirado" ||
-      estado.nome === "pareando";
+      estado.nome === "qr_visivel" || estado.nome === "qr_expirado";
 
     if (!observando) return;
 
@@ -198,9 +297,35 @@ export function PainelConexao({
           return;
         }
 
-        // `connecting` depois de o QR aparecer significa leitura feita e sessão
-        // sincronizando — vale dizer isso em vez de seguir em "aguardando".
-        if (conexao === "conectando") setEstado({ nome: "pareando" });
+        /**
+         * `conectando` **não** significa que alguém leu o código.
+         *
+         * Havia aqui uma transição para um estado "Código lido / Sincronizando"
+         * disparada por `conectando`, com um comentário afirmando que esse
+         * estado só aparecia depois da leitura. Era falso, e o efeito era
+         * determinístico: o painel anunciava leitura ~2s depois de o QR
+         * aparecer, sem ninguém ter escaneado nada.
+         *
+         * `connecting` é o estado **inicial** do socket Baileys — emitido na
+         * abertura, antes de existir QR. Medido contra a 2.3.7: o
+         * `CONNECTION_UPDATE` chega 327ms depois do create, e
+         * `/instance/connectionState` responde `connecting` por toda a sessão
+         * de pareamento, do socket aberto até virar `open`. O tipo do Baileys
+         * tem só três valores (`open`/`connecting`/`close`) e nenhum distingue
+         * "QR exibido" de "QR lido".
+         *
+         * Detectar a leitura de verdade não é possível nesta versão: o Baileys
+         * emite `isNewLogin` no `pair-success`, mas a Evolution descarta o
+         * campo e não o expõe em endpoint nem em webhook. Entre a leitura e o
+         * `open` ela é muda. Então aqui não se faz nada: a tela segue em
+         * "Aguardando a conexão", com o QR à vista, até o estado virar
+         * `conectado`.
+         *
+         * Não reintroduzir um estado intermediário sem um sinal real. Além de
+         * mentir, o antigo era um sumidouro: derrubava o QR da tela, matava a
+         * contagem regressiva (e com ela a renovação automática e o
+         * `qr_expirado`), e não tinha botão nenhum para sair.
+         */
       }
 
       const passo =
@@ -216,7 +341,7 @@ export function PainelConexao({
     };
   }, [estado.nome, router]);
 
-  if (estadoInicial === "conectado" && estado.nome === "ocioso") {
+  if (estadoInicial === "conectado" && estado.nome === "ocioso" && !trocando) {
     return (
       <div className="mt-6 max-w-md rounded-lg border border-confirmado-borda bg-confirmado p-4">
         <p className="font-medium text-confirmado-tinta">WhatsApp conectado</p>
@@ -225,8 +350,8 @@ export function PainelConexao({
         </p>
         <button
           type="button"
-          onClick={() => void solicitar("manual")}
-          className="mt-3 text-sm text-confirmado-tinta underline underline-offset-4"
+          onClick={() => setTrocando(true)}
+          className="mt-2 flex min-h-11 items-center text-sm text-confirmado-tinta underline underline-offset-4"
         >
           Conectar outro número
         </button>
@@ -237,17 +362,35 @@ export function PainelConexao({
   return (
     <div className="mt-6">
       {estado.nome === "ocioso" && (
-        <Button type="button" onClick={() => void solicitar("manual")}>
-          <QrCodeIcon className="size-4" />
-          Gerar QR code
-        </Button>
+        <FormularioNumero
+          onEnviar={(numero) => void solicitar("manual", numero)}
+        />
       )}
 
       {estado.nome === "preparando" && <Preparando segundos={contador} />}
 
       {(estado.nome === "qr_visivel" || estado.nome === "qr_expirado") && (
         <div className="max-w-md rounded-lg border border-border bg-card p-4">
-          <ol className="mb-3 list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+          {/**
+           * Duas receitas, porque são dois caminhos diferentes — e o padrão
+           * muda com o aparelho.
+           *
+           * No celular o QR é logicamente impossível: o código está na mesma
+           * tela que precisaria fotografá-lo. Ali o código de pareamento não é
+           * alternativa, é **o** caminho, e é ele que aparece primeiro. No
+           * computador vale o inverso, que é o fluxo que todo mundo conhece.
+           */}
+          <ol className="mb-3 list-decimal space-y-1 pl-5 text-sm text-muted-foreground md:hidden">
+            <li>Abra o WhatsApp no celular do estabelecimento.</li>
+            <li>
+              Toque em <strong>Aparelhos conectados</strong> →{" "}
+              <strong>Conectar aparelho</strong> →{" "}
+              <strong>Conectar com número de telefone</strong>.
+            </li>
+            <li>Digite o código abaixo.</li>
+          </ol>
+
+          <ol className="mb-3 hidden list-decimal space-y-1 pl-5 text-sm text-muted-foreground md:block">
             <li>Abra o WhatsApp no celular do estabelecimento.</li>
             <li>
               Toque em <strong>Aparelhos conectados</strong> →{" "}
@@ -270,23 +413,8 @@ export function PainelConexao({
               codigoPareamento={estado.codigoPareamento}
             />
           ) : (
-            <QrExpirado aoGerar={() => void solicitar("manual")} />
+            <QrExpirado aoGerar={() => void solicitar("manual", numeroRef.current)} />
           )}
-        </div>
-      )}
-
-      {estado.nome === "pareando" && (
-        <div
-          className="flex max-w-md items-center gap-3 rounded-lg border border-confirmado-borda bg-confirmado p-4"
-          aria-live="polite"
-        >
-          <Loader2Icon className="size-4 shrink-0 animate-spin text-confirmado-tinta" />
-          <div>
-            <p className="font-medium text-confirmado-tinta">Código lido</p>
-            <p className="mt-0.5 text-sm text-confirmado-tinta">
-              Sincronizando suas conversas. Isso leva alguns segundos.
-            </p>
-          </div>
         </div>
       )}
 
@@ -300,7 +428,7 @@ export function PainelConexao({
             variant="outline"
             size="sm"
             className="mt-3"
-            onClick={() => void solicitar("manual")}
+            onClick={() => void solicitar("manual", numeroRef.current)}
           >
             <RefreshCwIcon className="size-4" />
             Tentar de novo
@@ -356,51 +484,151 @@ function QrComContagem({
   const fracao = Math.min(100, Math.max(0, (restante / SEGUNDOS_VALIDADE_QR) * 100));
 
   return (
-    <>
-      <Image
-        src={qr.startsWith("data:") ? qr : `data:image/png;base64,${qr}`}
-        alt="QR code para conectar o WhatsApp"
-        width={264}
-        height={264}
-        unoptimized
-        // O fundo branco é do leitor, não do tema: um QR sobre papel creme ou
-        // sobre fundo escuro perde contraste e a câmera não lê.
-        className="rounded-md bg-white p-2"
-      />
-
-      <div className="mt-3 max-w-[264px]">
-        <div
-          className="h-1 overflow-hidden rounded-full bg-muted"
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={SEGUNDOS_VALIDADE_QR}
-          aria-valuenow={restante}
-          aria-label="Tempo restante deste QR code"
-        >
-          <div
-            className="h-full bg-agora transition-[width] duration-1000 ease-linear"
-            style={{ width: `${fracao}%` }}
-          />
-        </div>
-        <p className="mt-1.5 text-xs tabular-nums text-muted-foreground">
-          Este código vale por mais {restante}s — depois disso um novo aparece
-          sozinho.
-        </p>
-      </div>
-
+    <div className="flex flex-col">
+      {/**
+       * A ordem se inverte por CSS, sem duplicar markup nem medir a tela em
+       * JavaScript. No celular o código vem primeiro porque é o único caminho
+       * viável; no computador o QR volta ao topo.
+       */}
       {codigoPareamento && (
-        <p className="mt-3 text-sm text-muted-foreground">
-          Se preferir digitar, use o código:{" "}
-          <code className="font-mono font-medium text-foreground">
+        <div className="order-1 md:order-3 md:mt-3">
+          <p className="text-sm text-muted-foreground">
+            Digite este código no WhatsApp:
+          </p>
+          <p className="mt-1 font-mono text-2xl font-medium tracking-[0.2em] tabular-nums md:text-base md:tracking-normal">
             {codigoPareamento}
-          </code>
-        </p>
+          </p>
+        </div>
       )}
 
-      <p className="mt-3 text-sm text-muted-foreground" aria-live="polite">
-        Aguardando a leitura… a tela atualiza sozinha.
+      <div className={`order-2 ${codigoPareamento ? "mt-4 md:order-1 md:mt-0" : "md:order-1"}`}>
+        {/* No celular o QR é a alternativa "estou em outro computador", e o
+            cabeçalho precisa dizer isso — senão ele lê como o caminho
+            principal, que ali não funciona. */}
+        {codigoPareamento && (
+          <p className="mb-2 text-xs text-muted-foreground md:hidden">
+            Está com o painel aberto em outro computador? Dá para ler o QR:
+          </p>
+        )}
+
+        <Image
+          src={qr.startsWith("data:") ? qr : `data:image/png;base64,${qr}`}
+          alt="QR code para conectar o WhatsApp"
+          width={264}
+          height={264}
+          unoptimized
+          // O fundo branco é do leitor, não do tema: um QR sobre papel creme ou
+          // sobre fundo escuro perde contraste e a câmera não lê.
+          className="rounded-md bg-white p-2"
+        />
+
+        <div className="mt-3 max-w-[264px]">
+          <div
+            className="h-1 overflow-hidden rounded-full bg-muted"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={SEGUNDOS_VALIDADE_QR}
+            aria-valuenow={restante}
+            aria-label="Tempo restante deste código"
+          >
+            <div
+              className="h-full bg-agora transition-[width] duration-1000 ease-linear"
+              style={{ width: `${fracao}%` }}
+            />
+          </div>
+          <p className="mt-1.5 text-xs tabular-nums text-muted-foreground">
+            {codigoPareamento
+              ? `Este código vale por mais ${restante}s — depois disso um novo aparece sozinho.`
+              : `Este QR code vale por mais ${restante}s — depois disso um novo aparece sozinho.`}
+          </p>
+        </div>
+      </div>
+
+      <p
+        className="order-4 mt-3 text-sm text-muted-foreground"
+        aria-live="polite"
+      >
+        Aguardando a conexão… a tela atualiza sozinha.
       </p>
-    </>
+    </div>
+  );
+}
+
+/**
+ * Pergunta o número antes de gerar.
+ *
+ * Não é burocracia acrescentada: sem o número a Evolution nunca chama
+ * `requestPairingCode` e devolve `pairingCode: null`, o que deixava o dono no
+ * celular sem caminho nenhum — o QR está no mesmo aparelho que precisaria
+ * fotografá-lo. De quebra, o campo torna concreta a checagem que a página já
+ * pedia em prosa ("use o número do negócio, não o pessoal").
+ */
+function FormularioNumero({
+  onEnviar,
+}: {
+  onEnviar: (numero: string) => void;
+}) {
+  const [valor, setValor] = useState("");
+  const [erro, setErro] = useState<string | null>(null);
+
+  return (
+    <form
+      className="max-w-md"
+      onSubmit={(evento) => {
+        evento.preventDefault();
+
+        const resultado = normalizarNumeroWhatsApp(valor);
+        if (!resultado.valido) {
+          setErro(resultado.erro);
+          return;
+        }
+
+        setErro(null);
+        onEnviar(resultado.numero);
+      }}
+    >
+      <label htmlFor="numero-whatsapp" className="block text-sm font-medium">
+        Qual o número deste WhatsApp?
+      </label>
+      <p id="numero-whatsapp-dica" className="mt-1 text-xs text-muted-foreground">
+        Com DDD. É para onde o WhatsApp manda o código de conexão.
+      </p>
+
+      <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+        <Input
+          id="numero-whatsapp"
+          name="numero"
+          type="tel"
+          // `inputMode="tel"` abre o teclado de discagem, que tem o `+` e os
+          // dígitos grandes — melhor que o alfanumérico para 11 números.
+          inputMode="tel"
+          autoComplete="tel"
+          enterKeyHint="go"
+          placeholder="(11) 99999-8888"
+          value={valor}
+          onChange={(e) => setValor(e.target.value)}
+          aria-invalid={erro ? true : undefined}
+          aria-describedby={
+            erro ? "numero-whatsapp-erro" : "numero-whatsapp-dica"
+          }
+          className="sm:max-w-52"
+        />
+        <Button type="submit">
+          <QrCodeIcon className="size-4" />
+          Conectar
+        </Button>
+      </div>
+
+      {erro && (
+        <p
+          id="numero-whatsapp-erro"
+          role="alert"
+          className="mt-2 text-sm text-destructive"
+        >
+          {erro}
+        </p>
+      )}
+    </form>
   );
 }
 

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { MenuSecoes } from "./menu-secoes";
 
 /**
  * Moldura da landing. Antes não existia: a página abria direto no `<h1>`, sem
@@ -21,7 +22,7 @@ export default function MarketingLayout({
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <header className="sticky top-0 z-50 border-b border-border bg-background/85 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center gap-6 px-6 py-3">
+        <div className="mx-auto flex max-w-5xl items-center gap-6 px-4 sm:px-6 py-3">
           <Link
             href="/"
             className="font-heading text-lg font-semibold tracking-tight text-primary"
@@ -29,7 +30,7 @@ export default function MarketingLayout({
             AgendaZap
           </Link>
 
-          <nav className="hidden gap-5 text-sm sm:flex">
+          <nav aria-label="Seções" className="hidden gap-5 text-sm sm:flex">
             {SECOES.map(({ href, rotulo }) => (
               <a
                 key={href}
@@ -41,14 +42,18 @@ export default function MarketingLayout({
             ))}
           </nav>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-1 sm:gap-2">
+            <MenuSecoes secoes={SECOES} />
             <Link
               href="/login"
-              className="rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+              className="flex min-h-11 items-center rounded-md px-3 text-sm text-muted-foreground transition-colors hover:text-foreground sm:min-h-8"
             >
               Entrar
             </Link>
-            <Button asChild size="sm">
+            {/* `size="sm"` era 28px de altura — o CTA principal da landing, e
+                o menor alvo dela. O tamanho padrão já ganha piso de toque em
+                `components/ui/button.tsx`. */}
+            <Button asChild>
               <Link href="/login">Começar grátis</Link>
             </Button>
           </div>
@@ -58,7 +63,7 @@ export default function MarketingLayout({
       <main className="flex-1">{children}</main>
 
       <footer className="border-t border-border">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-6 gap-y-2 px-6 py-8 text-sm text-muted-foreground">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-6 gap-y-2 px-4 sm:px-6 py-8 text-sm text-muted-foreground">
           <span className="font-heading font-semibold text-foreground">
             AgendaZap
           </span>

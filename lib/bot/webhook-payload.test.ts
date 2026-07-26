@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   classificarEvento,
+  extrairMotivoDesconexao,
   extrairContagemQrCode,
   ehBroadcast,
   ehGrupo,
   extrairEstadoConexao,
   extrairMensagem,
+  extrairNumeroDono,
   jidPermitido,
   lerListaPermitidos,
   normalizarIdentificadorJid,
@@ -45,7 +47,7 @@ function payloadMensagem(sobrescritas: {
 }
 
 describe("classificarEvento", () => {
-  it("reconhece os três eventos que importam", () => {
+  it("reconhece os quatro eventos que importam", () => {
     expect(classificarEvento({ event: "messages.upsert" })).toBe("mensagem");
     expect(classificarEvento({ event: "MESSAGES_UPSERT" })).toBe("mensagem");
     expect(classificarEvento({ event: "connection.update" })).toBe("conexao");
@@ -54,6 +56,9 @@ describe("classificarEvento", () => {
     // aplicação recebia toda regeração de QR e descartava.
     expect(classificarEvento({ event: "qrcode.updated" })).toBe("qrcode");
     expect(classificarEvento({ event: "QRCODE_UPDATED" })).toBe("qrcode");
+    // O único que carrega o motivo da queda.
+    expect(classificarEvento({ event: "status.instance" })).toBe("status");
+    expect(classificarEvento({ event: "STATUS_INSTANCE" })).toBe("status");
   });
 
   it("ignora eventos que não tratamos", () => {
@@ -306,6 +311,88 @@ describe("extrairEstadoConexao", () => {
   });
 });
 
+describe("extrairNumeroDono", () => {
+  it("lê data.wuid do CONNECTION_UPDATE", () => {
+    expect(
+      extrairNumeroDono({
+        event: "connection.update",
+        sender: "5511977776666@s.whatsapp.net",
+        data: {
+          state: "open",
+          wuid: "5511999998888@s.whatsapp.net",
+          profileName: "Salão da Ana",
+        },
+      }),
+    ).toEqual({ numero: "5511999998888", dominio: "s.whatsapp.net" });
+  });
+
+  it("normaliza sufixo de dispositivo", () => {
+    expect(
+      extrairNumeroDono({ data: { wuid: "5511999998888:12@s.whatsapp.net" } })
+        ?.numero,
+    ).toBe("5511999998888");
+  });
+
+  /**
+   * O `sender` de topo é o JID do dono em todo webhook da Evolution, não só no
+   * de conexão — rede de segurança de graça se o `wuid` mudar de nome ou de
+   * lugar entre versões.
+   */
+  it("cai no sender de topo quando o wuid não vem", () => {
+    expect(
+      extrairNumeroDono({
+        event: "connection.update",
+        sender: "5511977776666@s.whatsapp.net",
+        data: { state: "open" },
+      })?.numero,
+    ).toBe("5511977776666");
+  });
+
+  it("prefere o wuid ao sender", () => {
+    expect(
+      extrairNumeroDono({
+        sender: "5511977776666@s.whatsapp.net",
+        data: { wuid: "5511999998888@s.whatsapp.net" },
+      })?.numero,
+    ).toBe("5511999998888");
+  });
+
+  /**
+   * Um `@lid` do dono não deveria acontecer (o `wuid` vem de `client.user.id`,
+   * que é baseado em telefone), mas se vier, serve como chave igual: o
+   * livro-caixa compara identificadores, não telefones.
+   *
+   * O que **não** pode é isso passar sem sinal: o domínio volta junto justamente
+   * para o webhook poder avisar que o espaço de chaves mudou (ver o aviso em
+   * `route.ts`). Sem ele, um upgrade da Evolution zeraria a proteção entre
+   * contas em silêncio.
+   */
+  it("aceita identificador @lid e devolve o domínio para detecção", () => {
+    expect(extrairNumeroDono({ data: { wuid: "154417159582282@lid" } })).toEqual(
+      { numero: "154417159582282", dominio: "lid" },
+    );
+  });
+
+  it("devolve domínio nulo quando o valor vem sem domínio", () => {
+    // Número solto, sem `@`: acontece em variações de payload e não é motivo
+    // para descartar a reivindicação.
+    expect(extrairNumeroDono({ sender: "5511999998888" })).toEqual({
+      numero: "5511999998888",
+      dominio: null,
+    });
+  });
+
+  it("devolve nulo sem wuid e sem sender", () => {
+    expect(extrairNumeroDono({ event: "connection.update", data: {} })).toBeNull();
+    expect(extrairNumeroDono(null)).toBeNull();
+  });
+
+  /** Sem isso, um `sender` degenerado gravaria hash de string vazia. */
+  it("devolve nulo quando não sobra dígito nenhum", () => {
+    expect(extrairNumeroDono({ data: { wuid: "@s.whatsapp.net" } })).toBeNull();
+  });
+});
+
 describe("extrairContagemQrCode", () => {
   it("lê a contagem aninhada em data.qrcode.count", () => {
     expect(
@@ -329,5 +416,56 @@ describe("extrairContagemQrCode", () => {
     for (const corpo of [null, {}, { data: null }, { data: {} }, { data: { count: "4" } }]) {
       expect(extrairContagemQrCode(corpo)).toBeNull();
     }
+  });
+});
+
+describe("extrairMotivoDesconexao", () => {
+  it("lê o código solto em data", () => {
+    expect(
+      extrairMotivoDesconexao({
+        event: "STATUS_INSTANCE",
+        data: { instance: "abc", disconnectionReasonCode: 401 },
+      }),
+    ).toBe(401);
+  });
+
+  it("lê o código aninhado sob data.status", () => {
+    // A Evolution move o campo entre versões; ler as duas formas evita depender
+    // da versão do servidor, como já se faz com a contagem de QR.
+    expect(
+      extrairMotivoDesconexao({
+        event: "STATUS_INSTANCE",
+        data: { status: { disconnectionReasonCode: 428 } },
+      }),
+    ).toBe(428);
+  });
+
+  it("devolve nulo quando o motivo não veio", () => {
+    // O CONNECTION_UPDATE de queda diz que caiu, nunca por quê — e é
+    // exatamente por isso que STATUS_INSTANCE passou a ser assinado.
+    expect(
+      extrairMotivoDesconexao({
+        event: "CONNECTION_UPDATE",
+        data: { state: "close" },
+      }),
+    ).toBeNull();
+  });
+
+  it("não quebra com corpo inesperado", () => {
+    for (const corpo of [null, undefined, [], "texto", 42, {}, { data: null }]) {
+      expect(extrairMotivoDesconexao(corpo)).toBeNull();
+    }
+  });
+
+  it("preserva o zero em vez de tratar como ausente", () => {
+    expect(
+      extrairMotivoDesconexao({ data: { disconnectionReasonCode: 0 } }),
+    ).toBe(0);
+  });
+
+  it("ignora motivo que não é número", () => {
+    expect(
+      extrairMotivoDesconexao({ data: { disconnectionReasonCode: "401" } }),
+    ).toBeNull();
   });
 });

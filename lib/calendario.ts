@@ -35,6 +35,27 @@ export const ALTURA_LINHA_REM = 2.5;
  */
 const ALTURA_MINIMA_COMPLETA_REM = 3.6;
 
+/**
+ * Trio de classes por status: fundo, borda e tinta.
+ *
+ * Vive aqui, e não no componente, porque desde a visão em lista são **dois**
+ * componentes desenhando o mesmo agendamento. Duplicar o mapa faria a semana e
+ * o dia divergirem de cor no primeiro status novo — e cor é o que comunica
+ * "cancelado" numa tela sem espaço para escrever.
+ */
+export const CORES_STATUS: Record<string, string> = {
+  confirmado: "bg-confirmado border-confirmado-borda text-confirmado-tinta",
+  concluido: "bg-concluido border-concluido-borda text-concluido-tinta",
+  cancelado:
+    "bg-cancelado border-cancelado-borda text-cancelado-tinta line-through",
+  falta: "bg-falta border-falta-borda text-falta-tinta",
+};
+
+/** Status desconhecido cai em `confirmado`, que é o caso comum. */
+export function coresDoStatus(status: string): string {
+  return CORES_STATUS[status] ?? CORES_STATUS.confirmado;
+}
+
 export type AgendamentoParaCalendario = {
   id: string;
   data_hora: string;

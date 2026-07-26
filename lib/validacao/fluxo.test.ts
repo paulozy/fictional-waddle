@@ -4,7 +4,9 @@ import {
   campoDestinoSchema,
   ehEtapaDeSistema,
   etapaCustomizadaSchema,
+  moverEtapa,
   opcoesDeTextoLivre,
+  podeMover,
   rotuloDoTipo,
   validarFluxo,
   type EtapaParaValidar,
@@ -276,5 +278,105 @@ describe("rotuloDoTipo", () => {
     for (const tipo of tipos) {
       expect(rotuloDoTipo(tipo).length, tipo).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("moverEtapa", () => {
+  /** Pergunta livre no meio, que é o caso que o dono de fato reordena. */
+  const COM_PERGUNTA = [
+    etapa("servico"),
+    etapa("escolha_unica", "primeira_vez"),
+    etapa("horario"),
+    etapa("confirmacao"),
+  ];
+
+  it("sobe uma posição", () => {
+    const resultado = moverEtapa(COM_PERGUNTA, 1, "cima");
+
+    expect(resultado.movido).toBe(true);
+    expect(resultado.movido && resultado.etapas.map((e) => e.tipo)).toEqual([
+      "escolha_unica",
+      "servico",
+      "horario",
+      "confirmacao",
+    ]);
+  });
+
+  it("desce uma posição", () => {
+    const resultado = moverEtapa(COM_PERGUNTA, 1, "baixo");
+
+    expect(resultado.movido && resultado.etapas.map((e) => e.tipo)).toEqual([
+      "servico",
+      "horario",
+      "escolha_unica",
+      "confirmacao",
+    ]);
+  });
+
+  it("não muta o array recebido", () => {
+    // A lista é estado do React: mutar aqui pularia a rerenderização.
+    const original = [...COM_PERGUNTA];
+    moverEtapa(COM_PERGUNTA, 1, "baixo");
+
+    expect(COM_PERGUNTA).toEqual(original);
+  });
+
+  it("recusa sem mensagem quando o movimento não existe", () => {
+    // A seta já está desabilitada nesses casos; explicar seria ruído.
+    expect(moverEtapa(COM_PERGUNTA, 0, "cima")).toEqual({
+      movido: false,
+      erro: null,
+    });
+    expect(moverEtapa(COM_PERGUNTA, 3, "baixo")).toEqual({
+      movido: false,
+      erro: null,
+    });
+    expect(moverEtapa(COM_PERGUNTA, -1, "cima")).toEqual({
+      movido: false,
+      erro: null,
+    });
+    expect(moverEtapa(COM_PERGUNTA, 99, "baixo")).toEqual({
+      movido: false,
+      erro: null,
+    });
+  });
+
+  it("recusa com mensagem quando quebraria a regra de negócio", () => {
+    // Serviço depois de horário: a disponibilidade depende da duração do
+    // serviço escolhido, então essa ordem não é preferência.
+    const resultado = moverEtapa(FLUXO_PADRAO, 0, "baixo");
+
+    expect(resultado.movido).toBe(false);
+    expect(resultado.movido === false && resultado.erro).toMatch(
+      /serviço precisa vir antes/i,
+    );
+  });
+
+  it("recusa mover algo para depois da confirmação", () => {
+    const resultado = moverEtapa(COM_PERGUNTA, 2, "baixo");
+
+    expect(resultado.movido).toBe(false);
+    expect(resultado.movido === false && resultado.erro).toMatch(
+      /confirmação precisa ser a última/i,
+    );
+  });
+});
+
+describe("podeMover", () => {
+  const COM_PERGUNTA = [
+    etapa("servico"),
+    etapa("escolha_unica", "primeira_vez"),
+    etapa("horario"),
+    etapa("confirmacao"),
+  ];
+
+  it("libera o movimento válido e barra os inválidos", () => {
+    expect(podeMover(COM_PERGUNTA, 1, "cima")).toBe(true);
+    expect(podeMover(COM_PERGUNTA, 1, "baixo")).toBe(true);
+
+    // Primeira etapa não sobe; e mover a confirmação de último lugar quebra
+    // a regra — nos dois casos a seta nasce desabilitada.
+    expect(podeMover(COM_PERGUNTA, 0, "cima")).toBe(false);
+    expect(podeMover(COM_PERGUNTA, 2, "baixo")).toBe(false);
   });
 });

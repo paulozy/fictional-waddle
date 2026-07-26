@@ -75,7 +75,7 @@ export default async function ServicosPage() {
                   />
                   <button
                     type="submit"
-                    className="rounded-md px-2 py-1 text-sm text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                    className="flex min-h-11 items-center rounded-md px-2 text-sm text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline md:min-h-8"
                   >
                     {servico.ativo ? "Desativar" : "Ativar"}
                   </button>

@@ -55,6 +55,11 @@ const PERGUNTAS = [
     resposta:
       "Pode, sem multa e sem falar com ninguém. O teste de 14 dias não pede cartão.",
   },
+  {
+    pergunta: "Como funciona o teste de 14 dias?",
+    resposta:
+      "São 14 dias completos, sem cartão e sem compromisso. O teste é um por número de WhatsApp: como o bot atende pelo número do seu estabelecimento, é ele que identifica o teste. Se você trocou de número ou assumiu um salão que já testou o AgendaZap, fale com a gente que a gente resolve.",
+  },
 ];
 
 export function PerguntasFrequentes() {

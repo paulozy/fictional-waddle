@@ -6,7 +6,12 @@
  * novo `@lid` que não carrega telefone.
  */
 
-export type EventoWebhook = "mensagem" | "conexao" | "qrcode" | "ignorado";
+export type EventoWebhook =
+  | "mensagem"
+  | "conexao"
+  | "qrcode"
+  | "status"
+  | "ignorado";
 
 export type MensagemWebhook = {
   /** `data.key.id` — chave de idempotência. */
@@ -47,7 +52,29 @@ export function classificarEvento(payload: unknown): EventoWebhook {
   if (evento === "MESSAGES_UPSERT") return "mensagem";
   if (evento === "CONNECTION_UPDATE") return "conexao";
   if (evento === "QRCODE_UPDATED") return "qrcode";
+  if (evento === "STATUS_INSTANCE") return "status";
   return "ignorado";
+}
+
+/**
+ * Motivo numérico da queda da conexão, quando a Evolution informa.
+ *
+ * Vem **só** no `STATUS_INSTANCE` — o `CONNECTION_UPDATE` de queda diz que
+ * caiu, nunca por quê. A diferença importa para o suporte e, adiante, para o
+ * texto da tela: `401` (`loggedOut`) é o dono tendo desvinculado o aparelho, e
+ * exige re-parear; `428` e afins são quedas transitórias que voltam sozinhas.
+ *
+ * Duas formas de payload porque a Evolution move o campo entre versões: solto
+ * em `data`, ou aninhado sob `data.status`. Ler as duas evita depender da
+ * versão do servidor, como já se faz em `extrairContagemQrCode`.
+ */
+export function extrairMotivoDesconexao(payload: unknown): number | null {
+  const dados = objeto(objeto(payload)?.data);
+  const direto = dados?.disconnectionReasonCode;
+  const aninhado = objeto(dados?.status)?.disconnectionReasonCode;
+  const valor = typeof direto === "number" ? direto : aninhado;
+
+  return typeof valor === "number" ? valor : null;
 }
 
 /**
@@ -180,4 +207,49 @@ export function jidPermitido(remoteJid: string, permitidos: string[]): boolean {
 /** Extrai o estado de um `CONNECTION_UPDATE`. `open` significa pareado. */
 export function extrairEstadoConexao(payload: unknown): string | null {
   return texto(objeto(objeto(payload)?.data)?.state);
+}
+
+export type NumeroDono = {
+  /** Só dígitos, comparável — é o que entra no hash do livro-caixa. */
+  numero: string;
+  /**
+   * Domínio do JID de origem (`s.whatsapp.net` ou `lid`), quando havia um.
+   *
+   * Devolvido junto porque o `numero` sozinho não distingue um telefone de um
+   * Linked ID: `normalizarIdentificadorJid` descarta o domínio, então
+   * `5511999998888@s.whatsapp.net` e `154417159582282@lid` viram ambos "só
+   * dígitos". Se um upgrade da Evolution passar a reportar o dono em formato
+   * `@lid`, cada tenant grava uma segunda linha no livro-caixa na próxima
+   * reconexão: a idempotência por conta continua valendo (nada quebra à vista),
+   * mas a proteção entre contas de todo número reivindicado no formato antigo
+   * cai a zero. Sem este campo, isso aconteceria sem sinal nenhum.
+   */
+  dominio: string | null;
+};
+
+/**
+ * Número do **dono** da instância — o WhatsApp do estabelecimento que acabou de
+ * ser pareado —, normalizado. Não confundir com o remetente da mensagem: aqui o
+ * identificador é de quem nos paga, não do cliente dele.
+ *
+ * Duas fontes, porque a Evolution entrega o mesmo dado por dois caminhos e
+ * nenhum deles é garantido em toda versão:
+ *  - `data.wuid` no `CONNECTION_UPDATE` com `state: "open"` — já vem sem o
+ *    sufixo de dispositivo, é o caminho principal
+ *  - `sender` no topo do corpo — presente em todo webhook, serve de rede de
+ *    segurança quando o `wuid` não vem
+ *
+ * É o identificador escasso do produto: o pareamento por QR exige a conta
+ * WhatsApp logada num aparelho, então é o que sustenta "um trial por número"
+ * (ver `supabase/migrations/20260725121600_trial_por_numero.sql`).
+ */
+export function extrairNumeroDono(payload: unknown): NumeroDono | null {
+  const corpo = objeto(payload);
+  const bruto = texto(objeto(corpo?.data)?.wuid) ?? texto(corpo?.sender);
+  if (!bruto) return null;
+
+  const numero = normalizarIdentificadorJid(bruto);
+  if (numero.length === 0) return null;
+
+  return { numero, dominio: texto(bruto.split("@")[1]) };
 }

@@ -2,7 +2,9 @@ import Link from "next/link";
 import { addDays, format } from "date-fns";
 import { TZDate } from "@date-fns/tz";
 import { instanteNoFuso } from "@/lib/bot/disponibilidade";
+import { AgendaLista } from "@/components/agenda-lista";
 import { CalendarioSemana } from "@/components/calendario-semana";
+import { diaSelecionado, montarAgendaDoDia } from "@/lib/agenda-lista";
 import {
   MINUTOS_POR_LINHA,
   inicioDaSemana,
@@ -13,14 +15,17 @@ import { criarClienteServidor, exigirUsuario } from "@/lib/supabase/server";
 
 export const metadata = { title: "Agendamentos — AgendaZap" };
 
+/** `YYYY-MM-DD`. Vem de query string, então é validado antes de virar data. */
+const FORMATO_DATA = /^\d{4}-\d{2}-\d{2}$/;
+
 export default async function AgendamentosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ semana?: string }>;
+  searchParams: Promise<{ semana?: string; dia?: string }>;
 }) {
   const usuarioId = await exigirUsuario();
   const supabase = await criarClienteServidor();
-  const { semana } = await searchParams;
+  const { semana, dia } = await searchParams;
 
   const { data: perfil } = await supabase
     .from("perfis")
@@ -32,8 +37,17 @@ export default async function AgendamentosPage({
   const agora = new Date();
   const hoje = format(new TZDate(agora, fusoHorario), "yyyy-MM-dd");
 
+  /**
+   * A visão de celular navega por dia (`?dia=`) e a de desktop por semana
+   * (`?semana=`), mas a query é uma só: um dia sempre implica a semana que o
+   * contém. Assim trocar de dia no celular e girar para paisagem cai na semana
+   * certa, sem segundo parâmetro para manter sincronizado.
+   */
+  const diaPedido = FORMATO_DATA.test(dia ?? "") ? dia : undefined;
+  const semanaPedida = FORMATO_DATA.test(semana ?? "") ? semana : undefined;
+
   const dataInicial = inicioDaSemana(
-    /^\d{4}-\d{2}-\d{2}$/.test(semana ?? "") ? semana! : hoje,
+    diaPedido ?? semanaPedida ?? hoje,
     fusoHorario,
   );
 
@@ -66,47 +80,65 @@ export default async function AgendamentosPage({
   const semanaAnterior = format(addDays(janelaLocal, -7), "yyyy-MM-dd");
   const semanaSeguinte = format(addDays(janelaLocal, 7), "yyyy-MM-dd");
 
+  const agenda = montarAgendaDoDia(
+    calendario,
+    diaSelecionado(calendario.dias, diaPedido),
+  );
+
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold tracking-tight">Agendamentos</h1>
 
-        <nav className="flex items-center gap-1 text-sm">
+        <nav aria-label="Trocar de semana" className="flex items-center gap-1 text-sm">
           <Link
             href={`/agendamentos?semana=${semanaAnterior}`}
-            className="rounded-md px-3 py-1.5 transition-colors hover:bg-muted"
+            className="flex min-h-11 items-center rounded-md px-3 transition-colors hover:bg-muted"
           >
             ← Anterior
           </Link>
           <Link
             href="/agendamentos"
-            className="rounded-md px-3 py-1.5 transition-colors hover:bg-muted"
+            className="flex min-h-11 items-center rounded-md px-3 transition-colors hover:bg-muted"
           >
             Hoje
           </Link>
           <Link
             href={`/agendamentos?semana=${semanaSeguinte}`}
-            className="rounded-md px-3 py-1.5 transition-colors hover:bg-muted"
+            className="flex min-h-11 items-center rounded-md px-3 transition-colors hover:bg-muted"
           >
             Próxima →
           </Link>
         </nav>
       </div>
 
-      {calendario.blocos.length === 0 && (
-        <p className="mt-4 text-sm text-muted-foreground">
-          Nenhum agendamento nesta semana.
-        </p>
-      )}
-
-      <div className="mt-6">
-        <CalendarioSemana calendario={calendario} />
+      {/**
+       * Duas visões do mesmo `calendario`, escolhidas por CSS no servidor.
+       *
+       * `md:hidden` / `hidden md:block` em vez de `matchMedia`: a decisão
+       * acontece na folha de estilo, então não há client component, não há
+       * divergência de hidratação e a primeira pintura já vem certa. O preço é
+       * mandar os dois markups — irrelevante para sete dias de agendamento, e
+       * barato perto de hidratar a página inteira só para medir a tela.
+       */}
+      <div className="mt-6 md:hidden">
+        <AgendaLista agenda={agenda} dias={calendario.dias} />
       </div>
 
-      <p className="mt-4 text-xs text-muted-foreground">
-        Cada faixa equivale a {MINUTOS_POR_LINHA} minutos. Horários no fuso{" "}
-        {fusoHorario}.
-      </p>
+      <div className="mt-6 hidden md:block">
+        {calendario.blocos.length === 0 && (
+          <p className="mb-4 text-sm text-muted-foreground">
+            Nenhum agendamento nesta semana.
+          </p>
+        )}
+
+        <CalendarioSemana calendario={calendario} />
+
+        <p className="mt-4 text-xs text-muted-foreground">
+          Cada faixa equivale a {MINUTOS_POR_LINHA} minutos. Horários no fuso{" "}
+          {fusoHorario}.
+        </p>
+      </div>
     </>
   );
 }

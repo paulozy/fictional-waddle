@@ -201,8 +201,24 @@
     @apply border-border outline-ring/50;
   }
 
+  /**
+   * O Safari em iPhone infla o corpo do texto ao girar para paisagem, e o
+   * ajuste é por bloco: um parágrafo cresce, o rótulo ao lado não, e a tela
+   * fica com duas escalas. `100%` desliga o palpite sem impedir o zoom manual.
+   */
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
   body {
     @apply bg-background text-foreground font-sans;
+    /**
+     * O retângulo cinza que o WebKit pinta sobre o alvo tocado atrasa o
+     * feedback e briga com o `active:translate-y-px` dos botões. Some ele: o
+     * estado de toque já é comunicado pelo próprio componente.
+     */
+    -webkit-tap-highlight-color: transparent;
   }
 
   /* O display é usado com restrição: só título de página e hero. */

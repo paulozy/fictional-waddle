@@ -1,3 +1,4 @@
+import { assinaturaValida } from "@/lib/assinatura";
 import { intervaloDoDiaSeguinte } from "@/lib/bot/disponibilidade";
 import { ErroEvolutionApi, enviarTexto } from "@/lib/evolution-api";
 import { criarClienteAdmin } from "@/lib/supabase/admin";
@@ -25,6 +26,8 @@ type Resumo = {
   ignorados: number;
   erros: number;
   tenants: number;
+  /** Tenants pulados por trial expirado ou assinatura cancelada. */
+  pulados_assinatura: number;
 };
 
 export async function GET(request: Request) {
@@ -42,7 +45,9 @@ export async function GET(request: Request) {
 
   const { data: perfis, error } = await admin
     .from("perfis")
-    .select("id, fuso_horario, status_conexao_whatsapp, nome_estabelecimento");
+    .select(
+      "id, fuso_horario, status_conexao_whatsapp, nome_estabelecimento, status_assinatura, trial_expira_em, trial_bloqueado_em",
+    );
 
   if (error) {
     console.error("cron: falha ao listar perfis", { codigo: error.code });
@@ -54,9 +59,21 @@ export async function GET(request: Request) {
     ignorados: 0,
     erros: 0,
     tenants: perfis?.length ?? 0,
+    pulados_assinatura: 0,
   };
 
   for (const perfil of perfis ?? []) {
+    /**
+     * Gate de assinatura, antes de qualquer query: quem está com trial expirado
+     * ou assinatura cancelada não tem lembrete enviado. Fica fora do try/catch
+     * de propósito — não é falha, é decisão, e a query de agendamentos deste
+     * tenant seria desperdício.
+     */
+    if (!assinaturaValida(perfil, agora)) {
+      resumo.pulados_assinatura += 1;
+      continue;
+    }
+
     /**
      * Isolamento por tenant é obrigatório aqui.
      *
@@ -81,6 +98,13 @@ export async function GET(request: Request) {
 }
 
 type ClienteAdmin = ReturnType<typeof criarClienteAdmin>;
+/**
+ * Só o que `processarTenant` realmente usa. As colunas de assinatura ficam fora
+ * de propósito: o gate roda no laço acima, antes da chamada, então declará-las
+ * aqui as tornaria campos mortos — e um subconjunto delas (as duas de antes,
+ * sem `trial_bloqueado_em`) leria como "os três foram considerados e um caiu",
+ * exatamente a ambiguidade que `PerfilAssinatura` evita ao exigir o campo.
+ */
 type Perfil = {
   id: string;
   fuso_horario: string;

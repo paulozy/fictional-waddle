@@ -14,10 +14,22 @@ import { envObrigatoria } from "@/lib/config";
  * `hash` devolvido no create serve para operar aquela instância.
  */
 
+/**
+ * `STATUS_INSTANCE` é o **único** evento que carrega o
+ * `disconnectionReasonCode`. Sem ele o app recebe o `CONNECTION_UPDATE` de
+ * queda e nunca o motivo — e os motivos pedem respostas diferentes: `401`
+ * (loggedOut) significa que o dono desvinculou o aparelho e só re-parear
+ * resolve, enquanto os outros são transitórios e voltam sozinhos.
+ *
+ * A assinatura só vale depois de `configurarWebhook` rodar de novo na
+ * instância; `gerarQrCode` reregistra a cada chamada, então instâncias antigas
+ * passam a mandar o evento na próxima geração de QR.
+ */
 export const NOME_EVENTOS_WEBHOOK = [
   "MESSAGES_UPSERT",
   "CONNECTION_UPDATE",
   "QRCODE_UPDATED",
+  "STATUS_INSTANCE",
 ] as const;
 
 export type { EstadoConexao } from "@/lib/tipos";
@@ -174,7 +186,12 @@ async function chamar<T>(
 type RespostaCriarInstancia = {
   instance?: { instanceName?: string; status?: string };
   hash?: string | { apikey?: string };
-  qrcode?: { base64?: string; code?: string };
+  qrcode?: {
+    base64?: string;
+    code?: string;
+    pairingCode?: string | null;
+    count?: number;
+  };
 };
 
 /**
@@ -182,14 +199,23 @@ type RespostaCriarInstancia = {
  *
  * O nome da instância é o `usuario_id`, para que o webhook resolva o tenant a
  * partir da URL sem ambiguidade.
+ *
+ * `numero` é opcional e é o que faz a Evolution devolver **código de
+ * pareamento** junto do QR: sem ele o Baileys nunca chama
+ * `requestPairingCode` e `pairingCode` volta `null`. Passar aqui, e não só no
+ * `/instance/connect`, não é redundância — o controller da Evolution só honra
+ * o `number` do connect quando o estado é `close`, e uma instância recém-criada
+ * fica em `connecting` respondendo com o QR em cache. Verificado contra a
+ * 2.3.7: criar com `number` devolve `qrcode.pairingCode` preenchido.
  */
-export async function criarInstancia(usuarioId: string) {
+export async function criarInstancia(usuarioId: string, numero?: string) {
   const resposta = await chamar<RespostaCriarInstancia>("/instance/create", {
     metodo: "POST",
     corpo: {
       instanceName: usuarioId,
       integration: "WHATSAPP-BAILEYS",
       qrcode: true,
+      ...(numero ? { number: numero } : {}),
       webhook: configWebhook(usuarioId),
     },
     // Sobe uma sessão Baileys e gera o QR: é a operação mais lenta da API.
@@ -198,6 +224,15 @@ export async function criarInstancia(usuarioId: string) {
 
   return {
     qrCodeBase64: resposta.qrcode?.base64 ?? null,
+    // Só vem preenchido quando `numero` foi informado acima.
+    codigoPareamento: resposta.qrcode?.pairingCode ?? null,
+    /**
+     * Linha de base para detectar QR em cache nas buscas seguintes (ver
+     * `lib/qr-pareamento.ts`). O create da 2.3.7 já devolve `count: 1`;
+     * assumir zero aqui faria a primeira renovação parecer código novo.
+     */
+    regeracoes:
+      typeof resposta.qrcode?.count === "number" ? resposta.qrcode.count : null,
     // Em algumas versões `hash` é string, em outras um objeto com apikey.
     tokenInstancia:
       typeof resposta.hash === "string"
@@ -222,10 +257,18 @@ type RespostaConectar = {
  * e servidor — por isso a tela trata expiração como evento observado e não como
  * temporizador chutado), e é o que se compara com o `QRCODE_LIMIT` da Evolution,
  * default 30, depois do qual a instância desiste e fica presa em `connecting`.
+ *
+ * `numero` habilita o **código de pareamento**, que é o único caminho de
+ * onboarding possível pelo celular — lá o QR está no mesmo aparelho que
+ * precisaria fotografá-lo. Ressalva medida na 2.3.7: o controller só honra o
+ * `number` quando a instância está em `close`; em `connecting`/`open` ele
+ * devolve o QR em cache e ignora o parâmetro. Daí `criarInstancia` também
+ * aceitar o número — juntos, os dois cobrem primeiro acesso e reconexão.
  */
-export async function obterQrCode(instancia: string) {
+export async function obterQrCode(instancia: string, numero?: string) {
+  const busca = numero ? `?number=${encodeURIComponent(numero)}` : "";
   const resposta = await chamar<RespostaConectar>(
-    `/instance/connect/${encodeURIComponent(instancia)}`,
+    `/instance/connect/${encodeURIComponent(instancia)}${busca}`,
   );
 
   return {

@@ -75,6 +75,11 @@ describe("criarInstancia", () => {
 
     expect(resultado).toEqual({
       qrCodeBase64: "data:image/png;base64,AAA",
+      // Sem `numero`, a Evolution não chama `requestPairingCode` e não devolve
+      // código — o QR é o único caminho, que é o caso do desktop.
+      codigoPareamento: null,
+      // Sem `count` na resposta não há linha de base para comparar.
+      regeracoes: null,
       tokenInstancia: "token-da-instancia",
     });
     expect(capturada?.apikey).toBe("chave-global");
@@ -83,6 +88,37 @@ describe("criarInstancia", () => {
       integration: "WHATSAPP-BAILEYS",
       qrcode: true,
     });
+    // Sem número informado, `number` não pode ir no corpo: mandar vazio faria
+    // o Baileys tentar parear com string em branco.
+    expect(capturada?.corpo).not.toHaveProperty("number");
+  });
+
+  it("pede o código de pareamento quando o número é informado", async () => {
+    // Caminho do celular: lá o QR está no mesmo aparelho que precisaria
+    // fotografá-lo, então o código é o único jeito de conectar.
+    capturar("post", "/instance/create", {
+      instance: { instanceName: INSTANCIA, status: "created" },
+      hash: "token-da-instancia",
+      qrcode: { base64: "data:image/png;base64,AAA", pairingCode: "998BDFPH" },
+    });
+
+    const resultado = await criarInstancia(INSTANCIA, "5511993235002");
+
+    expect(resultado.codigoPareamento).toBe("998BDFPH");
+    expect(capturada?.corpo).toMatchObject({ number: "5511993235002" });
+  });
+
+  it("propaga o count do create como linha de base do QR", async () => {
+    // O create da 2.3.7 devolve `count: 1`. Assumir zero aqui faria a primeira
+    // renovação comparar contra um valor que nunca existiu e concluir "código
+    // novo" quando o servidor só devolveu o mesmo QR em cache.
+    capturar("post", "/instance/create", {
+      instance: { instanceName: INSTANCIA, status: "created" },
+      hash: "token-da-instancia",
+      qrcode: { base64: "data:image/png;base64,AAA", count: 1 },
+    });
+
+    expect((await criarInstancia(INSTANCIA)).regeracoes).toBe(1);
   });
 
   it("registra webhook com byEvents false e a rota única do tenant", async () => {
@@ -113,6 +149,9 @@ describe("criarInstancia", () => {
       "MESSAGES_UPSERT",
       "CONNECTION_UPDATE",
       "QRCODE_UPDATED",
+      // Único evento que carrega `disconnectionReasonCode`: sem ele o app
+      // sabe que a conexão caiu, mas nunca por quê.
+      "STATUS_INSTANCE",
     ]);
   });
 
@@ -167,6 +206,26 @@ describe("obterQrCode", () => {
     capturar("get", `/instance/connect/${INSTANCIA}`, { base64: "x", count: 0 });
 
     expect((await obterQrCode(INSTANCIA)).regeracoes).toBe(0);
+  });
+
+  it("anexa o número na query quando informado", async () => {
+    capturar("get", `/instance/connect/${INSTANCIA}`, { base64: "x" });
+
+    await obterQrCode(INSTANCIA, "5511993235002");
+
+    // É o `?number=` que faz a Evolution pedir o código de pareamento ao
+    // WhatsApp; sem ele o `pairingCode` volta sempre nulo.
+    expect(new URL(capturada!.url).searchParams.get("number")).toBe(
+      "5511993235002",
+    );
+  });
+
+  it("não manda a query sem número", async () => {
+    capturar("get", `/instance/connect/${INSTANCIA}`, { base64: "x" });
+
+    await obterQrCode(INSTANCIA);
+
+    expect(new URL(capturada!.url).search).toBe("");
   });
 });
 

@@ -102,6 +102,62 @@ Estas existem por um motivo concreto. Mexer nelas sem entender o motivo reintrod
 
 **Cascade em todas as FKs para `auth.users`** (LGPD: excluir a conta apaga os dados do tenant). `agendamentos.servico_id` também é cascade, e não restrict, para que a exclusão de conta não trave em FK — a UI nunca exclui serviço, usa `ativo = false`.
 
+**`perfis.trial_expira_em` tem default `now() + 14 dias`, e nulo significa isenção.** A migration adiciona a coluna sem default, faz backfill por `created_at` e só então fixa o default — nessa ordem, quem já estava cadastrado conta os 14 dias do próprio signup em vez de ganhar 14 dias novos. Nulo é VIP/isenção manual: o trial nunca expira. `status_assinatura` tem check `in ('trial','ativo','cancelado')` porque **o controle é manual nesta fase** (sem gateway de pagamento): o valor é digitado à mão, e um typo cairia no default da regra — que é bloquear — deixando um cliente pagante sem bot, em silêncio.
+
+### Gate de assinatura
+
+`lib/assinatura.ts` é a **fonte única** da resposta "esta assinatura está válida?". Função pura, sem Supabase, porque os três consumidores leem o perfil por caminhos diferentes: o layout do dashboard com o client que respeita RLS, o webhook e o cron com o client admin. `ativo` libera; `cancelado` bloqueia; `trial` vale se dentro do prazo ou isento; **perfil ausente ou status desconhecido bloqueiam (fail-safe)** — a falha aceitável é "cliente reclama que parou", não "todo mundo usa de graça sem ninguém ver".
+
+Três pontos de aplicação, com comportamentos deliberadamente diferentes:
+
+- **`app/(dashboard)/layout.tsx` — soft.** Renderiza `components/banner-assinatura.tsx` e não bloqueia navegação: bloquear esconderia o próprio CTA de assinar, e o dono ainda precisa ver a agenda já marcada.
+- **`app/api/webhook/whatsapp/[instance]/route.ts` — o bot silencia.** Não responde nada ao cliente final. Mandar "o estabelecimento não pagou" exporia problema comercial nosso na frente do cliente dele. O gate fica **depois** do tratamento de `qrcode`/`conexao`, para o painel não passar a mentir sobre a conexão justamente para quem precisa resolver a pendência.
+- **`app/api/cron/enviar-lembretes/route.ts` — pula o tenant**, contando em `pulados_assinatura`, antes de qualquer query e fora do `try/catch` de isolamento (não é falha, é decisão).
+
+O CTA do banner aponta para `wa.me` via `WHATSAPP_CONTATO`; sem a env var o banner aparece sem botão. Não propor gateway de pagamento, checkout ou webhook de cobrança sem pedido explícito.
+
+### Um trial por número de WhatsApp
+
+O gate acima responde "este trial acabou?", mas não impedia recomeçar: o único custo de criar conta é um e-mail novo, e e-mail é infinito e grátis. A chave de unicidade escolhida é **o número de WhatsApp que o dono pareia por QR code**, não o e-mail. Dois motivos: o pareamento é prova de posse mais forte que um OTP (exige a conta logada num aparelho com slot de dispositivo livre), e o trial só tem **valor** no número real do negócio — o que os clientes já têm salvo. Um chip pré-pago novo compra um número mas não compra tráfego: ninguém manda mensagem para ele. "Um trial por número" equivale na prática a "um trial por negócio real", com atrito zero para quem é honesto. Foi rejeitado, por desproporcional nesta fase: fingerprinting de dispositivo, bloqueio por IP (CGNAT móvel brasileiro), CPF/CNPJ e OTP por SMS.
+
+**O número do dono já chegava no webhook e era descartado.** A Evolution manda em `data.wuid` no `CONNECTION_UPDATE` com `state: "open"` (já sem sufixo de dispositivo) e no `sender` de topo de todo webhook. `extrairNumeroDono` em `lib/bot/webhook-payload.ts` lê os dois, nessa ordem de preferência.
+
+**O livro-caixa `trials_numero_whatsapp` fica deliberadamente FORA do `on delete cascade` de `auth.users` — sem FK nenhuma.** Toda outra FK do produto cascateia por LGPD, e um livro-caixa que cascateia é um livro-caixa que o abusador apaga sozinho: bastaria excluir a conta e recadastrar. Um `usuario_id` órfão aqui é o comportamento desejado. RLS habilitada com **zero policies**: nem para debug o dono precisa disso.
+
+**Guarda `hmac_sha256(numero, TRIAL_HASH_PEPPER)`, nunca o número** (`lib/trial-numero.ts`). SHA-256 puro não bastaria: o espaço de telefones brasileiros é ~10¹¹, varrível. O pepper vive em env var e nunca no banco, então um dump da tabela não revela número nenhum — pseudonimiza, atende minimização (LGPD Art. 6º, III) e permite declarar finalidade única sob Art. 11, II, "g". **Trocar o pepper invalida o livro-caixa inteiro.**
+
+**A decisão é denormalizada em `perfis.trial_bloqueado_em`**, não consultada no livro-caixa: os três gates já leem `perfis` por caminhos diferentes, e assim `lib/assinatura.ts` continua pura e sem rede. `trial_bloqueado_em` entra em `PerfilAssinatura` como campo **obrigatório**, de propósito — o TypeScript quebra em todo `select` que esquecer a coluna, em vez de deixar um gate cego.
+
+`reivindicar_numero_trial(p_usuario_id, p_numero_hash)` é RPC e não query builder porque insert-condicional, leitura do dono e update do perfil precisam ser uma transação. Idempotente (`CONNECTION_UPDATE open` chega várias vezes) e tolerante a uma conta trocar de número. Duas propriedades que não são óbvias:
+
+- **O bloqueio é grudento.** O caminho `'liberado'` **não** limpa `trial_bloqueado_em`: se limpasse, bastaria parear um chip novo para se auto-desbloquear.
+- **Sinais manuais vencem o automático.** `status_assinatura = 'ativo'` e `trial_expira_em is null` (VIP) liberam mesmo bloqueado — um cliente que pagou nunca pode ser barrado por já ter testado, e aquele nulo só é gravado à mão.
+
+#### Runbook de desbloqueio (falso-positivo legítimo)
+
+Salão vendido, número trocado, conta recriada de boa-fé. É para esses casos que o banner tem texto próprio (`numero_ja_usou_trial`) dizendo a regra em voz alta: quem foi barrado por engano precisa querer nos procurar.
+
+**Limpar só `trial_bloqueado_em` não resolve, e o sintoma volta sozinho.** A RPC roda a cada `CONNECTION_UPDATE` com `open`, e enquanto a linha do livro-caixa apontar para a outra conta ela regrava o bloqueio — o `where trial_bloqueado_em is null` que preserva o primeiro instante é exatamente o que torna o campo limpo elegível de novo. Na prática: o suporte limpa, o banner some, o bot volta, e à noite o celular do dono reconecta e tudo silencia outra vez, com um `console.warn` idêntico ao de abuso real. **Os dois passos são obrigatórios, nesta ordem:**
+
+```sh
+# 1. Hash do número (mesmo pepper da produção; o formato é só dígitos, com DDI)
+TRIAL_HASH_PEPPER=<pepper> node -e "console.log(require('node:crypto').createHmac('sha256', process.env.TRIAL_HASH_PEPPER).update('5511999998888').digest('hex'))"
+```
+```sql
+-- 2. Apagar a reivindicação ANTES de limpar a flag: na ordem inversa, uma
+--    reconexão na janela entre os dois comandos rebloqueia na hora.
+delete from trials_numero_whatsapp where numero_hash = '<hash-do-passo-1>';
+update perfis set trial_bloqueado_em = null where id = '<uuid-do-dono>';
+```
+
+Feito isso, a próxima reconexão reivindica o número para a conta nova e ela volta a contar os 14 dias do próprio signup. A alternativa de um passo é `status_assinatura = 'ativo'`, que também é durável — mas só use se a pessoa realmente pagou, porque marca como pagante quem não é. Não use `trial_expira_em = null` para isso: aquilo é isenção VIP permanente, não correção de engano.
+
+O one-liner acima duplica a lógica de `lib/trial-numero.ts`. `lib/trial-numero.test.ts` fixa o hash de um vetor conhecido justamente para que os dois não possam divergir em silêncio: se a implementação mudar, o teste quebra e este runbook precisa ser revisto.
+
+**A reivindicação tem fail-safe permissivo, ao contrário do gate de assinatura.** Pepper ausente, `wuid` ausente ou RPC com erro registram e seguem. O inverso é intencional: a falha aqui é nossa (env var, versão da Evolution), e o custo de errar para o lado permissivo é um trial reciclável — errar para o lado restritivo bloquearia todo mundo que conecta, inclusive quem paga.
+
+Ainda **não** implementado, e adiado de propósito: canonicalização de e-mail (dots e `+tag` do Gmail), bloqueio de domínio descartável e log de IP de signup via `before_user_created` hook. Com o trial atrelado ao número, N contas por e-mail rendem N trials **inúteis**, então aquilo deixa de proteger receita e passa a proteger só recurso (sockets Baileys). Fazer quando incomodar.
+
 ### RPCs
 
 Duas operações precisam de atomicidade real. O query builder do supabase-js não abre transação, mas `rpc()` roda dentro de uma. Ambas são `security invoker`, **não** `definer`: uma versão definer que recebe `p_usuario_id` como parâmetro seria escalada de privilégio.
@@ -123,12 +179,42 @@ Todas as 8 tabelas com RLS habilitada. O padrão está em `supabase/migrations/*
 
 ---
 
+## Uso em celular e tablet
+
+O dono opera isto **entre atendimentos, no celular, com uma mão**. O dashboard nasceu desktop-first, e as decisões abaixo existem para corrigir isso. Não desfazer sem entender o que cada uma resolve.
+
+**O piso de toque mora em `components/ui/button.tsx`, não espalhado nas telas.** Este é o estilo `radix-nova`, muito mais compacto que o shadcn clássico: `default` é `h-8` (32px) e `sm` é `h-7` (28px). Cada `size` ganhou um `max-md:` — 44px nos principais, 40px no `sm` — para que o próximo botão do produto nasça certo sem ninguém lembrar da regra. `xs`/`icon-xs` ficaram de fora de propósito: são de contexto denso, e crescer quebraria o layout. Onde um alvo pequeno for inevitável, usar o idioma que já existe em `components/ui/switch.tsx`: `after:-inset-x-3 after:-inset-y-2` estende a área sem mexer no desenho. O piso de referência é o **mínimo AA de 24px** da WCAG 2.2 SC 2.5.8, incluindo o teste de espaçamento entre alvos vizinhos; 44px é a meta de conforto.
+
+**Campo com fonte menor que 16px dá zoom no iOS e não desfaz.** O padrão é `text-base md:text-sm`, como em `components/ui/input.tsx`. Vale para `<input>`, `<select>` e `<textarea>` — a tela de horários tem dois selects por faixa, sete dias, e cada toque ampliava mais a página. **Não** resolver com `maximum-scale=1`: aquilo reprova a WCAG 1.4.4. Uma regra em `@layer base` também não resolve — utilitário do Tailwind fica numa camada posterior e vence.
+
+**`viewportFit: "cover"` em `app/layout.tsx` é pré-requisito, não enfeite.** Sem ele `env(safe-area-inset-*)` resolve para **zero**, e a barra de abas inferior fica embaixo da barra de gestos do iPhone.
+
+**A navegação é uma ilha de cliente dentro de um layout RSC.** `components/navegacao-dashboard.tsx` é o único `"use client"` do shell: `app/(dashboard)/layout.tsx` continua Server Component lendo sessão e perfil. Só a barra hidrata, porque marcar a página atual exige `usePathname`. São **quatro** abas e não cinco (`ABAS_PRINCIPAIS` / `ITENS_EXTRAS`): cinco destinos dariam ~65px cada em 375px, e eles não têm a mesma frequência — agenda é diária, fluxo é configuração inicial, WhatsApp só importa quando a conexão cai. O ícone vai por chave num mapa (`ICONES`), não por prop: componente React não atravessa a fronteira RSC → client.
+
+**A agenda tem duas visões da mesma query, escolhidas por CSS.** `md:hidden` / `hidden md:block` na página, **nunca** `matchMedia`: a decisão fica na folha de estilo, então não há client component, não há divergência de hidratação e a primeira pintura já vem certa. A grade de 7 colunas tem `min-w-[44rem]` e é impossível em tela estreita — a 375px mostra 46% dela, com a calha de horas saindo do campo de visão no primeiro arrasto. `lib/agenda-lista.ts` deriva a lista do dia do **mesmo `Calendario`** que a grade desenha, sem segunda query e sem refazer conversão de fuso. `?dia=` implica a semana que o contém, então não há dois parâmetros para manter sincronizados.
+
+**Reordenar o fluxo é por botão; arrastar é o extra.** Ver `moverEtapa`/`podeMover` em `lib/validacao/fluxo.ts`. O arraste não funcionava em toque: a alça tinha ~20×14px e o `PointerSensor` com `distance` perdia o gesto para o scroll antes do limiar. As setas resolvem toque, teclado e leitor de tela de uma vez, e — diferente do drag — são testáveis fora de um navegador. A alça continua a partir de `sm`, com `touch-none` (a doc do dnd-kit é explícita: é a única forma de impedir o scroll em pointer events, e tem de ficar **só na alça**) e `activationConstraint: { delay: 250, tolerance: 5 }`.
+
+**No celular o QR code é logicamente impossível** — o código está na mesma tela que precisaria fotografá-lo. Por isso `obterQrCode(instancia, numero?)` e `criarInstancia(usuarioId, numero?)` aceitam o número: sem ele o Baileys nunca chama `requestPairingCode` e `pairingCode` volta `null` (era o caso, e a UI de fallback do painel era código morto). Passar nos **dois** não é redundância: medido contra a 2.3.7, o controller só honra o `number` do `/instance/connect` quando o estado é `close`; em `connecting`/`open` devolve o QR em cache. Criar com `number` é o caminho que de fato produz o código no primeiro acesso. `lib/telefone.ts` normaliza o que o dono digita — e **não** serve para responder mensagem: a identidade do cliente final continua sendo o `remote_jid`.
+
+**Os diálogos têm `max-h-[calc(100svh-2rem)] overflow-y-auto`.** Sem isso, com o teclado aberto num 375×667, o diálogo de editar serviço ficava cortado **e sem rolagem** — os botões Salvar/Cancelar não existiam para quem estava no celular. `svh` e não `dvh`: `dvh` é remedido a cada retração da barra do Safari e o diálogo mudaria de altura durante o scroll. Abaixo de `sm` ele ancora perto do rodapé, com folga em vez de rente — rente exigiria `pb` de safe-area, e o `-mb-4` do `DialogFooter` abriria uma fresta do tamanho do inset.
+
+**O PWA para em ícone e standalone.** `app/manifest.ts` mais `app/icon.tsx` / `app/apple-icon.tsx`, gerados por `ImageResponse` (embutido no Next, sem binário no repositório e sem dependência nova). Não há offline nem push: os dois exigem service worker, que o Next não gera. `start_url` é `/agendamentos` e não `/` — quem instalou já é cliente.
+
+**O que só um navegador verifica.** O jsdom não tem engine de layout nem cascata CSS: `getBoundingClientRect()` devolve zero, `matchMedia` não existe e classe do Tailwind é string opaca. Um `toHaveClass("min-h-11")` afirma que a classe foi escrita, **não** que o pixel tem 44. Tamanho real de alvo, overflow, media query aplicando, zoom do iOS, safe area e teclado virtual pedem aparelho ou emulação de device — testar a 375×667 e 768×1024 ao mexer em layout. `@testing-library/jest-dom` e `user-event` **não** estão instalados: os testes de componente usam `fireEvent` e asserção sobre atributo.
+
+---
+
 ## Estrutura de pastas esperada
 
 ```
 /app
+  layout.tsx                          → fontes, tema, e o `viewport` (safe area, themeColor)
+  manifest.ts                         → PWA: ícone na tela inicial e abertura em standalone
+  icon.tsx / apple-icon.tsx           → ícones gerados por ImageResponse, sem binário no repo
   /(marketing)
     page.tsx
+    menu-secoes.tsx                   → Sheet com as âncoras da landing abaixo de `sm`
   /(dashboard)
     layout.tsx                      → verifica sessão, redireciona se ausente
     conexao-whatsapp/page.tsx        → exibe QR code, status da instância
@@ -141,11 +227,18 @@ Todas as 8 tabelas com RLS habilitada. O padrão está em `supabase/migrations/*
       enviar-lembretes/route.ts      → chamado 1x/dia pelo Vercel Cron
     /webhook
       whatsapp/[instance]/route.ts   → recebe mensagens da Evolution API, processa conversas_estado
+/components
+  navegacao-dashboard.tsx             → ilha de cliente: barra de abas no celular, header no desktop
+  calendario-semana.tsx               → grade de 7 colunas, só a partir de `md`
+  agenda-lista.tsx                    → lista do dia com seletor de data, abaixo de `md`
 /lib
   supabase/
     server.ts                        → client respeitando RLS
     admin.ts                          → client com service role key
   evolution-api.ts                    → funções: criar instância, gerar QR code, enviar mensagem, checar status
+  telefone.ts                         → normaliza o número do dono para o código de pareamento
+  calendario.ts                       → layout da grade semanal (puro)
+  agenda-lista.ts                     → deriva a lista de um dia do mesmo Calendario (puro)
   bot/
     engine-fluxo.ts                   → lê `fluxo_etapas` ordenadas e avança a conversa etapa a etapa (genérico, dirigido por configuração, não hardcoded)
     disponibilidade.ts                → calcula horários livres (horarios_disponiveis - agendamentos existentes)
@@ -163,6 +256,22 @@ Todas as 8 tabelas com RLS habilitada. O padrão está em `supabase/migrations/*
 5. Se a sessão cair (deslogada, chip trocado, etc.), o mesmo webhook de status marca como `desconectado` — o dashboard deve exibir aviso claro pedindo pra reconectar via novo QR code.
 
 **Nunca assumir que a instância está sempre conectada** — toda função que dispara mensagem deve verificar `status_conexao_whatsapp` antes e falhar de forma clara (registrando em `log_envio` com erro) se estiver desconectada.
+
+### O que o estado da Evolution diz, e o que não diz
+
+Estas quatro coisas foram medidas contra o servidor 2.3.7 real e contra o fonte da Evolution. Cada uma custou um bug.
+
+**`connecting` NÃO significa que alguém leu o QR.** É o estado **inicial** do socket Baileys, emitido na abertura, antes de existir código na tela — o `CONNECTION_UPDATE` chega 327ms depois do create, e `/instance/connectionState` responde `connecting` por toda a sessão de pareamento, até virar `open`. O tipo do Baileys tem só três valores (`open`/`connecting`/`close`) e nenhum distingue "QR exibido" de "QR lido". O painel já tratou `connecting` como leitura e anunciava "Código lido" dois segundos depois de o QR aparecer, sem ninguém ter escaneado nada.
+
+**Detectar a leitura não é possível nesta versão.** O Baileys emite `connection.update { isNewLogin: true }` no `pair-success` e `receivedPendingNotifications` no fim da sincronização, mas a Evolution desestrutura só `{ qr, connection, lastDisconnect }` e descarta os dois — nenhum endpoint, nenhum webhook. Entre a leitura e o `open` ela é literalmente muda: o WhatsApp força `restartRequired` (515) e o ramo de close reconecta sozinho sem emitir evento. **Não reintroduzir estado intermediário de "sincronizando" sem um sinal real.** Também não adianta inferir por `count` congelado (latência de ~50s, dispara quando já está `open` há um minuto) nem por `ownerJid`/`profileName` (gravados no mesmo update que `connectionStatus: 'open'`).
+
+**`GET /instance/connect` não regenera QR e não consome o `QRCODE_LIMIT`.** Numa instância em `connecting` ele devolve o código **em cache** — três chamadas em 9s deixaram `count` em 4. Quem roda o relógio é o servidor, a cada `qrTimeout` de 45s, com ou sem aba aberta. Consequência: uma contagem regressiva local que reinicia a cada busca acumula erro de fase e exibe código morto dizendo que vale. Por isso `lib/qr-pareamento.ts` decide pelo `count` do servidor, e não pelo relógio do cliente; a validade de 45s é só display.
+
+**Estado transitório não se persiste.** `perfis.status_conexao_whatsapp` só tem `conectado`/`desconectado`, então gravar `conectando` virava `desconectado` — a cada 2-5s durante todo o pareamento, com corrida contra o `CONNECTION_UPDATE open` do webhook. `verificarConexao` agora só grava conclusão.
+
+**`disconnectionReasonCode` viaja só no `STATUS_INSTANCE`**, que por isso está em `NOME_EVENTOS_WEBHOOK`. O `CONNECTION_UPDATE` de queda diz que caiu, nunca por quê — e a diferença importa: `401` (`loggedOut`) é o dono tendo desvinculado o aparelho e só re-parear resolve, o resto é transitório. Hoje o handler apenas registra; persistir para diferenciar o texto do box "WhatsApp desconectado" exigiria coluna nova. A assinatura só passa a valer depois de `configurarWebhook` rodar de novo na instância, o que `gerarQrCode` faz a cada chamada.
+
+**Ao testar contra a Evolution, nunca tocar na instância de produção.** `logout`, `delete`, `restart` e `connect` na instância do dono derrubam o WhatsApp do negócio. Criar `zz-teste-…` descartável e apagar ao final, conferindo com `fetchInstances`.
 
 ---
 

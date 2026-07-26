@@ -65,7 +65,7 @@ export function CamposServico({
                 type="button"
                 aria-pressed={duracao === minutos}
                 onClick={() => setDuracao(minutos)}
-                className={`h-9 rounded-md border px-3 text-sm tabular-nums transition-colors ${
+                className={`h-9 rounded-md border px-3 text-sm tabular-nums transition-colors max-md:h-11 max-md:px-4 ${
                   duracao === minutos
                     ? "border-primary bg-primary text-primary-foreground"
                     : "border-input hover:bg-muted"
@@ -80,6 +80,11 @@ export function CamposServico({
               <input
                 id={idDuracao}
                 type="number"
+                // `type=number` sozinho não abre o teclado numérico grande no
+                // iOS — abre o de números e pontuação, com as teclas do
+                // tamanho de sempre. `inputMode` é o que pede o teclado certo;
+                // o `type` fica pelo `min`/`max`/`step`.
+                inputMode="numeric"
                 min={5}
                 max={480}
                 step={5}
@@ -89,7 +94,10 @@ export function CamposServico({
                 // O erro vence o destaque de "fora dos atalhos": a borda teal
                 // marca escolha, a vermelha marca problema, e a segunda importa
                 // mais.
-                className={`h-9 w-20 rounded-md border bg-transparent px-2 text-sm tabular-nums outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:bg-input/30 ${
+                //
+                // `text-base` abaixo de `md` porque abaixo de 16px o Safari do
+                // iPhone dá zoom ao focar e não desfaz.
+                className={`h-9 w-20 rounded-md border bg-transparent px-2 text-base tabular-nums outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 max-md:h-11 md:text-sm dark:bg-input/30 ${
                   semPreset ? "border-primary" : "border-input"
                 }`}
               />
@@ -122,8 +130,12 @@ export function CamposServico({
   );
 }
 
+/**
+ * Sem `text-*`: herda os 16px do corpo, que é justamente o que impede o zoom
+ * de foco do iOS. Não acrescentar `text-sm` aqui.
+ */
 const CAMPO =
-  "mt-1 h-10 w-full rounded-md border border-input bg-transparent px-3 outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:bg-input/30";
+  "mt-1 h-10 w-full rounded-md border border-input bg-transparent px-3 outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 max-md:h-11 dark:bg-input/30";
 
 function rotularDuracao(minutos: number): string {
   if (minutos < 60) return `${minutos} min`;

@@ -1,5 +1,6 @@
 import {
   ALTURA_LINHA_REM,
+  coresDoStatus,
   type Calendario,
 } from "@/lib/calendario";
 
@@ -14,14 +15,6 @@ import {
 
 /** A altura da faixa vem do módulo: é ela que decide o modo compacto do bloco. */
 const ALTURA_LINHA = `${ALTURA_LINHA_REM}rem`;
-
-const CORES_STATUS: Record<string, string> = {
-  confirmado: "bg-confirmado border-confirmado-borda text-confirmado-tinta",
-  concluido: "bg-concluido border-concluido-borda text-concluido-tinta",
-  cancelado:
-    "bg-cancelado border-cancelado-borda text-cancelado-tinta line-through",
-  falta: "bg-falta border-falta-borda text-falta-tinta",
-};
 
 export function CalendarioSemana({ calendario }: { calendario: Calendario }) {
   const colunas = "4rem repeat(7, minmax(0, 1fr))";
@@ -87,7 +80,7 @@ export function CalendarioSemana({ calendario }: { calendario: Calendario }) {
           )}
 
           {calendario.blocos.map((bloco) => {
-            const cores = CORES_STATUS[bloco.status] ?? CORES_STATUS.confirmado;
+            const cores = coresDoStatus(bloco.status);
             const descricao = `${bloco.horaInicio}–${bloco.horaFim} · ${bloco.cliente} · ${bloco.titulo}`;
             // Num bloco de 1h30 ou mais sobra altura: truncar em uma linha só
             // escondia nome de serviço longo sem necessidade.

@@ -18,11 +18,16 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { ChevronDownIcon, ChevronUpIcon, GripVerticalIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { TipoEtapa } from "@/lib/bot/engine-fluxo";
 import {
   ehEtapaDeSistema,
+  moverEtapa,
+  podeMover,
   rotuloDoTipo,
   validarFluxo,
+  type Direcao,
   type EtapaParaValidar,
 } from "@/lib/validacao/fluxo";
 import { editarPergunta, removerEtapa, reordenarEtapas } from "./actions";
@@ -41,13 +46,42 @@ export function ListaEtapas({ etapas }: { etapas: EtapaDaLista[] }) {
 
   const sensores = useSensors(
     useSensor(PointerSensor, {
-      // Evita iniciar arraste ao clicar em botão dentro do cartão.
-      activationConstraint: { distance: 6 },
+      /**
+       * `delay` + `tolerance` no lugar do `distance: 6` que estava aqui.
+       *
+       * Em toque, `distance` perdia o gesto: o navegador reivindica o
+       * movimento para o scroll da página antes dos 6px, a captura implícita
+       * de ponteiro é liberada e os `pointermove` param de chegar — o arraste
+       * simplesmente não começava no celular. A doc do dnd-kit recomenda
+       * pressionar-e-segurar justamente por isso, com uma tolerância de
+       * movimento que distingue "quis arrastar" de "quis rolar".
+       *
+       * O `touch-action: none` da alça (ver `CartaoEtapa`) é a outra metade:
+       * sem ele nem o delay salva, porque listener de pointer event não
+       * consegue `preventDefault()` no scroll.
+       */
+      activationConstraint: { delay: 250, tolerance: 5 },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
+
+  /** Persiste a nova ordem, desfazendo na tela se o servidor recusar. */
+  function salvarOrdem(proposta: EtapaDaLista[]) {
+    const anterior = itens;
+
+    setErro(null);
+    setItens(proposta);
+
+    iniciarSalvamento(async () => {
+      const resultado = await reordenarEtapas(proposta.map((e) => e.id));
+      if (resultado && "erro" in resultado) {
+        setErro(resultado.erro);
+        setItens(anterior); // desfaz a ordem otimista
+      }
+    });
+  }
 
   function aoSoltar(evento: DragEndEvent) {
     const { active, over } = evento;
@@ -58,23 +92,28 @@ export function ListaEtapas({ etapas }: { etapas: EtapaDaLista[] }) {
     const proposta = arrayMove(itens, de, para);
 
     // Mesma função que a Server Action usa: a UI nunca permite o que o servidor
-    // recusaria.
+    // recusaria. O arraste pode pular várias posições, então valida o conjunto
+    // em vez de usar `moverEtapa`, que é de um passo.
     const validacao = validarFluxo(proposta);
     if (!validacao.valido) {
       setErro(validacao.erro);
       return;
     }
 
-    setErro(null);
-    setItens(proposta);
+    salvarOrdem(proposta);
+  }
 
-    iniciarSalvamento(async () => {
-      const resultado = await reordenarEtapas(proposta.map((e) => e.id));
-      if (resultado && "erro" in resultado) {
-        setErro(resultado.erro);
-        setItens(itens); // desfaz a ordem otimista
-      }
-    });
+  function aoMover(indice: number, direcao: Direcao) {
+    const resultado = moverEtapa(itens, indice, direcao);
+
+    if (!resultado.movido) {
+      // `erro: null` é movimento inexistente (topo/fim) — a seta já está
+      // desabilitada, e não há o que dizer.
+      if (resultado.erro) setErro(resultado.erro);
+      return;
+    }
+
+    salvarOrdem(resultado.etapas);
   }
 
   return (
@@ -89,8 +128,8 @@ export function ListaEtapas({ etapas }: { etapas: EtapaDaLista[] }) {
       )}
 
       <p className="mt-4 text-xs text-muted-foreground">
-        Arraste para reordenar. Também funciona pelo teclado: foque a alça e use
-        as setas.
+        Use as setas para mudar a ordem das etapas. No computador também dá para
+        arrastar pela alça, ou focá-la e usar as setas do teclado.
         {salvando && " Salvando…"}
       </p>
 
@@ -105,7 +144,14 @@ export function ListaEtapas({ etapas }: { etapas: EtapaDaLista[] }) {
         >
           <ol className="mt-3 space-y-2">
             {itens.map((etapa, indice) => (
-              <CartaoEtapa key={etapa.id} etapa={etapa} numero={indice + 1} />
+              <CartaoEtapa
+                key={etapa.id}
+                etapa={etapa}
+                numero={indice + 1}
+                podeSubir={podeMover(itens, indice, "cima")}
+                podeDescer={podeMover(itens, indice, "baixo")}
+                onMover={(direcao) => aoMover(indice, direcao)}
+              />
             ))}
           </ol>
         </SortableContext>
@@ -117,9 +163,15 @@ export function ListaEtapas({ etapas }: { etapas: EtapaDaLista[] }) {
 function CartaoEtapa({
   etapa,
   numero,
+  podeSubir,
+  podeDescer,
+  onMover,
 }: {
   etapa: EtapaDaLista;
   numero: number;
+  podeSubir: boolean;
+  podeDescer: boolean;
+  onMover: (direcao: Direcao) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: etapa.id });
@@ -137,18 +189,60 @@ function CartaoEtapa({
           : "border-border"
       }`}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-2 sm:gap-3">
+        {/**
+         * Setas como controle **primário** de ordenação.
+         *
+         * A alça de arraste sozinha excluía três públicos de uma vez: quem usa
+         * o celular (o gesto brigava com o scroll), quem usa teclado e quem usa
+         * leitor de tela. Um botão de uma posição resolve os três sem gesto
+         * nenhum, e numa lista de ~7 etapas é mais rápido do que mirar um alvo
+         * de soltura em 300px de largura.
+         */}
+        <div className="flex shrink-0 flex-col">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            disabled={!podeSubir}
+            onClick={() => onMover("cima")}
+            aria-label={`Mover para cima: etapa ${numero}, ${etapa.pergunta_texto}`}
+          >
+            <ChevronUpIcon />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            disabled={!podeDescer}
+            onClick={() => onMover("baixo")}
+            aria-label={`Mover para baixo: etapa ${numero}, ${etapa.pergunta_texto}`}
+          >
+            <ChevronDownIcon />
+          </Button>
+        </div>
+
+        {/**
+         * A alça continua, como atalho de mouse — mas só a partir de `sm`. No
+         * celular ela ocupava largura para oferecer um gesto que compete com o
+         * scroll da lista, e as setas ao lado já fazem o mesmo trabalho.
+         *
+         * `touch-none` é o que torna o arraste confiável onde ele aparece: a
+         * doc do dnd-kit é explícita em que `touch-action: none` é a única
+         * forma de impedir o scroll em pointer events, e em que ele deve ficar
+         * **só na alça** — no cartão inteiro, a lista pararia de rolar.
+         */}
         <button
           type="button"
           {...attributes}
           {...listeners}
-          aria-label={`Mover etapa ${numero}: ${etapa.pergunta_texto}`}
-          className="mt-0.5 cursor-grab rounded px-1 text-muted-foreground transition-colors hover:text-foreground active:cursor-grabbing"
+          aria-label={`Arrastar para reordenar: etapa ${numero}, ${etapa.pergunta_texto}`}
+          className="mt-1 hidden size-7 shrink-0 cursor-grab touch-none items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground active:cursor-grabbing sm:flex"
         >
-          ⠿
+          <GripVerticalIcon className="size-4" />
         </button>
 
-        <span className="mt-0.5 w-5 text-sm tabular-nums text-muted-foreground">
+        <span className="mt-1.5 w-5 shrink-0 text-sm tabular-nums text-muted-foreground">
           {numero}
         </span>
 
@@ -202,15 +296,17 @@ function CartaoEtapa({
           )}
         </div>
 
-        <div className="flex shrink-0 gap-3 text-sm">
+        <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-start">
           {!editando && (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => setEditando(true)}
-              className="text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+              className="text-muted-foreground"
             >
               Editar
-            </button>
+            </Button>
           )}
 
           {/* Etapas de sistema podem ter o texto editado, mas não ser removidas:
@@ -218,12 +314,14 @@ function CartaoEtapa({
           {!deSistema && (
             <form action={removerEtapa}>
               <input type="hidden" name="id" value={etapa.id} />
-              <button
+              <Button
                 type="submit"
-                className="text-muted-foreground transition-colors hover:text-destructive"
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-destructive"
               >
                 Remover
-              </button>
+              </Button>
             </form>
           )}
         </div>
@@ -259,28 +357,29 @@ function FormularioTexto({
       }
     >
       <input type="hidden" name="id" value={etapa.id} />
+      {/* `text-base` abaixo de `md`: com menos de 16px o Safari do iPhone dá
+          zoom ao focar o campo e não volta sozinho. Mesmo padrão de
+          `components/ui/input.tsx`. */}
       <textarea
         name="pergunta_texto"
         defaultValue={etapa.pergunta_texto}
         rows={2}
         maxLength={500}
-        className="w-full rounded-md border border-input bg-transparent p-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+        enterKeyHint="done"
+        className="w-full rounded-md border border-input bg-transparent p-2 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30"
       />
-      <div className="mt-2 flex gap-3 text-sm">
-        <button
-          type="submit"
-          disabled={salvando}
-          className="rounded-md bg-primary px-3 py-1 font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
-        >
+      <div className="mt-2 flex gap-2">
+        <Button type="submit" disabled={salvando}>
           {salvando ? "Salvando…" : "Salvar"}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="ghost"
           onClick={onFim}
           className="text-muted-foreground"
         >
           Cancelar
-        </button>
+        </Button>
       </div>
     </form>
   );
