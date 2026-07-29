@@ -1,8 +1,21 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Marca } from "@/components/marca";
+import { ROBOTS_PRIVADO } from "@/lib/site";
 import { FormularioLogin } from "./formulario-login";
 
-export const metadata = { title: "Entrar — AgendaZap" };
+/**
+ * `noindex` porque esta tela concorre com a landing pelas mesmas consultas de
+ * marca e não tem nada a oferecer a quem chega da busca: é um formulário.
+ *
+ * Note que **não** há `Disallow` correspondente em `app/robots.ts`. O Google só
+ * respeita o `noindex` se puder buscar a página — bloquear no robots.txt
+ * impediria justamente a leitura desta diretiva.
+ */
+export const metadata: Metadata = {
+  title: "Entrar",
+  robots: ROBOTS_PRIVADO,
+};
 
 export default function LoginPage() {
   return (
@@ -14,7 +27,7 @@ export default function LoginPage() {
         className="flex min-h-11 flex-col items-center gap-2 font-heading text-sm font-semibold uppercase tracking-wide text-foreground"
       >
         <Marca tamanho={40} prioritaria />
-        AgendaZap
+        Encaixaria
       </Link>
       <h1 className="mt-4 mb-8 text-2xl font-semibold tracking-tight">
         Entrar na sua conta

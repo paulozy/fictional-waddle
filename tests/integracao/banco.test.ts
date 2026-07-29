@@ -34,7 +34,7 @@ type Usuario = { id: string; cliente: SupabaseClient };
 const criados: string[] = [];
 
 async function criarUsuario(rotulo: string): Promise<Usuario> {
-  const email = `${rotulo}-${Date.now()}-${criados.length}@agendazap.test`;
+  const email = `${rotulo}-${Date.now()}-${criados.length}@encaixaria.test`;
   const senha = "senha-de-teste-123";
 
   const { data, error } = await admin.auth.admin.createUser({

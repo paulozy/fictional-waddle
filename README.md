@@ -1,4 +1,4 @@
-# AgendaZap
+# Encaixaria
 
 SaaS de agendamento e triagem via WhatsApp para negócios de horário marcado (salões, clínicas, barbearias, esteticistas). O bot responde **pelo próprio número do estabelecimento**, mostra horários livres, confirma o agendamento e manda lembrete no dia anterior.
 

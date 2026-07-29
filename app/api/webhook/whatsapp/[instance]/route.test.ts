@@ -76,13 +76,13 @@ vi.mock("@/lib/evolution-api", () => ({
 
 const { POST } = await import("./route");
 
-function chamar(payload: unknown) {
+function chamar(payload: unknown, nomeHeader = "x-encaixaria-secret") {
   return POST(
     new Request("http://localhost/api/webhook/whatsapp/instancia", {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-agendazap-secret": SEGREDO,
+        [nomeHeader]: SEGREDO,
       },
       body: JSON.stringify(payload),
     }),
@@ -310,5 +310,39 @@ describe("privacidade dos logs", () => {
     );
     expect(registrado).not.toContain(NUMERO);
     expect(registrado).not.toContain(hash);
+  });
+});
+
+describe("transição do nome do header secreto", () => {
+  /**
+   * O rename trocou `x-agendazap-secret` por `x-encaixaria-secret`, mas a
+   * configuração do webhook vive **do lado da Evolution**: uma instância já
+   * pareada segue mandando o nome antigo até `configurarWebhook` rodar nela de
+   * novo, o que hoje só acontece dentro de `gerarQrCode`. Se o leitor aceitasse
+   * apenas o nome novo, todo webhook cairia **em silêncio** — bot mudo e painel
+   * dizendo que a conexão está de pé.
+   *
+   * Quando todas as instâncias tiverem reconectado, o caso do header legado
+   * deve virar uma asserção de 401, e o ramo em `route.ts` sai junto.
+   */
+  it("aceita o header novo", async () => {
+    const resposta = await chamar(conexao("open", { wuid: JID_DONO }));
+    expect(resposta.status).toBe(200);
+  });
+
+  it("ainda aceita o header legado, para instância já pareada", async () => {
+    const resposta = await chamar(
+      conexao("open", { wuid: JID_DONO }),
+      "x-agendazap-secret",
+    );
+    expect(resposta.status).toBe(200);
+  });
+
+  it("rejeita qualquer outro nome de header", async () => {
+    const resposta = await chamar(
+      conexao("open", { wuid: JID_DONO }),
+      "x-outro-secret",
+    );
+    expect(resposta.status).toBe(401);
   });
 });

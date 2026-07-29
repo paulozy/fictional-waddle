@@ -74,7 +74,7 @@ async function criarTenantComAgendamento(opcoes: {
   quandoAmanha?: boolean;
   nomeCliente?: string | null;
 } = {}) {
-  const email = `cron-${Date.now()}-${criados.length}@agendazap.test`;
+  const email = `cron-${Date.now()}-${criados.length}@encaixaria.test`;
   const { data, error } = await admin.auth.admin.createUser({
     email,
     password: "senha-de-teste-123",
@@ -138,7 +138,7 @@ function disparar(autorizacao: string | null = `Bearer ${CRON_SECRET}`) {
   if (autorizacao !== null) headers.authorization = autorizacao;
 
   return GET(
-    new Request("https://agendazap.test/api/cron/enviar-lembretes", {
+    new Request("https://encaixaria.test/api/cron/enviar-lembretes", {
       headers,
     }),
   );

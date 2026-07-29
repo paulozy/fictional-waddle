@@ -1,8 +1,9 @@
+import type { Metadata } from "next";
 import { criarClienteServidor, exigirUsuario } from "@/lib/supabase/server";
 import { normalizarSemana } from "@/lib/grade-semanal";
 import { EditorSemana } from "./editor-semana";
 
-export const metadata = { title: "Horários — AgendaZap" };
+export const metadata: Metadata = { title: "Horários" };
 
 export default async function HorariosPage() {
   const usuarioId = await exigirUsuario();

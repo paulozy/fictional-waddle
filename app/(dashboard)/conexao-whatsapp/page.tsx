@@ -1,9 +1,10 @@
+import type { Metadata } from "next";
 import { UsersIcon } from "lucide-react";
 import { traduzirEstado, type EstadoConexao } from "@/lib/evolution-api";
 import { criarClienteServidor, exigirUsuario } from "@/lib/supabase/server";
 import { PainelConexao } from "./painel-conexao";
 
-export const metadata = { title: "Conexão do WhatsApp — AgendaZap" };
+export const metadata: Metadata = { title: "Conexão do WhatsApp" };
 
 export default async function ConexaoWhatsAppPage() {
   const usuarioId = await exigirUsuario();

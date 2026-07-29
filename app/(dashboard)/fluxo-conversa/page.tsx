@@ -1,8 +1,9 @@
+import type { Metadata } from "next";
 import { criarClienteServidor, exigirUsuario } from "@/lib/supabase/server";
 import { FormularioEtapa } from "./formulario-etapa";
 import { ListaEtapas, type EtapaDaLista } from "./lista-etapas";
 
-export const metadata = { title: "Fluxo da conversa — AgendaZap" };
+export const metadata: Metadata = { title: "Fluxo da conversa" };
 
 export default async function FluxoConversaPage() {
   const usuarioId = await exigirUsuario();

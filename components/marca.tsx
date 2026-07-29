@@ -3,7 +3,7 @@ import { OCUPACAO, tamanhoParaOcupacao } from "@/lib/marca";
 import { cn } from "@/lib/utils";
 
 /**
- * O símbolo do AgendaZap, recortado.
+ * O símbolo da Encaixaria, recortado.
  *
  * **Este é o único lugar do projeto com o recorte.** O arquivo de origem tem
  * ~24% de margem transparente em cada lado (ver `lib/marca.ts`), então um
@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
  * declarados, a Vercel serve ~1–2 KB em AVIF ou WebP.
  *
  * `alt=""` porque o símbolo é decorativo — quem carrega o nome acessível é a
- * palavra "AgendaZap" ao lado. Se em algum lugar ele aparecer sozinho, o texto
+ * palavra "Encaixaria" ao lado. Se em algum lugar ele aparecer sozinho, o texto
  * precisa vir junto em `sr-only`.
  */
 export function Marca({
@@ -50,7 +50,7 @@ export function Marca({
       style={{ width: tamanho, height: tamanho }}
     >
       <Image
-        src="/agendazap-icon.png"
+        src="/encaixaria-icon.png"
         alt=""
         width={renderizado}
         height={renderizado}

@@ -107,7 +107,7 @@ function configWebhook(instancia: string) {
     base64: false,
     headers: {
       "Content-Type": "application/json",
-      "x-agendazap-secret": envObrigatoria("WEBHOOK_SECRET"),
+      "x-encaixaria-secret": envObrigatoria("WEBHOOK_SECRET"),
     },
     events: [...NOME_EVENTOS_WEBHOOK],
   };

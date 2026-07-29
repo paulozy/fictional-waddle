@@ -69,7 +69,20 @@ export const config = {
      *    API e Vercel Cron). Passar por aqui só gastaria uma chamada de refresh
      *    inútil e poderia mexer em cookies de uma request que não tem dono.
      *  - assets estáticos e imagens otimizadas.
+     *  - **as rotas de metadata**: `robots.txt`, `sitemap.xml`,
+     *    `opengraph-image`, os três `icon/*`, `apple-icon`, `icone-mascara` e
+     *    `manifest.webmanifest`. Todas geradas em build, todas pedidas em toda
+     *    visita, nenhuma coberta pela lista de extensões acima — as de ícone não
+     *    têm extensão na URL, e `.txt`/`.xml` não estavam na lista.
+     *
+     *    O ganho óbvio é contagem de invocação. O que importa mais é o caso da
+     *    requisição **com** cookie: um pedido de `/icon/512` disparado em
+     *    paralelo com a navegação faria `atualizarSessao` rotacionar o refresh
+     *    token — que no Supabase é de uso único — num subrecurso. É a receita
+     *    conhecida de logout aleatório. (Sem cookie, `getClaims()` não vai à
+     *    rede e nada disso acontece; por isso o problema é o pedido autenticado,
+     *    não o do crawler.)
      */
-    "/((?!api/webhook|api/cron|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!api/webhook|api/cron|_next/static|_next/image|favicon.ico|robots\\.txt|sitemap\\.xml|opengraph-image|icon/|apple-icon|icone-mascara|manifest\\.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

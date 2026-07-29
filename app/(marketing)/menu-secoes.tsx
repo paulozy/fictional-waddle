@@ -52,10 +52,12 @@ export function MenuSecoes({
           {secoes.map(({ href, rotulo }) => (
             <li key={href}>
               {/**
-               * Âncora crua e não `next/link`: o destino é a mesma página, não
-               * há rota para pré-carregar. Fechar no clique é obrigatório —
-               * sem isso a folha fica por cima da seção para onde o link
-               * acabou de rolar.
+               * Âncora crua e não `next/link`, mesmo agora que a maior parte
+               * dos destinos é rota de verdade: a lista mistura rota e âncora
+               * (`/#perguntas`), e `<a>` trata as duas igual. Navegar de página
+               * cheia também evita a corrida entre fechar a folha e trocar de
+               * rota. Fechar no clique é obrigatório — sem isso a folha fica
+               * por cima do destino.
                */}
               <a
                 href={href}

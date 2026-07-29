@@ -9,10 +9,24 @@ import { MenuSecoes } from "./menu-secoes";
  * voltar, e quem chegava não tinha onde procurar contato ou política.
  */
 
+/**
+ * Duas destas eram âncoras (`#como-funciona`, `#preco`) e agora são páginas
+ * próprias. Os caminhos são **absolutos**, inclusive a âncora: `#perguntas`
+ * relativo levaria a `/precos#perguntas`, que não existe — o visitante clicaria
+ * e nada aconteceria.
+ */
 const SECOES = [
-  { href: "#como-funciona", rotulo: "Como funciona" },
-  { href: "#preco", rotulo: "Preço" },
-  { href: "#perguntas", rotulo: "Perguntas" },
+  { href: "/como-funciona", rotulo: "Como funciona" },
+  { href: "/precos", rotulo: "Preço" },
+  { href: "/#perguntas", rotulo: "Perguntas" },
+];
+
+/** Rodapé: o que sustenta confiança, não navegação de produto. */
+const LINKS_RODAPE = [
+  { href: "/sobre", rotulo: "Sobre" },
+  { href: "/precos", rotulo: "Preço" },
+  { href: "/privacidade", rotulo: "Privacidade" },
+  { href: "/termos", rotulo: "Termos" },
 ];
 
 export default function MarketingLayout({
@@ -31,18 +45,25 @@ export default function MarketingLayout({
             className="flex min-h-11 items-center gap-2 font-heading text-lg font-semibold tracking-tight text-foreground"
           >
             <Marca tamanho={28} prioritaria />
-            AgendaZap
+            Encaixaria
           </Link>
 
+          {/*
+            `next/link` e não `<a>`: duas destas são rotas de verdade agora, e são
+            os dois links mais clicados do site — com âncora crua cada clique é
+            reload completo e sem prefetch. O `Link` também trata `/#perguntas`
+            corretamente. (A âncora crua continua justificada em
+            `menu-secoes.tsx`, por outro motivo, explicado lá.)
+          */}
           <nav aria-label="Seções" className="hidden gap-5 text-sm sm:flex">
             {SECOES.map(({ href, rotulo }) => (
-              <a
+              <Link
                 key={href}
                 href={href}
                 className="text-muted-foreground transition-colors hover:text-foreground"
               >
                 {rotulo}
-              </a>
+              </Link>
             ))}
           </nav>
 
@@ -67,15 +88,32 @@ export default function MarketingLayout({
       <main className="flex-1">{children}</main>
 
       <footer className="border-t border-border">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-6 gap-y-2 px-4 sm:px-6 py-8 text-sm text-muted-foreground">
-          <span className="flex items-center gap-2 font-heading font-semibold text-foreground">
-            <Marca tamanho={24} />
-            AgendaZap
-          </span>
-          <span>Agendamento pelo WhatsApp do seu estabelecimento.</span>
-          <span className="ml-auto">
-            © {new Date().getFullYear()} AgendaZap
-          </span>
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 py-10 text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+            <span className="flex items-center gap-2 font-heading font-semibold text-foreground">
+              <Marca tamanho={24} />
+              Encaixaria
+            </span>
+            <span>Agendamento pelo WhatsApp do seu estabelecimento.</span>
+          </div>
+
+          {/* `min-h-11` porque no celular estes são quatro alvos numa linha. */}
+          <nav aria-label="Institucional" className="mt-6 flex flex-wrap gap-x-6">
+            {LINKS_RODAPE.map(({ href, rotulo }) => (
+              <Link
+                key={href}
+                href={href}
+                className="flex min-h-11 items-center transition-colors hover:text-foreground sm:min-h-0"
+              >
+                {rotulo}
+              </Link>
+            ))}
+          </nav>
+
+          <p className="mt-6 text-xs">
+            © {new Date().getFullYear()} Encaixaria. Sem vínculo de afiliação com
+            o WhatsApp, a WhatsApp Inc. ou a Meta Platforms.
+          </p>
         </div>
       </footer>
     </div>

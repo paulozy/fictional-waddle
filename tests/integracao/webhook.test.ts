@@ -76,7 +76,7 @@ afterAll(() => servidor.close());
 const criados: string[] = [];
 
 async function criarTenant() {
-  const email = `webhook-${Date.now()}-${criados.length}@agendazap.test`;
+  const email = `webhook-${Date.now()}-${criados.length}@encaixaria.test`;
   const { data, error } = await admin.auth.admin.createUser({
     email,
     password: "senha-de-teste-123",
@@ -144,10 +144,10 @@ async function chamar(
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  if (segredo !== null) headers["x-agendazap-secret"] = segredo;
+  if (segredo !== null) headers["x-encaixaria-secret"] = segredo;
 
   return POST(
-    new Request(`https://agendazap.test/api/webhook/whatsapp/${instancia}`, {
+    new Request(`https://encaixaria.test/api/webhook/whatsapp/${instancia}`, {
       method: "POST",
       headers,
       body: JSON.stringify(corpo),

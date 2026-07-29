@@ -44,7 +44,7 @@ afterAll(() => servidor.close());
 beforeEach(() => {
   process.env.EVOLUTION_API_URL = `${API}/`; // barra final de propósito
   process.env.EVOLUTION_API_ADMIN_KEY = "chave-global";
-  process.env.WEBHOOK_BASE_URL = "https://agendazap.test/";
+  process.env.WEBHOOK_BASE_URL = "https://encaixaria.test/";
   process.env.WEBHOOK_SECRET = "segredo-do-webhook";
 });
 
@@ -139,10 +139,10 @@ describe("criarInstancia", () => {
     // única nunca receberia nada.
     expect(corpo.webhook.byEvents).toBe(false);
     expect(corpo.webhook.url).toBe(
-      `https://agendazap.test/api/webhook/whatsapp/${INSTANCIA}`,
+      `https://encaixaria.test/api/webhook/whatsapp/${INSTANCIA}`,
     );
     // O segredo no header é a autenticação real: o UUID da URL não é segredo.
-    expect(corpo.webhook.headers["x-agendazap-secret"]).toBe(
+    expect(corpo.webhook.headers["x-encaixaria-secret"]).toBe(
       "segredo-do-webhook",
     );
     expect(corpo.webhook.events).toEqual([

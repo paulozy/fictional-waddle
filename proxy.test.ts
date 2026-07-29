@@ -11,7 +11,7 @@ const { config, proxy } = await import("./proxy");
 const { NextRequest } = await import("next/server");
 
 function requisicao(pathname: string) {
-  return new NextRequest(new URL(`https://agendazap.test${pathname}`));
+  return new NextRequest(new URL(`https://encaixaria.test${pathname}`));
 }
 
 beforeEach(() => {
@@ -31,7 +31,7 @@ describe("matcher do proxy", () => {
     expect(
       unstable_doesMiddlewareMatch({
         config,
-        url: `https://agendazap.test${url}`,
+        url: `https://encaixaria.test${url}`,
       }),
     ).toBe(true);
   });
@@ -43,11 +43,22 @@ describe("matcher do proxy", () => {
     "/_next/static/chunk.js",
     "/favicon.ico",
     "/next.svg",
+    // Rotas de metadata, geradas em build. O caso que importa é o pedido COM
+    // cookie: rotacionar o refresh token (uso único) num subrecurso em paralelo
+    // com a navegação é a receita de logout aleatório.
+    "/robots.txt",
+    "/sitemap.xml",
+    "/opengraph-image",
+    "/icon/32",
+    "/icon/512",
+    "/apple-icon",
+    "/icone-mascara",
+    "/manifest.webmanifest",
   ])("NÃO executa em %s", (url) => {
     expect(
       unstable_doesMiddlewareMatch({
         config,
-        url: `https://agendazap.test${url}`,
+        url: `https://encaixaria.test${url}`,
       }),
     ).toBe(false);
   });

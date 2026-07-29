@@ -1,7 +1,7 @@
 /**
  * Geometria da marca. Módulo **puro**.
  *
- * O arquivo de origem (`public/agendazap-icon.png`) é um quadrado de 500×500
+ * O arquivo de origem (`public/encaixaria-icon.png`) é um quadrado de 500×500
  * em que o desenho ocupa só o miolo: bounding box de 259×261 px, com ~120 px
  * de margem transparente em cada lado. Essa margem é do arquivo, não uma
  * escolha de layout — e ela atrapalha em todo destino:
@@ -26,7 +26,7 @@
 /**
  * Fração do lado do quadro ocupada pelo desenho no arquivo de origem.
  *
- * Medido decodificando `public/agendazap-icon.png`: bbox opaco de x 123..381
+ * Medido decodificando `public/encaixaria-icon.png`: bbox opaco de x 123..381
  * e y 124..384 num canvas de 500×500 → 259/500 = 0,518.
  *
  * **Ao trocar o PNG, remedir.** O valor não é convenção nem estimativa.

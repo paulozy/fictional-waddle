@@ -11,7 +11,7 @@ describe("FRACAO_DESENHO", () => {
   it("guarda a medida do arquivo de origem", () => {
     /**
      * Trava proposital. Este número foi medido decodificando
-     * `public/agendazap-icon.png` (bbox opaco de 259px num canvas de 500) e
+     * `public/encaixaria-icon.png` (bbox opaco de 259px num canvas de 500) e
      * **não** é convenção. Trocar o PNG por outro com margem diferente sem
      * remedir degradaria os quatro ícones em silêncio; aqui isso vira uma
      * falha com nome.

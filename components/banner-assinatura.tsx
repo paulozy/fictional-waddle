@@ -37,7 +37,7 @@ const TEXTOS: Record<
   numero_ja_usou_trial: {
     titulo: "Este número de WhatsApp já usou o período de teste",
     corpo:
-      "O teste gratuito é um por número de WhatsApp, e este número já testou o AgendaZap em outra conta. Assine um plano para atender por ele — ou fale com a gente se você acha que houve engano.",
+      "O teste gratuito é um por número de WhatsApp, e este número já testou a Encaixaria em outra conta. Assine um plano para atender por ele — ou fale com a gente se você acha que houve engano.",
     rotuloCta: "Falar com a gente",
   },
 };

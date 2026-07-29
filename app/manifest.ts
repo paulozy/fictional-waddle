@@ -23,8 +23,8 @@ import type { MetadataRoute } from "next";
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "AgendaZap — agendamento pelo WhatsApp",
-    short_name: "AgendaZap",
+    name: "Encaixaria — agendamento pelo WhatsApp",
+    short_name: "Encaixaria",
     description:
       "Agenda do seu estabelecimento: horários, serviços e lembretes automáticos pelo WhatsApp.",
     lang: "pt-BR",

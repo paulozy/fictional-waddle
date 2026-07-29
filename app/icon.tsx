@@ -3,7 +3,7 @@ import { MarcaRecortada, lerPngDaMarca } from "@/lib/marca-servidor";
 import { OCUPACAO } from "@/lib/marca";
 
 /**
- * Ícones do navegador, derivados de `public/agendazap-icon.png`.
+ * Ícones do navegador, derivados de `public/encaixaria-icon.png`.
  *
  * Gerados em build em vez de commitados como binários: assim existe **uma**
  * fonte (o PNG) e as regras de composição ficam em código versionado. Três

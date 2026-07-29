@@ -6,6 +6,18 @@ import { Accordion as AccordionPrimitive } from "radix-ui"
 import { cn } from "@/lib/utils"
 import { ChevronDownIcon, ChevronUpIcon } from "lucide-react"
 
+/**
+ * @deprecated Para **conteúdo que precisa ser indexado**, use `<details name>`
+ * nativo — ver `app/(marketing)/perguntas-frequentes.tsx`.
+ *
+ * `AccordionPrimitive.Content` desmonta o conteúdo fechado, e o Google não
+ * interage com a página: o FAQ ficou com as 9 perguntas no HTML e nenhuma das 9
+ * respostas, ~450 palavras invisíveis para a busca sem nenhum sinal de erro.
+ *
+ * Segue aqui como primitivo do design system, para interação real dentro do
+ * dashboard, onde nada é indexado. Hoje não tem nenhum consumidor.
+ */
+
 function Accordion({
   className,
   ...props

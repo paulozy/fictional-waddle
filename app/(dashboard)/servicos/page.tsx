@@ -1,10 +1,11 @@
+import type { Metadata } from "next";
 import { ScissorsIcon } from "lucide-react";
 import { criarClienteServidor, exigirUsuario } from "@/lib/supabase/server";
 import { alternarServico } from "./actions";
 import { DialogoEditar } from "./dialogo-editar";
 import { FormularioServico } from "./formulario-servico";
 
-export const metadata = { title: "Serviços — AgendaZap" };
+export const metadata: Metadata = { title: "Serviços" };
 
 const formatarPreco = new Intl.NumberFormat("pt-BR", {
   style: "currency",

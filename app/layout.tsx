@@ -6,6 +6,12 @@ import {
 } from "next/font/google";
 import { ProvedorTema } from "@/components/provedor-tema";
 import { Toaster } from "@/components/ui/sonner";
+import {
+  DESCRICAO_PADRAO,
+  NOME_SITE,
+  TITULO_PADRAO,
+  urlSite,
+} from "@/lib/site";
 import "./globals.css";
 
 /**
@@ -36,10 +42,50 @@ const fonteMono = Geist_Mono({
   display: "swap",
 });
 
+/**
+ * Metadata raiz — o que vale para todo o site.
+ *
+ * `metadataBase` é pré-requisito e não enfeite: sem ele, todo campo de URL
+ * relativa (`canonical`, `openGraph.url`, imagens) vira erro de build, e o Next
+ * não emite `<link rel="canonical">` nenhum. Antes disto o HTML gerado saía com
+ * zero canonical e zero tag `og:`.
+ *
+ * `title.template` acrescenta "— Encaixaria" ao título de cada página, no lugar
+ * do sufixo que estava escrito à mão em seis arquivos. Páginas que montam o
+ * título pelo helper de `lib/site.ts` usam `title.absolute` e escapam do
+ * template de propósito, para o sufixo não entrar duas vezes.
+ *
+ * **`alternates.canonical` não mora aqui**, e a ausência é deliberada: um
+ * `canonical: "/"` neste objeto seria herdado por toda página que não declarasse
+ * o seu, e `/precos` passaria a se anunciar como cópia da home. Cada página
+ * declara o próprio, via `metadataPagina`.
+ *
+ * O `openGraph` daqui é rede de segurança para páginas que não usam o helper
+ * (dashboard e login, ambas `noindex`). A landing sobrescreve com o dela — e
+ * sobrescreve o objeto **inteiro**, porque a mesclagem de metadata é superficial.
+ */
 export const metadata: Metadata = {
-  title: "AgendaZap — agendamento pelo WhatsApp",
-  description:
-    "Seu cliente vê os horários livres e agenda pelo WhatsApp do seu estabelecimento, sem baixar app.",
+  metadataBase: urlSite(),
+  title: {
+    default: TITULO_PADRAO,
+    template: `%s — ${NOME_SITE}`,
+  },
+  description: DESCRICAO_PADRAO,
+  applicationName: NOME_SITE,
+  openGraph: {
+    type: "website",
+    locale: "pt_BR",
+    siteName: NOME_SITE,
+    title: TITULO_PADRAO,
+    description: DESCRICAO_PADRAO,
+  },
+  twitter: { card: "summary_large_image" },
+  /**
+   * Meta tag de verificação do Search Console. Sem a var, o Next simplesmente
+   * não emite a tag — não há valor de placeholder que faça sentido, e verificar
+   * a propriedade é ação humana (é assim que se descobre se o site indexou).
+   */
+  verification: { google: process.env.GOOGLE_SITE_VERIFICATION },
 };
 
 /**

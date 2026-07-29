@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { envObrigatoria } from "./config";
 
-const NOME = "AGENDAZAP_VAR_DE_TESTE";
+const NOME = "ENCAIXARIA_VAR_DE_TESTE";
 
 afterEach(() => {
   delete process.env[NOME];

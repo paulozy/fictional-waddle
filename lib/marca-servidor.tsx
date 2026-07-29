@@ -28,7 +28,33 @@ import { tamanhoParaOcupacao } from "@/lib/marca";
  * pode não seguir um caminho computado para dentro da função.
  */
 export function lerPngDaMarca(): Promise<Buffer> {
-  return readFile(join(process.cwd(), "public", "agendazap-icon.png"));
+  return readFile(join(process.cwd(), "public", "encaixaria-icon.png"));
+}
+
+/**
+ * Lê a fonte de display para o `ImageResponse`.
+ *
+ * O Satori **não tem fonte padrão**: sem `fonts:`, qualquer texto sai em branco.
+ * E `next/font/google` não serve aqui — ele entrega uma classe CSS e um arquivo
+ * `woff2` interno, nenhum dos dois acessível como buffer (o Satori também não lê
+ * `woff2`). Daí um `.ttf` no repositório.
+ *
+ * O arquivo é a Bricolage Grotesque (a mesma `--fonte-display` da interface,
+ * OFL-1.1, licença em `public/bricolage-grotesque-OFL.txt`), **instanciada** no
+ * peso 600 e reduzida aos glifos latinos com acento do português: 408 KB de
+ * fonte variável viraram 18 KB. Duas razões para não commitar a variável
+ * original: o suporte do Satori a eixos variáveis é parcial — ela renderizaria
+ * num peso que não é o escolhido — e 408 KB de binário em cada clone do
+ * repositório é caro para uma imagem social.
+ *
+ * Se o texto da imagem passar a usar um caractere fora desse conjunto, ele sai
+ * **vazio, sem erro**. Trocar de fonte ou ampliar o subset é regerar este
+ * arquivo, não editar código.
+ */
+export function lerFonteDisplay(): Promise<Buffer> {
+  return readFile(
+    join(process.cwd(), "public", "bricolage-grotesque-600.ttf"),
+  );
 }
 
 /**

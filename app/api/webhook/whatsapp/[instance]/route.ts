@@ -64,10 +64,27 @@ export async function POST(
   // O `[instance]` da URL é um UUID, não um segredo: o header é a autenticação
   // real. Sem isso, qualquer um que descubra o id do usuário injeta mensagem.
   const segredoEsperado = process.env.WEBHOOK_SECRET;
-  if (
-    !segredoEsperado ||
-    request.headers.get("x-agendazap-secret") !== segredoEsperado
-  ) {
+
+  /**
+   * Dois nomes de header aceitos, e o antigo é dívida com prazo.
+   *
+   * A configuração do webhook vive **do lado da Evolution**, gravada quando
+   * `configurarWebhook` roda — e hoje isso só acontece dentro de `gerarQrCode`.
+   * Uma instância já pareada continua mandando `x-agendazap-secret` (o nome
+   * anterior ao rename) até o dono voltar à tela de QR code por algum outro
+   * motivo. Trocar escritor e leitor no mesmo deploy derrubaria todo webhook
+   * **em silêncio**: o bot pararia de responder e o painel continuaria dizendo
+   * que a conexão está de pé.
+   *
+   * Remover o nome legado quando todas as instâncias tiverem reconectado — dá
+   * para conferir chamando `configurarWebhook` em cada uma e vendo o header
+   * atual em `fetchInstances`.
+   */
+  const segredoRecebido =
+    request.headers.get("x-encaixaria-secret") ??
+    request.headers.get("x-agendazap-secret");
+
+  if (!segredoEsperado || segredoRecebido !== segredoEsperado) {
     return Response.json({ erro: "não autorizado" }, { status: 401 });
   }
 

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { sair } from "@/app/login/actions";
@@ -9,7 +10,21 @@ import {
   type ItemNavegacao,
 } from "@/components/navegacao-dashboard";
 import { motivoBloqueio, type PerfilAssinatura } from "@/lib/assinatura";
+import { ROBOTS_PRIVADO } from "@/lib/site";
 import { criarClienteServidor, obterClaims } from "@/lib/supabase/server";
+
+/**
+ * `noindex` para todo o dashboard, herdado por cada página do grupo — elas
+ * declaram só `title`, então esta chave sobrevive à mesclagem.
+ *
+ * O `proxy.ts` já redireciona anônimo para `/login`, então o Googlebot recebe
+ * 307 e não há duplicata hoje. Isto é a segunda tranca: se um dia alguma rota
+ * daqui deixar de exigir sessão, ela não passa a ser indexável por acidente.
+ *
+ * Sem `Disallow` correspondente em `app/robots.ts`, pelo mesmo motivo do
+ * `/login`: bloquear no robots.txt impediria o Google de ler o `noindex`.
+ */
+export const metadata: Metadata = { robots: ROBOTS_PRIVADO };
 
 /**
  * A lista está partida em dois porque a barra inferior do celular comporta
@@ -47,7 +62,7 @@ const ITENS_EXTRAS: ItemNavegacao[] = [
 function linkAssinatura(): string | null {
   const numero = process.env.WHATSAPP_CONTATO?.replace(/\D/g, "");
   if (!numero) return null;
-  const texto = encodeURIComponent("Olá! Quero assinar um plano do AgendaZap.");
+  const texto = encodeURIComponent("Olá! Quero assinar um plano da Encaixaria.");
   return `https://wa.me/${numero}?text=${texto}`;
 }
 
@@ -93,7 +108,7 @@ export default async function DashboardLayout({
             className="flex min-h-11 items-center gap-2 font-heading text-lg font-semibold tracking-tight text-foreground"
           >
             <Marca tamanho={28} />
-            AgendaZap
+            Encaixaria
           </Link>
 
           <NavegacaoDashboard

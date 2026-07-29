@@ -23,11 +23,11 @@
  * canal é sinalizado pelo glifo e pela cópia, nunca pela cor.
  *
  * A **marca** é outra coisa e segue outra regra. O símbolo em
- * `public/agendazap-icon.png` é verde #0EC962 (2,13:1 no papel) e roxo
+ * `public/encaixaria-icon.png` é verde #0EC962 (2,13:1 no papel) e roxo
  * #7947E4, e é assim de propósito. Logotipo não é componente de UI: o SC 1.4.3
  * isenta texto de logo, e o SC 1.4.11 não alcança o símbolo porque ele não é
  * "required to understand the content" — quem carrega o significado é a
- * palavra "AgendaZap" ao lado, e o link permanece acessível por ela. Por isso
+ * palavra "Encaixaria" ao lado, e o link permanece acessível por ela. Por isso
  * `components/marca.tsx` usa `alt=""`: o símbolo é decorativo, e é essa
  * decoratividade que sustenta a isenção.
  *

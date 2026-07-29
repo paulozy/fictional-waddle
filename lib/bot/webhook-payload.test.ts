@@ -40,7 +40,7 @@ function payloadMensagem(sobrescritas: {
       messageType: "conversation",
       messageTimestamp: 1786000000,
     },
-    destination: "https://agendazap.test/api/webhook/whatsapp/x",
+    destination: "https://encaixaria.test/api/webhook/whatsapp/x",
     date_time: "2026-08-07T12:00:00.000Z",
     server_url: "https://evolution.teste",
   };

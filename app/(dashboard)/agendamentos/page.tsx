@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { addDays, format } from "date-fns";
 import { TZDate } from "@date-fns/tz";
@@ -13,7 +14,7 @@ import {
 } from "@/lib/calendario";
 import { criarClienteServidor, exigirUsuario } from "@/lib/supabase/server";
 
-export const metadata = { title: "Agendamentos — AgendaZap" };
+export const metadata: Metadata = { title: "Agendamentos" };
 
 /** `YYYY-MM-DD`. Vem de query string, então é validado antes de virar data. */
 const FORMATO_DATA = /^\d{4}-\d{2}-\d{2}$/;

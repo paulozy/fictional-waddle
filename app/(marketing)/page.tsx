@@ -7,7 +7,17 @@ import {
 } from "lucide-react";
 import { ConversaDemo } from "@/components/conversa-demo";
 import { Button } from "@/components/ui/button";
+import { jsonLdHome, serializarJsonLd } from "@/lib/json-ld";
+import { DIAS_TRIAL, INCLUSO, PRECO_MENSAL } from "@/lib/plano";
+import { metadataPagina } from "@/lib/site";
 import { PerguntasFrequentes } from "./perguntas-frequentes";
+
+/**
+ * Sem `titulo`: a home usa o título padrão do site. Passar "Início" aqui daria
+ * "Início — Encaixaria", e o título da home é um dos sinais que o Google lê para
+ * decidir o nome do site na SERP — ele deve ser o nome, não um rótulo de menu.
+ */
+export const metadata = metadataPagina({ caminho: "/" });
 
 /**
  * Landing.
@@ -67,17 +77,26 @@ const DO_LADO_DO_CLIENTE = [
   "Fala com o número que ele já tem salvo",
 ];
 
-const NO_PRECO = [
-  "Agendamento automático pelo WhatsApp, 24 horas por dia",
-  "Lembrete automático um dia antes",
-  "Serviços e horários que você mesmo configura",
-  "Roteiro da conversa do bot montado por você",
-  "Painel com a agenda da semana",
-];
 
 export default function LandingPage() {
   return (
     <>
+      {/*
+        JSON-LD só aqui, e não no layout: a doc do Google é explícita que o
+        `WebSite` tem de estar na home ("must be on the home page of a site") —
+        num layout ele iria para toda página do grupo e valeria em nenhuma.
+
+        `dangerouslySetInnerHTML` é o padrão documentado pelo Next para JSON-LD
+        no App Router. O escape de `<` acontece em `serializarJsonLd`.
+      */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: serializarJsonLd(
+            jsonLdHome({ telefoneContato: process.env.WHATSAPP_CONTATO }),
+          ),
+        }}
+      />
       <section className="mx-auto max-w-5xl px-4 sm:px-6 pb-16 pt-14 sm:pt-20">
         <div className="grid items-center gap-12 lg:grid-cols-[1.05fr_1fr]">
           <div>
@@ -91,7 +110,7 @@ export default function LandingPage() {
 
             <p className="mt-5 max-w-xl text-lg leading-8 text-muted-foreground">
               Você está de mãos ocupadas, a mensagem chega, e quando dá para
-              responder o cliente já marcou em outro lugar. O AgendaZap responde
+              responder o cliente já marcou em outro lugar. A Encaixaria responde
               na hora pelo seu número — mostra os horários livres, fecha o
               agendamento e lembra o cliente um dia antes.
             </p>
@@ -101,7 +120,7 @@ export default function LandingPage() {
                 <Link href="/login">Começar teste grátis</Link>
               </Button>
               <p className="text-sm text-muted-foreground">
-                14 dias grátis, sem cartão.
+                {DIAS_TRIAL} dias grátis, sem cartão.
               </p>
             </div>
           </div>
@@ -182,7 +201,7 @@ export default function LandingPage() {
               abrir.
             </p>
             <p className="mt-3 text-muted-foreground">
-              O AgendaZap não pede nada disso. Ele vive no WhatsApp que seu
+              A Encaixaria não pede nada disso. Ela vive no WhatsApp que seu
               cliente já usa todo dia, e responde pelo número que ele já tem
               salvo com o nome do seu estabelecimento.
             </p>
@@ -218,7 +237,7 @@ export default function LandingPage() {
               <p className="flex items-baseline gap-1">
                 <span className="text-sm text-muted-foreground">R$</span>
                 <span className="font-heading text-5xl font-semibold tabular-nums">
-                  19,90
+                  {PRECO_MENSAL}
                 </span>
                 <span className="text-sm text-muted-foreground">/mês</span>
               </p>
@@ -229,12 +248,16 @@ export default function LandingPage() {
                 <Link href="/login">Começar teste grátis</Link>
               </Button>
               <p className="mt-3 text-xs text-muted-foreground">
-                14 dias grátis, sem cartão. Cancele quando quiser.
+                {DIAS_TRIAL} dias grátis, sem cartão. Cancele quando quiser.{" "}
+                <Link href="/precos" className="underline underline-offset-2">
+                  Ver o que está incluído
+                </Link>
+                .
               </p>
             </div>
 
             <ul className="space-y-3 text-sm sm:border-l sm:border-border sm:pl-12">
-              {NO_PRECO.map((item) => (
+              {INCLUSO.map((item) => (
                 <li key={item} className="flex items-start gap-2.5">
                   <CheckIcon
                     aria-hidden
