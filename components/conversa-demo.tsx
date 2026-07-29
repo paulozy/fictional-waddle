@@ -30,10 +30,33 @@ const CONVERSA: Fala[] = [
       "Estes são os horários livres. Qual deles fica melhor para você?\n\n" +
       "1. qui 14/08 09:00\n" +
       "2. qui 14/08 10:30\n" +
-      "3. sex 15/08 14:00\n\n" +
+      "3. sex 15/08 14:00\n" +
+      // A última posição é a saída para quem não pode em nenhum dos horários
+      // próximos. Sem ela a etapa era um laço fechado.
+      "4. Quero escolher outro dia\n\n" +
       "Responda com o número da opção.",
   },
   { de: "cliente", texto: "3" },
+  /**
+   * A etapa `confirmacao` é obrigatória e vinha faltando aqui.
+   *
+   * O fluxo semeado no banco é `servico → horario → confirmacao`
+   * (`supabase/migrations/*_trigger_novo_usuario.sql`), e a engine só grava o
+   * agendamento depois do "1" desta etapa (`engine-fluxo.ts`, ramo
+   * `case "confirmacao"`). A demo pulava do horário direto para o "confirmado",
+   * omitindo uma pergunta inteira — e a landing e `/como-funciona` afirmam que
+   * esta transcrição é literal.
+   */
+  {
+    de: "bot",
+    texto:
+      "Confira os dados do seu agendamento:\n\n" +
+      "Serviço: Corte + barba\n" +
+      "Quando: sex 15/08 14:00\n\n" +
+      "1. Confirmar\n" +
+      "2. Cancelar",
+  },
+  { de: "cliente", texto: "1" },
   {
     de: "bot",
     texto:
@@ -49,7 +72,7 @@ export function ConversaDemo() {
     <div
       className="mx-auto w-full max-w-sm rounded-xl border border-border bg-card p-3 shadow-sm"
       role="img"
-      aria-label="Exemplo de conversa: o cliente pede um horário, o bot lista os serviços numerados, o cliente responde com um número, o bot lista os horários livres e confirma o agendamento."
+      aria-label="Exemplo de conversa: o cliente pede um horário, o bot lista os serviços numerados, o cliente responde com um número, o bot lista os horários livres com a opção de escolher outro dia, o cliente escolhe, o bot mostra um resumo para conferência e confirma o agendamento depois do cliente aceitar."
     >
       <div className="flex items-center gap-2 border-b border-border pb-3">
         <span

@@ -2,13 +2,17 @@ import { describe, expect, it } from "vitest";
 import {
   calcularSlotsLivres,
   diaDaSemanaNoFuso,
+  diaSeguinte,
+  diasComVaga,
   haSobreposicao,
   instanteNoFuso,
   janelasDoDia,
   mesclarIntervalos,
   minutosDoDia,
   minutosDoDiaOuNulo,
+  slotsDoDia,
   type Intervalo,
+  type ParametrosDiasComVaga,
   type ParametrosDisponibilidade,
 } from "./disponibilidade";
 
@@ -398,5 +402,139 @@ describe("calcularSlotsLivres", () => {
       "2026-08-10T13:00:00.000Z",
       "2026-08-10T14:00:00.000Z",
     ]);
+  });
+});
+
+/**
+ * `proximosSlots` só alcança os horários cronologicamente mais próximos — numa
+ * grade cheia, um dia só. `diasComVaga` é o que dá ao cliente um caminho até uma
+ * data específica dentro do horizonte.
+ */
+describe("diasComVaga", () => {
+  /** Sexta 07/08/2026, 08:00. */
+  const AGORA = emSP("2026-08-07", "08:00");
+
+  /** Seg-sex 09:00-12:00. Fim de semana fechado. */
+  const GRADE_SEMANA = [1, 2, 3, 4, 5].map((dia) => ({
+    dia_semana: dia,
+    hora_inicio: "09:00:00",
+    hora_fim: "12:00:00",
+  }));
+
+  function varrer(sobrescritas: Partial<ParametrosDiasComVaga> = {}) {
+    return diasComVaga({
+      agora: AGORA,
+      fusoHorario: FUSO,
+      grade: GRADE_SEMANA,
+      ocupados: [],
+      duracaoMinutos: 60,
+      passoMinutos: 60,
+      antecedenciaMinimaMinutos: 0,
+      horizonteDias: 7,
+      limite: 7,
+      ...sobrescritas,
+    });
+  }
+
+  /**
+   * Listar dia fechado marcado como "sem vaga" gastaria posição do menu numerado
+   * e levaria o cliente a uma parede. É a razão de esta função existir em vez de
+   * a engine usar `datasNoHorizonte` direto.
+   */
+  it("exclui dia sem nenhum horário livre", () => {
+    expect(varrer().datas).toEqual([
+      "2026-08-07",
+      "2026-08-10",
+      "2026-08-11",
+      "2026-08-12",
+      "2026-08-13",
+    ]);
+  });
+
+  it("exclui dia que está inteiramente ocupado", () => {
+    const { datas } = varrer({
+      ocupados: [
+        { inicio: emSP("2026-08-10", "09:00"), fim: emSP("2026-08-10", "12:00") },
+      ],
+    });
+
+    expect(datas).not.toContain("2026-08-10");
+    expect(datas).toContain("2026-08-11");
+  });
+
+  /**
+   * `temMais` é o que decide se "Ver mais dias" aparece. Sem ele o cliente pagina
+   * para dentro de semanas vazias e conclui que o produto travou.
+   */
+  it("marca temMais só quando existe dia além da página", () => {
+    expect(varrer({ limite: 2 }).temMais).toBe(true);
+    expect(varrer({ limite: 7 }).temMais).toBe(false);
+  });
+
+  it("respeita o cursor de data, e o cursor é exclusivo do que passou", () => {
+    const { datas } = varrer({ desde: "2026-08-11" });
+
+    expect(datas).toEqual(["2026-08-11", "2026-08-12", "2026-08-13"]);
+  });
+
+  it("informa o último dia do horizonte, para dizer o teto ao cliente", () => {
+    expect(varrer().ultimoDiaDoHorizonte).toBe("2026-08-13");
+  });
+
+  it("devolve vazio quando a agenda inteira está fechada", () => {
+    const { datas, temMais } = varrer({ grade: [] });
+
+    expect(datas).toEqual([]);
+    expect(temMais).toBe(false);
+  });
+
+  it("devolve vazio com limite zero, sem varrer", () => {
+    expect(varrer({ limite: 0 }).datas).toEqual([]);
+  });
+
+  /** Serviço que não cabe em nenhuma faixa: todo dia fica sem vaga. */
+  it("exclui todos os dias quando o serviço não cabe na grade", () => {
+    expect(varrer({ duracaoMinutos: 240 }).datas).toEqual([]);
+  });
+});
+
+describe("slotsDoDia", () => {
+  it("resolve a grade semanal por dentro, para a data pedida", () => {
+    const slots = slotsDoDia(SEGUNDA, {
+      agora: emSP("2026-08-07", "08:00"),
+      fusoHorario: FUSO,
+      grade: [
+        { dia_semana: 1, hora_inicio: "09:00:00", hora_fim: "11:00:00" },
+        // Terça não deve influenciar o resultado de uma segunda.
+        { dia_semana: 2, hora_inicio: "15:00:00", hora_fim: "18:00:00" },
+      ],
+      ocupados: [],
+      duracaoMinutos: 60,
+      passoMinutos: 60,
+      antecedenciaMinimaMinutos: 0,
+    });
+
+    expect(horas(slots)).toEqual(["09:00", "10:00"]);
+  });
+});
+
+describe("diaSeguinte", () => {
+  it("avança um dia de calendário", () => {
+    expect(diaSeguinte("2026-08-07", FUSO)).toBe("2026-08-08");
+  });
+
+  it("atravessa virada de mês e de ano", () => {
+    expect(diaSeguinte("2026-08-31", FUSO)).toBe("2026-09-01");
+    expect(diaSeguinte("2026-12-31", FUSO)).toBe("2027-01-01");
+  });
+
+  /**
+   * O motivo de passar por `datasNoHorizonte` em vez de somar 86.400.000 ms: em
+   * fuso com horário de verão, somar milissegundos pula ou repete uma data.
+   * Lisboa entrou no horário de verão em 29/03/2026.
+   */
+  it("não escorrega na virada de horário de verão", () => {
+    expect(diaSeguinte("2026-03-28", "Europe/Lisbon")).toBe("2026-03-29");
+    expect(diaSeguinte("2026-03-29", "Europe/Lisbon")).toBe("2026-03-30");
   });
 });

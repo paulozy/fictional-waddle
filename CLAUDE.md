@@ -4,14 +4,30 @@ Este arquivo orienta o Claude Code (e qualquer instância do Claude) ao trabalha
 
 ## Visão geral do produto
 
-**Nome de trabalho:** (definir — provisoriamente "AgendaZap")
+**Nome:** **Encaixaria** (`encaixaria.com.br`). O nome anterior, "AgendaZap", foi abandonado por um motivo que não é estético: **10+ produtos homônimos no mesmo nicho** no Brasil (`agendezap.com.br`, `agendazap.me`, `appagendazap.com`, `agendazap.app`, `agendazap.top`, `agenda-zap.com`, `minhaagendazap.com`, e um `agendazap-ai.vercel.app` já indexado), todos de agendamento por WhatsApp para salão/barbearia/clínica. Buscar a marca era uma consulta ambígua que o Google resolve por sinais de entidade — domínio de correspondência exata, links, menções — e não por markup, então nenhum esforço de SEO técnico tornaria o produto encontrável pelo nome. "Encaixaria" foi escolhido por ter busca exata **sem nenhuma entidade comercial** (só verbetes de dicionário), `.com.br` e `.com` livres, e significado transparente para o dono ("onde se dá encaixe", com a terminação de barbearia/padaria). **Evitar o sufixo `-zap` em qualquer nome derivado**: é onde mora a saturação. Uma busca de anterioridade no INPI (classes 42 e 35) segue pendente — não foi possível consultar o portal.
 **O que é:** SaaS de nicho que automatiza agendamento e triagem via WhatsApp para negócios de serviço com horário marcado (salões, clínicas, barbearias, esteticistas). O bot responde **pelo próprio número de WhatsApp do estabelecimento**, mostra horários disponíveis, confirma agendamento e envia lembrete automático.
 
 **Problema que resolve:** o dono/atendente perde agendamento porque não consegue responder mensagem na hora (está atendendo outro cliente), e o cliente desiste e procura concorrente. Também reduz falta (no-show) via lembrete automático.
 
-**Modelo de negócio:** assinatura mensal (R$20-40/mês, testar com os primeiros usuários — ticket pode ser mais alto do que produtos de nicho similares, já que reduz falta = dinheiro direto no bolso do dono).
+**Modelo de negócio:** assinatura mensal de **R$ 49,90, faixa única** (`lib/plano.ts` é a fonte única — landing e `/precos` leem daí).
+
+O número tem ancoragem medida, e mexer nele sem refazer a pesquisa desfaz o raciocínio. A mediana do nicho "bot que **agenda** por WhatsApp" é ~R$ 90: RobotiZap R$ 89,90 (plano único, API oficial da Meta), AgendeZap Profissional R$ 89,90, agendazap.me Básico R$ 99,90. Abaixo disso o mercado só tem tier de lembrete-só (AgendeZap Start R$ 39,90) ou teto de volume (R$ 29,90/100 créditos; R$ 49,99/150 agendamentos). No grupo estabelecido: Trinks R$ 76 (1-2 profissionais), AppBarber R$ 79,90, Avec R$ 88,90, Booksy R$ 99,99, Belasis R$ 99.
+
+Três consequências que não são óbvias:
+
+- **Não empatar com a mediana.** A R$ 89,90 o comprador compara feature por feature, e aí a Encaixaria perde em quase toda linha (sem API oficial, sem financeiro, sem comissão, sem cobrança de sinal, sem multi-profissional, sem prova social). A R$ 49,90 a pergunta muda de "qual é melhor" para "eu preciso de tudo aquilo?", que é a pergunta que a Encaixaria ganha.
+- **Não descer para R$ 39,90.** É exatamente o tier de lembrete-só do AgendeZap: precificar ali comunica "sou ferramenta de lembrete", e o bot que agenda é justamente o que existe aqui.
+- **Os R$ 19,90 anteriores estavam abaixo do piso da categoria inteira.** O argumento decisivo para subir não é infra (o socket Baileys custa uns R$ 2-4/tenant) — é que **sem gateway cada conversão é uma conversa de ~20 min no WhatsApp mais suporte recorrente**, e vinte reais não pagam isso. Subir depois, sem gateway, é uma conversa individual com cada cliente: a janela barata é antes dos pilotos converterem.
+
+**Faixa única é decisão, não etapa.** O único eixo que o mercado usa para escalonar é número de profissionais — e o produto é declaradamente "um estabelecimento, um número". Cada faixa extra também é trabalho manual permanente num campo (`status_assinatura`) digitado à mão, onde typo = cliente pagante sem bot. "Preço único, não conto cadeira nem cliente nem mensagem" é frase que só a Encaixaria pode dizer no nicho.
+
+**ROI, com fonte.** Corte a R$ 50-65 na maior parte do país, então **uma falta evitada paga o mês**. A base defensável para o efeito de lembrete é Cochrane CD007458 (comparecimento 67,8% → 78,6%) e meta-análise de SMS (RR 0,77, ~23% menos falta) — evidência de **saúde**, não de barbearia: usar como ordem de grandeza, nunca como promessa. Os "20-30% de falta caem para 3%" que aparecem em toda busca são material de venda de fornecedor, sem metodologia; **não citar**.
+
+**Trial de 14 dias é ativo, e era usado como detalhe.** É o dobro dos 7 dias do RobotiZap, AgendeZap, agendazap.me e Booksy. Não passar a pedir cartão: sem gateway não haveria como cobrar depois, e o trial-por-número já resolve o abuso.
 
 **Diferencial competitivo:** roda 100% dentro do WhatsApp que o cliente final já usa — sem exigir download de app separado (diferente de concorrentes como Booksy/Trinks). Deixar isso explícito na landing page.
+
+**Mas "sem app" não é exclusivo, e isso importa na redação.** O **RobotiZap** (R$ 89,90, plano único) tem o mesmo pitch quase palavra por palavra — *"Seu cliente já está no WhatsApp. Por que pedir pra ele baixar mais um app?"* — usa **API oficial da Meta** em vez de Baileys, e **ataca o QR code na própria FAQ**, dizendo que é *"um pouco mais instável"*. Consequências: o argumento "sem app" vale contra Booksy/Trinks/AppBarber, **não** contra o nicho; e a fragilidade da conexão deve ser dita por nós primeiro (o painel avisa, reconecta em um minuto) — dita pelo concorrente antes, soa como algo que escondemos. Também não vender IA: metade do nicho vende, aqui é menu numerado, e o menu é virtude real (funciona com cliente de qualquer idade e internet ruim).
 
 **Não é escopo deste produto (evitar scope creep):**
 - Não é um CRM completo de clientes.
@@ -76,7 +92,7 @@ Essa diferença afeta o desenho de dados, onboarding e o roteamento de webhooks 
 | `agendamentos` | O agendamento, com snapshot de duração e proteção anti-sobreposição |
 | `fluxo_etapas` | Roteiro de perguntas do bot, montado pelo dono |
 | `conversas_estado` | Estado da conversa por instância + interlocutor |
-| `log_envio` | Registro de confirmações e lembretes enviados |
+| `log_envio` | Registro de lembretes enviados. O CHECK aceita `tipo = 'confirmacao'`, mas **nada escreve esse valor**: o único escritor é o cron, sempre com `'lembrete'`. A confirmação sai pelo webhook e não é registrada |
 
 ### Decisões de schema que não são óbvias
 
@@ -205,7 +221,7 @@ O dono opera isto **entre atendimentos, no celular, com uma mão**. O dashboard 
 
 ## A marca
 
-**Uma fonte, quatro recortes.** `public/agendazap-icon.png` é 500×500 com fundo transparente, e o desenho ocupa só **51,8%** do quadro (medido: bbox de 259px, ~24% de margem em cada lado). Essa margem atrapalha em todo destino, então `lib/marca.ts` guarda a fração e a conta de ampliar-e-recortar; `lib/marca-servidor.tsx` compõe para os geradores de ícone e `components/marca.tsx` para a UI. **Ao trocar o PNG, remedir `FRACAO_DESENHO`** — `lib/marca.test.ts` trava o valor justamente para isso não passar em silêncio.
+**Uma fonte, quatro recortes.** `public/encaixaria-icon.png` é 500×500 com fundo transparente, e o desenho ocupa só **51,8%** do quadro (medido: bbox de 259px, ~24% de margem em cada lado). Essa margem atrapalha em todo destino, então `lib/marca.ts` guarda a fração e a conta de ampliar-e-recortar; `lib/marca-servidor.tsx` compõe para os geradores de ícone e `components/marca.tsx` para a UI. **Ao trocar o PNG, remedir `FRACAO_DESENHO`** — `lib/marca.test.ts` trava o valor justamente para isso não passar em silêncio.
 
 **Ocupação por destino, e por quê:** favicon 94% (a 32px a margem é desperdício puro), ícone `any` 84% (o web.dev pede "sem padding extra"), `apple-icon` 70%, maskable 66%. As margens de `any` e `maskable` são **opostas** — por isso são arquivos diferentes, não o mesmo declarado duas vezes.
 
@@ -215,7 +231,7 @@ O dono opera isto **entre atendimentos, no celular, com uma mão**. O dashboard 
 
 **Ler o PNG com `readFile`, nunca `import`.** O `ImageResponse` tem teto de 500 KB de bundle e conta imagens; um `import` colocaria os 87 KB dentro do bundle de cada rota.
 
-**Verde e roxo vivem na marca; a UI é teal.** O símbolo é verde `#0EC962` (2,13:1 no papel) e roxo `#7947E4` — nenhum dos dois existe em `app/globals.css`, e não deve passar a existir. Logotipo não é componente de UI: o SC 1.4.3 isenta texto de logo, e o SC 1.4.11 não alcança o símbolo porque ele não é *"required to understand the content"* — quem carrega o significado é a palavra "AgendaZap" ao lado. É por isso que `components/marca.tsx` usa `alt=""`, e é essa decoratividade que sustenta a isenção. **A isenção evapora se a cor virar funcional**: ícone de status, botão ou borda de foco em verde voltam a exigir 3:1 e reprovam.
+**Verde e roxo vivem na marca; a UI é teal.** O símbolo é verde `#0EC962` (2,13:1 no papel) e roxo `#7947E4` — nenhum dos dois existe em `app/globals.css`, e não deve passar a existir. Logotipo não é componente de UI: o SC 1.4.3 isenta texto de logo, e o SC 1.4.11 não alcança o símbolo porque ele não é *"required to understand the content"* — quem carrega o significado é a palavra "Encaixaria" ao lado. É por isso que `components/marca.tsx` usa `alt=""`, e é essa decoratividade que sustenta a isenção. **A isenção evapora se a cor virar funcional**: ícone de status, botão ou borda de foco em verde voltam a exigir 3:1 e reprovam.
 
 A palavra ao lado do símbolo fica em `text-foreground`, não em `text-primary` — com o mark colorido, o teal na tipografia daria três famílias de cor no mesmo cabeçalho, e o teal precisa continuar significando "elemento interativo".
 
@@ -225,16 +241,63 @@ A palavra ao lado do símbolo fica em `text-foreground`, não em `text-primary` 
 
 ---
 
+## SEO e páginas públicas
+
+O objetivo declarado era ser encontrado pesquisando o nome no Google. Isso dependia de duas coisas independentes: um nome inequívoco (ver "Nome", acima) e uma base de indexação que **não existia**. Medido no HTML pré-renderizado antes: zero `rel="canonical"`, zero tags `og:`, zero JSON-LD, sem `robots.txt`, sem `sitemap.xml`, sem `noindex` na área logada.
+
+**`lib/site.ts` é a fonte única do domínio, e `metadataPagina` existe por duas armadilhas do App Router — as duas medidas no HTML do build, não deduzidas.**
+
+1. **A mesclagem de metadata é superficial.** Uma página que declara `openGraph: { url }` **substitui o objeto inteiro** do layout: `siteName`, `locale` e `type` desaparecem sem aviso. Por isso o helper monta o objeto completo, e por isso `twitter.card` é repetido nele — declarar `twitter` na página apaga o do layout e a prévia volta ao cartão pequeno.
+2. **`alternates.canonical` não pode morar no layout raiz.** Um `canonical: "/"` lá é herdado literalmente, e `/precos` passaria a se anunciar como cópia da home.
+3. **O `og:image` do `opengraph-image` só é injetado em quem NÃO declara `openGraph`.** Consequência que apareceu no build: `/login` recebia a tag e a home não — a página que mais precisa da prévia era a única sem ela. Daí `IMAGEM_SOCIAL` ser declarada à mão, com `width`/`height`. O custo é perder o sufixo de hash que o Next usa para invalidar cache; não há como lê-lo do userland.
+
+**`urlSite()` não usa `envObrigatoria`, de propósito.** `metadataBase` é avaliado em tempo de módulo de `app/layout.tsx`: lançar ali quebraria o build inteiro em qualquer ambiente sem `SITE_URL`. A cadeia é `SITE_URL` → `VERCEL_PROJECT_PRODUCTION_URL` → `localhost`. É `VERCEL_PROJECT_PRODUCTION_URL` e **não** `VERCEL_URL`: aquela muda a cada deploy e faria canonical e sitemap apontarem para um deployment específico.
+
+**`noindex` sem `Disallow`, e isso é contraintuitivo.** Dashboard e `/login` usam `metadata.robots`, e `app/robots.ts` **não** os bloqueia. O Google só respeita `noindex` se puder buscar a página — `Disallow` impediria a leitura da diretiva e a URL poderia ser indexada sem conteúdo. A "correção" de adicionar `Disallow` aparece em todo tutorial e está travada por teste em `app/seo.test.ts`.
+
+**O matcher do `proxy.ts` exclui `robots.txt`, `sitemap.xml` e `opengraph-image`.** Não era redirect (a decisão em `lib/supabase/proxy.ts` é allowlist), mas cada hit de crawler gastava um `getClaims()` e, quando o refresh rotaciona cookies, o `setAll` injeta `no-store` na resposta — desabilitando o cache de rotas que deveriam ser estáticas.
+
+**O FAQ usa `<details name>` nativo, e voltar para o Radix quebra o SEO em silêncio.** O `AccordionPrimitive.Content` **desmonta o conteúdo fechado** e o Google não clica em nada. As 9 perguntas iam para o HTML e nenhuma das 9 respostas — medido: 649 → **1099 palavras** indexáveis na landing depois da troca. O `name` compartilhado dá "um aberto por vez" sem JavaScript, e o componente deixou de ser `"use client"`. `components/ui/accordion.tsx` segue existindo como primitivo, mas **não deve voltar para conteúdo que precise ser indexado**.
+
+**JSON-LD só na home** (`lib/json-ld.ts`), porque a doc é literal: *"The WebSite structured data must be on the home page of a site"*. `WebSite` é o único lever documentado para o nome do site na SERP; `Organization` alimenta logo e knowledge panel. Três tipos ficam fora **de propósito**, e há teste afirmando a ausência de cada um, porque markup obsoleto não dá erro em lugar nenhum:
+
+- **`FAQPage`** — deixou de aparecer em 2026-05-07, doc removida em 2026-06-15.
+- **`potentialAction`/`SearchAction`** — sitelinks searchbox removido em 2024-11-21.
+- **`SoftwareApplication`** — exige `aggregateRating` ou `review`; sem piloto avaliando é inelegível, e inventar rating contradiz a decisão de não fabricar prova social.
+
+**`PERFIS_EXTERNOS` vazio é informação, não pendência esquecida.** `sameAs` é o campo com maior retorno para a consulta de marca, e o retorno só existe depois de ação humana (Instagram, LinkedIn de empresa, GitHub, Product Hunt). Preencher conforme cada perfil nascer.
+
+**A fonte do `opengraph-image` é um `.ttf` no repositório, e isso foi obrigatório.** O Satori **não tem fonte padrão** — sem `fonts:`, texto sai em branco — e `next/font` não expõe o arquivo (nem o Satori lê `woff2`). A Bricolage Grotesque foi **instanciada** no peso 600 e reduzida aos glifos latinos com acento: 408 KB → 18 KB, licença OFL em `public/`. Se algum texto da imagem usar caractere fora do subset, ele sai **vazio e sem erro**. Também: `MarcaRecortada` assume quadro **quadrado**, então num canvas 1200×630 precisa ir dentro de um `<div>` de lado fixo.
+
+**"Fora do sitemap" NÃO é "não indexável", e essa confusão custou uma correção.** Sitemap e links são vias de **descoberta**; um visitante com Chrome, um `Referer` em log público ou o link colado numa conversa bastam para o Googlebot chegar. Página que não deve aparecer na busca precisa de `noindex` — é o que o parâmetro `naoIndexar` de `metadataPagina` faz.
+
+**`IDENTIFICACAO_LEGAL` está preenchida, e o mecanismo de pendência continua armado.** `lib/organizacao.test.ts` falha se qualquer campo voltar a ser marcador (não trocar por `skip` nem `todo` — os dois passam), e como **deploy na Vercel não roda teste**, `identificacaoPendente()` também dirige comportamento: com marcador, `/sobre`, `/privacidade` e `/termos` saem `noindex` e fora do sitemap, e o `Organization` omite `legalName`/`taxID`. Publicar `"legalName": "[RAZÃO SOCIAL]"` seria pior que campo ausente — o Google leria o marcador como o nome da empresa.
+
+**O nome fantasia (`PRTI`) aparece nas páginas legais e NUNCA no JSON-LD.** O campo natural para ele seria `Organization.alternateName`, que é exatamente o plano B que o Google usa para escolher o nome do site na SERP — colocá-lo ali cria uma segunda marca competindo com "Encaixaria" pela consulta de marca, ou seja, desfaz o objetivo de todo o trabalho de SEO. `Organization.name` é sempre só "Encaixaria", e há teste afirmando a ausência de `alternateName`.
+
+**As duas páginas de comparação são rascunho:** `noindex`, fora do sitemap e sem link, até revisão humana, porque afirmam preço e recurso de outra empresa. Regras que valem para elas: todo número com data e fonte (`NotaDeApuracao`), e uma seção dizendo onde o concorrente ganha — comparação em que o autor vence todas as linhas é lida como propaganda, e qualifica mal o lead. A afirmação sobre multa de fidelidade do Trinks foi deixada de fora por ser a de maior dano se estiver vencida.
+
+**As páginas de texto descrevem o sistema real, e uma revisão pegou três desvios — o padrão vale para o futuro: o defeito não está no markup, está na afirmação que o código contradiz.** Os três: (a) a política dizia que o estado da conversa era "descartado depois de seis horas", mas **não existe `delete` em `conversas_estado`** — as 6h são expiração de leitura, e a linha só sai com a conta; (b) dizia que o nome do cliente era "informado na conversa", quando vem de `data.pushName` e a V0 não tem etapa que pergunte nome; (c) a FAQ prometia cancelar "sem falar com ninguém" enquanto `/termos` e `/precos` diziam o contrário — não há gateway, o cancelamento é por mensagem. **Ao mudar schema ou fluxo do bot, reler `/privacidade` e `/termos`.**
+
+**`ROBOTS_PRIVADO` e `metadata: Metadata` andam juntos.** Sem a anotação de tipo, um typo (`robot`, `noindex: true`) compila, não emite tag nenhuma e a página fica indexável em silêncio. O teste em `app/seo.test.ts` cobre as duas metades: que o `robots.txt` **não** bloqueia e que o `noindex` **existe** — com só uma das duas, a página é indexável e nada falha.
+
 ## Estrutura de pastas esperada
 
 ```
 /app
-  layout.tsx                          → fontes, tema, e o `viewport` (safe area, themeColor)
+  layout.tsx                          → fontes, tema, `viewport` e a metadata raiz (metadataBase, title.template)
   manifest.ts                         → PWA: ícone na tela inicial e abertura em standalone
   icon.tsx / apple-icon.tsx           → ícones gerados por ImageResponse, sem binário no repo
+  opengraph-image.tsx                 → prévia de link 1200×630 (WhatsApp, redes)
+  robots.ts / sitemap.ts              → indexação; dashboard e /login ficam fora
   /(marketing)
-    page.tsx
-    menu-secoes.tsx                   → Sheet com as âncoras da landing abaixo de `sm`
+    page.tsx                          → landing; é aqui que o JSON-LD vive
+    perguntas.ts                      → dados do FAQ, módulo puro (é o texto indexável)
+    perguntas-frequentes.tsx          → `<details>` nativo, NÃO Radix (ver seção de SEO)
+    pagina-texto.tsx                  → moldura das páginas de texto corrido
+    comparacao.tsx                    → peças das páginas de comparação (rascunho)
+    precos/ como-funciona/ sobre/ privacidade/ termos/
+    menu-secoes.tsx                   → Sheet com a navegação abaixo de `sm`
   /(dashboard)
     layout.tsx                      → verifica sessão, redireciona se ausente
     conexao-whatsapp/page.tsx        → exibe QR code, status da instância
@@ -255,6 +318,9 @@ A palavra ao lado do símbolo fica em `text-foreground`, não em `text-primary` 
   supabase/
     server.ts                        → client respeitando RLS
     admin.ts                          → client com service role key
+  site.ts                             → domínio, `metadataPagina`, identificação legal, perfis externos
+  json-ld.ts                          → WebSite + Organization da home
+  plano.ts                            → preço, trial e o que está/não está incluído
   evolution-api.ts                    → funções: criar instância, gerar QR code, enviar mensagem, checar status
   telefone.ts                         → normaliza o número do dono para o código de pareamento
   calendario.ts                       → layout da grade semanal (puro)
@@ -321,13 +387,61 @@ Processado dentro de `/api/webhook/whatsapp/[instance]/route.ts`, chamado pela E
 3. Se `etapa_atual_id` é nulo (conversa nova), buscar a primeira etapa ativa (menor `ordem`) e apresentá-la.
 4. Se já há uma `etapa_atual_id`, processar a resposta recebida conforme o `tipo` dessa etapa:
    - **`servico` / `escolha_unica`:** validar que a resposta corresponde a uma opção válida (por índice numérico); se `tipo = 'servico'`, salvar `servico_id` em `dados_temporarios`; se `escolha_unica`, salvar o `valor` escolhido em `dados_temporarios[campo_destino]`.
-   - **`horario`:** validar índice escolhido entre os horários calculados; salvar `data_hora` em `dados_temporarios`.
+   - **`horario`:** validar índice escolhido entre os horários calculados; salvar `data_hora` em `dados_temporarios`. Esta etapa tem **três fases internas** e ações de navegação — ver a seção própria abaixo antes de mexer.
    - **`texto_livre`:** salvar o texto recebido diretamente em `dados_temporarios[campo_destino]`.
    - **`confirmacao`:** se resposta for afirmativa, criar o registro em `agendamentos` (usando `servico_id` e `data_hora` de `dados_temporarios`, e todo o restante das chaves customizadas em `respostas_extras`), responder confirmação final, e limpar `conversas_estado`.
 5. Buscar a próxima etapa ativa (`ordem` seguinte) e apresentá-la, atualizando `etapa_atual_id`.
 6. Qualquer resposta fora do esperado (número inválido, fora das opções) deve reapresentar a etapa atual sem avançar, nunca travar a conversa sem resposta.
 
 `lib/bot/disponibilidade.ts` calcula horários livres cruzando `horarios_disponiveis` (grade fixa do estabelecimento) com `agendamentos` já existentes na mesma data, considerando a `duracao_minutos` do serviço escolhido para não sobrepor horários.
+
+### A etapa `horario` tem três fases internas
+
+**O problema que isso resolveu era pior do que "poucas opções": a etapa era um laço fechado.** `proximosSlots` devolve os `MAX_OPCOES_HORARIO` (8) horários **cronologicamente mais próximos**, o que numa grade cheia é um dia só — medido com os defaults e uma grade de barbearia: `09:00` a `13:30` de um único dia, de um horizonte de 30 dias com ~540 slots. E resposta fora da lista caía em `reapresentar`, que devolvia **a mesma lista**. Não havia "outro dia" nem "cancelar" (a `confirmacao` tem saída, a `horario` não tinha): as únicas saídas eram abandonar e esperar as 6h, ou o dono atender à mão — exatamente o custo que o produto existe para eliminar.
+
+As fases são `proximos` (entrada, e o caminho de sempre) → `dias` → `dia`, em `dados_temporarios`:
+
+| Chave | Papel |
+|---|---|
+| `__horario_fase` | Estado **explícito**. Derivar a fase do formato das strings em `__opcoes_oferecidas` seria type-tag implícita dentro de string |
+| `__dia_escolhido` | `YYYY-MM-DD` no calendário do negócio. **Data, nunca instante** — é o que deixa a fase `dia` recompor os slots sem lógica de fuso nova |
+| `__dias_desde` | Cursor de paginação de dias. **Cursor de data, não offset**: entre a mensagem e a resposta pode virar a meia-noite, e um offset escorregaria um dia |
+| `__horas_desde` | Última hora **já mostrada** num dia longo. Limite exclusivo |
+| `__horario_v` | Marcador de formato (`2`) — ver abaixo |
+
+Decisões que não são óbvias:
+
+- **O escape é opcional, não o caminho padrão.** Quem aceita horário próximo troca exatamente as mesmas mensagens de antes; só quem precisa de outro dia paga +2 idas e voltas. Trocar por "dia sempre primeiro" custaria +1 mensagem para todo mundo e esconderia a vaga imediata — caro num produto vendido por não perder cliente.
+- **A linha de escape só aparece se existir outro dia com vaga.** Numa agenda que só tem hoje, ela levaria a um menu de uma opção.
+- **O menu de dias lista só dias com vaga** (`diasComVaga`, não `datasNoHorizonte`). Dia fechado marcado como "sem vaga" gastaria posição do menu e levaria o cliente a uma parede.
+- **`temMais` e o rodapé de teto.** `antecedencia_maxima_dias` existia sem nenhuma forma de o cliente descobrir: ele pediria "mais dias" até a opção sumir. A última página diz o teto em voz alta.
+- **Fase `dia` vazia nunca encerra a conversa** — volta ao menu de dias. Uma regra cobre três casos: virou a meia-noite, o dia lotou durante a conversa, os horários já passaram.
+- **Zero query nova e zero migration.** `montarContexto` já carrega grade e ocupados do horizonte inteiro em toda mensagem. As sub-fases são comportamento interno de uma etapa de sistema: `fluxo_etapas`, o builder e o seed não mudam.
+
+**`__horario_v` existe porque `fluxo_snapshot` não cobre este caso.** O snapshot protege reordenação de etapas, não o comportamento interno de uma etapa, que é código. Uma conversa parada na etapa no instante do deploy tem só ISOs em `__opcoes_oferecidas` e nenhuma chave nova — sem o marcador, quem digitasse "9" cairia em "quero escolher outro dia" sem ter visto a linha. Ausente = engine antiga ⇒ interpreta como índice puro. **O shim pode sair no deploy seguinte**, porque toda conversa anterior já expirou pelas 6h.
+
+**Duas invariantes que uma revisão pegou como bug real, e que o teste original chegou a assar:**
+
+1. **Mostrar o menu de dias implica o estado dizer `fase: "dias"`.** `apresentar` é pura sobre `dados` e não conseguia corrigir a fase quando descobria, no meio do caminho, que o dia escolhido tinha esvaziado — o estado ficava dizendo `"dia"` com opções que eram datas. A escolha seguinte gravava `"2026-08-11"` em `__data_hora`: data **válida** para o `Date`, que vira meia-noite UTC e portanto **21:00 do dia anterior** em São Paulo. O cliente escolhia "ter 11/08" e o bot respondia "seg 10/08 21:00", criando agendamento no dia errado e fora do horário de funcionamento. O conserto é o campo `dados` de `Apresentacao`, um patch que `avancarPara` mescla (com `undefined` apagando a chave), emitido **incondicionalmente** por `apresentarMenuDeDias`.
+2. **Nenhuma navegação pode ser porta de mão única.** A última página de dias não tinha "Ver mais dias" nem volta: quem paginava longe demais só saía abandonando — o defeito desta etapa, repetido em miniatura. Daí `ACAO_PRIMEIROS_DIAS`, oferecida a partir da segunda página.
+
+**`ehInstanteDaEngine` é mais estrito que `Number.isFinite`, de propósito.** Toda opção de horário nasce de `slot.inicio.toISOString()`, então exigir ida e volta exata (`new Date(v).toISOString() === v`) rejeita data sem hora, sentinela e estado corrompido — coisas que `Number.isFinite` aceitava.
+
+**Sentinela de navegação nunca pode virar valor.** As ações entram em `__opcoes_oferecidas` como `__acao:*`, e o ramo `horario` valida `Number.isFinite(new Date(escolha).getTime())` antes de gravar `__data_hora`. A guarda da `confirmacao` faz o mesmo. Sem isso, `formatarSlot(new Date("__acao:..."))` lança `RangeError` dentro de `decidir` e **antes** de `persistir`: a Evolution recebe 500 e entra em **retry do mesmo webhook indefinidamente**, com a conversa travada por 6h. E a checagem de passado logo abaixo compara `NaN < limite`, que é `false` — a data inválida atravessaria e criaria agendamento.
+
+**A invariante que não pode cair em nenhuma fase:** a resposta é interpretada contra a lista **que foi apresentada** (`__opcoes_oferecidas`), nunca contra uma recalculada. É ela que impede o cliente de agendar um horário que não pediu quando alguém agenda no meio da conversa. Há um teste por fase.
+
+### Botão e lista do WhatsApp estão fora, e não é escolha estética
+
+Não reabrir sem migrar para a API oficial da Meta, que o CLAUDE.md fecha em outro lugar. Três motivos independentes, cada um suficiente:
+
+- O **Baileys depreciou botões e listas de propósito** — o mantenedor escreveu que o gato e rato com a Meta era insustentável ([DEV](https://dev.to/purpshell/buttons-and-lists-get-deprecated-by-many-libraries-54h), [Baileys #2465](https://github.com/WhiskeySockets/Baileys/issues/2465)).
+- A **2.3.7 especificamente está quebrada**: `TypeError: this.isZero is not a function` e HTTP 400 ([#2390](https://github.com/EvolutionAPI/evolution-api/issues/2390), fechada como *not planned*); `sendButtons` devolve 201 e a mensagem **nunca é entregue** ([#2404](https://github.com/evolution-foundation/evolution-api/issues/2404)).
+- **Enquete também não serve**: o voto não chega pelo webhook de forma confiável ([#1644](https://github.com/EvolutionAPI/evolution-api/issues/1644), [Baileys #2228](https://github.com/WhiskeySockets/Baileys/issues/2228)).
+
+Sobre o tamanho dos menus: **o 7±2 de Miller não se aplica** — ele é sobre recall, e menu no WhatsApp é reconhecimento, com a lista rolável no histórico ([NN/g](https://www.nngroup.com/videos/magical-number-7-ux/)). O teto emprestado que faz sentido é o da própria Meta, que limita a interactive list dela a [10 linhas](https://developers.facebook.com/docs/whatsapp/cloud-api/messages/interactive-list-messages/). `MAX_OPCOES_HORARIO_DO_DIA` **ainda precisa ser medido em aparelho**: se o WhatsApp truncar com "Ler mais" acima de N linhas em texto livre de sessão, é esse N que manda — não achei fonte para o limiar fora de template da Cloud API.
+
+**Parse de data em texto ("20/08", "sexta") não entra.** A linha do projeto é léxico fechado de literais fixos (`AFIRMATIVAS`/`NEGATIVAS`), que não é NLP. Parse de data é generativo e ambíguo, e o modo de falha muda de "não entendi, aqui está o menu" para "entendi algo que você não quis dizer" — que é literalmente o que `/como-funciona` vende contra e afirma em público não existir. Com as três fases, o caminho numerado já alcança todo o horizonte, então um parser deixaria de resolver um problema.
 
 ---
 

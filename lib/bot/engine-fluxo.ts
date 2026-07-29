@@ -1,7 +1,13 @@
 import {
+  datasNoHorizonte,
+  diaSeguinte,
+  diasComVaga,
+  instanteNoFuso,
   proximosSlots,
+  slotsDoDia,
   type HorarioSemanal,
   type Intervalo,
+  type ParametrosDiasComVaga,
   type Slot,
 } from "./disponibilidade";
 
@@ -60,6 +66,65 @@ const CHAVE_DATA_HORA = "__data_hora";
 /** Valores das opções apresentadas na etapa corrente, na ordem exibida. */
 const CHAVE_OPCOES = "__opcoes_oferecidas";
 
+/**
+ * Estado das três fases internas da etapa `horario`.
+ *
+ * A etapa oferecia apenas os 8 horários cronologicamente mais próximos — na
+ * prática um dia só, porque numa grade cheia o limite se esgota antes de amanhã.
+ * Quem só podia na semana seguinte não tinha caminho nenhum até lá: resposta
+ * fora da lista caía em `reapresentar`, que devolvia **a mesma lista**. Era um
+ * laço fechado cujas únicas saídas eram abandonar ou o dono atender à mão.
+ *
+ * As fases são estado **explícito**, e não derivado do formato das strings em
+ * `__opcoes_oferecidas`: aquilo seria uma type-tag implícita dentro de string,
+ * exatamente o que o resto desta base evita.
+ */
+const CHAVE_HORARIO_FASE = "__horario_fase";
+/** `YYYY-MM-DD` no calendário do estabelecimento. **Data, nunca instante.** */
+const CHAVE_DIA_ESCOLHIDO = "__dia_escolhido";
+/** Cursor da paginação de dias. Cursor de data, não offset — ver `diasComVaga`. */
+const CHAVE_DIAS_DESDE = "__dias_desde";
+/**
+ * Última hora **já mostrada** num dia com mais horários que o teto do menu.
+ * A página seguinte começa depois dela — limite exclusivo, não inclusivo.
+ */
+const CHAVE_HORAS_DESDE = "__horas_desde";
+
+/**
+ * Marcador de formato de `dados_temporarios` para esta etapa.
+ *
+ * Ausente significa "estado gravado pela engine anterior às fases". `fluxo_snapshot`
+ * **não** cobre isso: ele protege reordenação de etapas, não o comportamento
+ * interno de uma etapa, que é código. Sem o marcador, um cliente parado na etapa
+ * no instante do deploy responderia "9" achando que escolhia um horário e cairia
+ * em "quero escolher outro dia".
+ *
+ * O shim de leitura pode sair no deploy seguinte: toda conversa anterior já
+ * expirou pelas 6h de `conversaExpirou`.
+ */
+const CHAVE_HORARIO_V = "__horario_v";
+const VERSAO_HORARIO = 2;
+
+/**
+ * Ações de navegação, que ocupam posição no menu numerado ao lado dos horários.
+ *
+ * O prefixo `__` é o que garante que nunca colidem com id de serviço, ISO de slot
+ * ou `valor` de `escolha_unica` — é a mesma reserva que o banco impõe a
+ * `campo_destino`.
+ */
+const ACAO_OUTRO_DIA = "__acao:outro_dia";
+const ACAO_MAIS_DIAS = "__acao:mais_dias";
+/**
+ * Volta à primeira página de dias.
+ *
+ * Sem ela a última página era porta de mão única: sem "Ver mais dias" e sem
+ * caminho de volta, o cliente que paginou longe demais só saía abandonando — o
+ * mesmo defeito que esta etapa inteira existe para consertar, em miniatura.
+ */
+const ACAO_PRIMEIROS_DIAS = "__acao:primeiros_dias";
+const ACAO_VOLTAR_DIAS = "__acao:voltar_dias";
+const ACAO_MAIS_HORAS = "__acao:mais_horas";
+
 export type DadosTemporarios = Record<string, unknown>;
 
 export type EstadoConversa = {
@@ -113,6 +178,23 @@ export type Decisao = {
 /** Quantos horários oferecer no menu numerado. */
 export const MAX_OPCOES_HORARIO = 8;
 
+/**
+ * Tetos dos sub-menus da etapa `horario`.
+ *
+ * O 7±2 de Miller **não** justifica estes números: ele é sobre span de memória
+ * para recall, e um menu no WhatsApp é reconhecimento — a lista fica no
+ * histórico, rolável e re-lível (a NN/g é explícita sobre esse mau uso). O teto
+ * emprestado que faz sentido é o da própria Meta, que limita a interactive list
+ * dela a 10 linhas somando todas as seções.
+ *
+ * `MAX_OPCOES_HORARIO_DO_DIA` **ainda precisa ser medido em aparelho**: se o
+ * WhatsApp truncar a mensagem com "Ler mais" acima de N linhas em texto livre de
+ * sessão, é esse N que manda. Não achei fonte para o limiar fora de template da
+ * Cloud API.
+ */
+export const MAX_OPCOES_DIA = 7;
+export const MAX_OPCOES_HORARIO_DO_DIA = 10;
+
 const AFIRMATIVAS = ["1", "sim", "s", "confirmar", "confirmo", "ok", "isso"];
 const NEGATIVAS = ["2", "nao", "não", "n", "cancelar", "cancela"];
 
@@ -141,11 +223,106 @@ function formatarSlot(slot: Slot, fusoHorario: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
-  return formatador.format(slot.inicio).replace(",", "");
+  /**
+   * `.replace(",", "")` removia **só a primeira** vírgula, e o pt-BR emite duas:
+   * `"sex., 14/08, 09:00"` saía como `"sex. 14/08, 09:00"`, com vírgula sobrando
+   * antes da hora. O ponto da abreviação do dia da semana também some — o
+   * formato pretendido, e o que `components/conversa-demo.tsx` mostra ao
+   * visitante como transcrição, é `"sex 14/08 09:00"`.
+   *
+   * O texto do slot é rótulo: o cliente responde pelo **índice** da lista, então
+   * mudar isto não afeta conversa em andamento.
+   */
+  return formatador.format(slot.inicio).replace(/[.,]/g, "");
 }
 
-function listaNumerada(itens: string[]): string {
-  return itens.map((item, i) => `${i + 1}. ${item}`).join("\n");
+/**
+ * `deslocamento` continua a numeração de um bloco anterior. É obrigatório
+ * quando as ações de navegação vêm depois de uma lista agrupada por turno: o
+ * número indexa `__opcoes_oferecidas`, e reiniciar em 1 tornaria a resposta
+ * ambígua.
+ */
+function listaNumerada(itens: string[], deslocamento = 0): string {
+  return itens
+    .map((item, i) => `${i + 1 + deslocamento}. ${item}`)
+    .join("\n");
+}
+
+/**
+ * A string é um instante gerado por esta engine?
+ *
+ * A ida e volta exata por `toISOString()` é mais estrita que `Number.isFinite`, e
+ * a diferença é um agendamento errado: `"2026-08-11"` é data **válida** para o
+ * `Date`, então `Number.isFinite` a aceitava — e ela vira meia-noite UTC, que no
+ * fuso de São Paulo é 21:00 do dia anterior. Toda opção de horário que a engine
+ * oferece nasce de `slot.inicio.toISOString()`, então o round-trip é exato e
+ * qualquer outra coisa — data sem hora, sentinela, estado corrompido — cai fora.
+ */
+function ehInstanteDaEngine(valor: string): boolean {
+  const instante = new Date(valor);
+  return (
+    Number.isFinite(instante.getTime()) && instante.toISOString() === valor
+  );
+}
+
+/** Só a hora de parede: "09:00". Usado dentro da lista de um dia só. */
+function formatarHora(slot: Slot, fusoHorario: string): string {
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: fusoHorario,
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(slot.inicio);
+}
+
+/**
+ * Rótulo de um dia do menu: "sex 14/08", e "hoje (sex 07/08)" para a data de
+ * hoje no fuso do estabelecimento.
+ *
+ * "hoje" é explicitado porque a primeira linha do menu de dias é a data corrente
+ * e, sem o rótulo, o cliente não tem como saber se `07/08` é hoje ou já passou.
+ * O mesmo `replace(/[.,]/g, "")` de `formatarSlot`: o pt-BR emite ponto na
+ * abreviação do dia da semana e vírgula entre os campos.
+ */
+function formatarDia(data: string, contexto: ContextoConversa): string {
+  const rotulo = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: contexto.fusoHorario,
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+  })
+    .format(instanteNoFuso(data, "12:00", contexto.fusoHorario))
+    .replace(/[.,]/g, "");
+
+  const hoje = datasNoHorizonte(contexto.agora, contexto.fusoHorario, 1)[0];
+  return data === hoje ? `hoje (${rotulo})` : rotulo;
+}
+
+/**
+ * Agrupa os horários de um dia em manhã e tarde.
+ *
+ * Não é enfeite: uma lista corrida de dez horários é lida como um bloco, e o
+ * cliente que só pode à tarde precisa varrer tudo. O agrupamento dá o benefício
+ * de "escolher o turno" **sem** custar uma ida e volta a mais para todo mundo,
+ * que é o motivo de o turno não ser uma pergunta separada.
+ *
+ * A numeração é contínua entre os grupos: ela indexa `__opcoes_oferecidas`, e
+ * reiniciar por turno tornaria a resposta ambígua.
+ */
+function listaPorTurno(rotulos: string[]): string {
+  const manha: string[] = [];
+  const tarde: string[] = [];
+
+  rotulos.forEach((rotulo, i) => {
+    const linha = `${i + 1}. ${rotulo}`;
+    if (Number(rotulo.slice(0, 2)) < 12) manha.push(linha);
+    else tarde.push(linha);
+  });
+
+  const blocos: string[] = [];
+  if (manha.length > 0) blocos.push(`Manhã\n${manha.join("\n")}`);
+  if (tarde.length > 0) blocos.push(`Tarde\n${tarde.join("\n")}`);
+
+  return blocos.join("\n\n");
 }
 
 /** Índice 1-based válido dentro de `opcoes`, ou null. */
@@ -173,9 +350,109 @@ export function respostasCustomizadas(
 }
 
 type Apresentacao =
-  | { ok: true; texto: string; opcoes: string[] }
+  | {
+      ok: true;
+      texto: string;
+      opcoes: string[];
+      /**
+       * Ajustes de estado que a própria apresentação exige, mesclados por
+       * `avancarPara`. Valor `undefined` **apaga** a chave.
+       *
+       * Existe porque uma apresentação pode descobrir, no meio do caminho, que o
+       * estado que a levou até ali não vale mais — o caso concreto é a fase `dia`
+       * achar o dia sem vaga e cair no menu de dias. Sem isto o estado gravado
+       * dizia `fase: "dia"` enquanto as opções já eram datas, e a escolha seguinte
+       * gravava `"2026-08-11"` em `__data_hora`: uma data sem hora, que vira
+       * meia-noite UTC e agenda 21:00 do dia anterior no fuso de São Paulo.
+       */
+      dados?: DadosTemporarios;
+    }
   /** A etapa não pode ser apresentada: encerra a conversa com um aviso. */
   | { ok: false; motivo: string };
+
+/** Parâmetros de varredura do horizonte, montados uma vez pelo ramo `horario`. */
+type Varredura = Omit<ParametrosDiasComVaga, "desde" | "limite">;
+
+/**
+ * Menu de dias que têm vaga.
+ *
+ * Fica fora de `apresentar` porque dois caminhos chegam nele: o cliente pediu
+ * outro dia, e o dia que ele havia escolhido ficou sem horário. O segundo precisa
+ * de um aviso na frente e do cursor zerado — daí os dois parâmetros opcionais.
+ */
+function apresentarMenuDeDias(
+  contexto: ContextoConversa,
+  varredura: Varredura,
+  desde?: string,
+  opts: { aviso?: string } = {},
+): Apresentacao {
+  const pagina = diasComVaga({ ...varredura, desde, limite: MAX_OPCOES_DIA });
+
+  if (pagina.datas.length === 0) {
+    return {
+      ok: false,
+      motivo:
+        "Não encontrei horário livre nos próximos dias. " +
+        "Por favor, entre em contato para verificarmos outra data.",
+    };
+  }
+
+  const itens = pagina.datas.map((data) => formatarDia(data, contexto));
+  const opcoes = [...pagina.datas];
+
+  if (pagina.temMais) {
+    itens.push("Ver mais dias");
+    opcoes.push(ACAO_MAIS_DIAS);
+  }
+
+  // Só a partir da segunda página: na primeira, "voltar" não teria destino.
+  if (desde) {
+    itens.push("Voltar aos primeiros dias");
+    opcoes.push(ACAO_PRIMEIROS_DIAS);
+  }
+
+  const cabecalho =
+    opts.aviso ?? "Estes são os próximos dias com horário livre:";
+
+  /**
+   * No fim do horizonte, dizer o teto em voz alta.
+   *
+   * `antecedencia_maxima_dias` existia sem nenhuma forma de o cliente descobrir:
+   * ele pediria "mais dias" até a opção sumir e concluiria que o bot travou.
+   */
+  const rodape =
+    !pagina.temMais && pagina.ultimoDiaDoHorizonte
+      ? `\n\nA agenda vai até ${formatarDia(pagina.ultimoDiaDoHorizonte, contexto)}. ` +
+        "Se você precisa de uma data depois disso, me manda uma mensagem."
+      : "";
+
+  return {
+    ok: true,
+    texto:
+      `${cabecalho}\n\n${listaNumerada(itens)}\n\n` +
+      `Responda com o número do dia.${rodape}`,
+    opcoes,
+    /**
+     * Invariante: **mostrar o menu de dias implica o estado dizer `dias`.**
+     *
+     * O patch é incondicional de propósito. Para quem já estava na fase `dias` é
+     * quase um no-op; para quem caiu aqui pelo dia sem vaga, é o que impede o
+     * estado de ficar dizendo `"dia"` com opções que são datas — situação em que a
+     * escolha seguinte gravava uma data sem hora em `__data_hora` e agendava
+     * 21:00 do dia anterior.
+     *
+     * `__dias_desde` recebe exatamente o `desde` usado nesta página (ou é apagado),
+     * para que uma reapresentação mostre a mesma página que o cliente acabou de
+     * ver, e não uma calculada com um cursor velho.
+     */
+    dados: {
+      [CHAVE_HORARIO_FASE]: "dias",
+      [CHAVE_DIAS_DESDE]: desde,
+      [CHAVE_DIA_ESCOLHIDO]: undefined,
+      [CHAVE_HORAS_DESDE]: undefined,
+    },
+  };
+}
 
 /**
  * Monta o texto de uma etapa e as opções que ela oferece.
@@ -225,7 +502,7 @@ function apresentar(
         };
       }
 
-      const slots = proximosSlots({
+      const varredura = {
         agora: contexto.agora,
         fusoHorario: contexto.fusoHorario,
         grade: contexto.grade,
@@ -234,8 +511,75 @@ function apresentar(
         passoMinutos: contexto.passoSlotMinutos,
         antecedenciaMinimaMinutos: contexto.antecedenciaMinimaMinutos,
         horizonteDias: contexto.antecedenciaMaximaDias,
-        limite: MAX_OPCOES_HORARIO,
-      });
+      };
+
+      const fase = dados[CHAVE_HORARIO_FASE];
+      const diaEscolhido = dados[CHAVE_DIA_ESCOLHIDO];
+
+      // ── Fase `dia`: horários de uma data específica ────────────────────────
+      if (fase === "dia" && typeof diaEscolhido === "string") {
+        const doDia = slotsDoDia(diaEscolhido, varredura);
+        const desde = dados[CHAVE_HORAS_DESDE];
+        // `__horas_desde` guarda a última hora **já mostrada**, então o filtro é
+        // estritamente maior: a página seguinte começa depois dela.
+        const restantes =
+          typeof desde === "string"
+            ? doDia.filter(
+                (slot) => formatarHora(slot, contexto.fusoHorario) > desde,
+              )
+            : doDia;
+
+        /**
+         * Dia vazio **nunca encerra a conversa** — volta ao menu de dias. Uma
+         * regra cobre três casos que chegariam aqui: o cliente demorou e virou a
+         * meia-noite, o dia lotou durante a conversa, ou os horários daquele dia
+         * já passaram.
+         */
+        if (restantes.length === 0) {
+          return apresentarMenuDeDias(contexto, varredura, undefined, {
+            aviso: "Esse dia não tem mais horário livre. Escolha outro:",
+          });
+        }
+
+        const pagina = restantes.slice(0, MAX_OPCOES_HORARIO_DO_DIA);
+        const rotulos = pagina.map((slot) =>
+          formatarHora(slot, contexto.fusoHorario),
+        );
+
+        const acoes: string[] = [];
+        const opcoes = pagina.map((slot) => slot.inicio.toISOString());
+
+        if (restantes.length > pagina.length) {
+          acoes.push("Ver mais horários deste dia");
+          opcoes.push(ACAO_MAIS_HORAS);
+        }
+        acoes.push("Escolher outro dia");
+        opcoes.push(ACAO_VOLTAR_DIAS);
+
+        const cabecalho = `Horários livres em ${formatarDia(diaEscolhido, contexto)}:`;
+
+        return {
+          ok: true,
+          texto:
+            `${cabecalho}\n\n${listaPorTurno(rotulos)}\n\n` +
+            `${listaNumerada(acoes, rotulos.length)}\n\n` +
+            "Responda com o número do horário.",
+          opcoes,
+        };
+      }
+
+      // ── Fase `dias`: quais dias têm vaga ──────────────────────────────────
+      if (fase === "dias") {
+        const desde = dados[CHAVE_DIAS_DESDE];
+        return apresentarMenuDeDias(
+          contexto,
+          varredura,
+          typeof desde === "string" ? desde : undefined,
+        );
+      }
+
+      // ── Fase `proximos`: o caminho de entrada, e o de sempre ──────────────
+      const slots = proximosSlots({ ...varredura, limite: MAX_OPCOES_HORARIO });
 
       if (slots.length === 0) {
         return {
@@ -249,11 +593,28 @@ function apresentar(
       const itens = slots.map((slot) =>
         formatarSlot(slot, contexto.fusoHorario),
       );
+      const opcoes = slots.map((slot) => slot.inicio.toISOString());
+
+      /**
+       * A linha de escape só faz sentido se existir dia além dos que já estão na
+       * lista. Numa agenda que só tem vaga hoje, oferecê-la levaria o cliente a
+       * um menu com uma opção só.
+       */
+      const outrosDias = diasComVaga({
+        ...varredura,
+        desde: datasNoHorizonte(contexto.agora, contexto.fusoHorario, 2)[1],
+        limite: 1,
+      });
+
+      if (outrosDias.datas.length > 0) {
+        itens.push("Quero escolher outro dia");
+        opcoes.push(ACAO_OUTRO_DIA);
+      }
 
       return {
         ok: true,
         texto: `${etapa.pergunta_texto}\n\n${listaNumerada(itens)}\n\nResponda com o número da opção.`,
-        opcoes: slots.map((slot) => slot.inicio.toISOString()),
+        opcoes,
       };
     }
 
@@ -395,12 +756,32 @@ function avancarPara(
     return { mensagens: [apresentacao.motivo], estado: null, efeitos: [] };
   }
 
+  /**
+   * A marca de versão é gravada aqui, e não em `apresentar`, porque é aqui que o
+   * estado nasce. Toda apresentação da etapa `horario` sai marcada — inclusive a
+   * reapresentação de uma conversa que começou na engine antiga, que assim passa
+   * a ver a lista nova e a ser interpretada pelas regras novas na mesma mensagem.
+   */
+  const dadosTemporarios: DadosTemporarios = {
+    ...dados,
+    [CHAVE_OPCOES]: apresentacao.opcoes,
+  };
+
+  // `undefined` no patch apaga a chave — um spread deixaria a chave presente com
+  // valor `undefined`, e `typeof x === "string"` passaria a ser a única defesa.
+  for (const [chave, valor] of Object.entries(apresentacao.dados ?? {})) {
+    if (valor === undefined) delete dadosTemporarios[chave];
+    else dadosTemporarios[chave] = valor;
+  }
+
+  if (etapa.tipo === "horario") dadosTemporarios[CHAVE_HORARIO_V] = VERSAO_HORARIO;
+
   return {
     mensagens: [apresentacao.texto],
     estado: {
       etapaAtualId: etapa.id,
       fluxoSnapshot: snapshot,
-      dadosTemporarios: { ...dados, [CHAVE_OPCOES]: apresentacao.opcoes },
+      dadosTemporarios,
       atualizadoEm: contexto.agora,
     },
     efeitos: [],
@@ -479,8 +860,104 @@ export function decidir(
     }
 
     case "horario": {
+      const fase = dados[CHAVE_HORARIO_FASE];
       const indice = lerIndice(texto, opcoes.length);
+
       if (indice === null) {
+        return reapresentar(
+          etapaAtual,
+          snapshot,
+          dados,
+          contexto,
+          fase === "dias"
+            ? "Não entendi. Responda com o número de um dos dias."
+            : "Não entendi. Responda com o número de um dos horários.",
+        );
+      }
+
+      const escolha = opcoes[indice];
+
+      /**
+       * Estado gravado pela engine anterior às fases.
+       *
+       * Uma conversa parada nesta etapa no instante do deploy tem
+       * `__opcoes_oferecidas` só com ISOs e nenhuma chave nova. Interpretar como
+       * hoje é o que torna o deploy sem perda: qualquer outro default faria o
+       * cliente que digitasse "9" cair numa ação que ele não viu na tela.
+       *
+       * Pode sair no deploy seguinte — toda conversa antiga já expirou pelas 6h.
+       */
+      if (dados[CHAVE_HORARIO_V] !== VERSAO_HORARIO) {
+        dados[CHAVE_DATA_HORA] = escolha;
+        break;
+      }
+
+      // ── Navegação: reapresenta a MESMA etapa, sem avançar ──────────────────
+      if (escolha === ACAO_OUTRO_DIA) {
+        dados[CHAVE_HORARIO_FASE] = "dias";
+        delete dados[CHAVE_DIAS_DESDE];
+        return avancarPara(etapaAtual, snapshot, dados, contexto);
+      }
+
+      if (escolha === ACAO_VOLTAR_DIAS) {
+        dados[CHAVE_HORARIO_FASE] = "dias";
+        delete dados[CHAVE_DIA_ESCOLHIDO];
+        delete dados[CHAVE_HORAS_DESDE];
+        return avancarPara(etapaAtual, snapshot, dados, contexto);
+      }
+
+      if (escolha === ACAO_PRIMEIROS_DIAS) {
+        delete dados[CHAVE_DIAS_DESDE];
+        return avancarPara(etapaAtual, snapshot, dados, contexto);
+      }
+
+      if (escolha === ACAO_MAIS_DIAS) {
+        // O cursor sai da última data desta página, não de um contador: entre a
+        // mensagem e a resposta pode virar a meia-noite.
+        const ultimaData = opcoes
+          .filter((o) => !o.startsWith("__acao:"))
+          .at(-1);
+
+        if (typeof ultimaData === "string") {
+          dados[CHAVE_DIAS_DESDE] = diaSeguinte(
+            ultimaData,
+            contexto.fusoHorario,
+          );
+        }
+        return avancarPara(etapaAtual, snapshot, dados, contexto);
+      }
+
+      if (escolha === ACAO_MAIS_HORAS) {
+        const ultimoIso = opcoes
+          .filter((o) => !o.startsWith("__acao:"))
+          .at(-1);
+
+        if (typeof ultimoIso === "string") {
+          dados[CHAVE_HORAS_DESDE] = formatarHora(
+            { inicio: new Date(ultimoIso), fim: new Date(ultimoIso) },
+            contexto.fusoHorario,
+          );
+        }
+        return avancarPara(etapaAtual, snapshot, dados, contexto);
+      }
+
+      // ── Escolha de dia: avança para a fase `dia`, ainda sem sair da etapa ──
+      if (fase === "dias") {
+        dados[CHAVE_HORARIO_FASE] = "dia";
+        dados[CHAVE_DIA_ESCOLHIDO] = escolha;
+        delete dados[CHAVE_HORAS_DESDE];
+        return avancarPara(etapaAtual, snapshot, dados, contexto);
+      }
+
+      /**
+       * Escolha de horário — o único caminho que sai da etapa.
+       *
+       * A validação de data finita não é paranoia: sem ela, um sentinela ou
+       * estado corrompido chegaria a `formatarSlot(new Date(lixo))`, que lança
+       * `RangeError` dentro de `decidir` e antes de `persistir` — a Evolution
+       * receberia 500 e entraria em retry do mesmo webhook indefinidamente.
+       */
+      if (!ehInstanteDaEngine(escolha)) {
         return reapresentar(
           etapaAtual,
           snapshot,
@@ -490,7 +967,7 @@ export function decidir(
         );
       }
 
-      dados[CHAVE_DATA_HORA] = opcoes[indice];
+      dados[CHAVE_DATA_HORA] = escolha;
       break;
     }
 
@@ -561,9 +1038,28 @@ export function decidir(
       const dataHora = dados[CHAVE_DATA_HORA];
       const duracao = dados[CHAVE_DURACAO];
 
+      /**
+       * `typeof dataHora === "string"` não basta, e a diferença é um webhook em
+       * loop.
+       *
+       * Qualquer string que não parseie como data — sentinela de navegação,
+       * estado corrompido, formato antigo — passava por aqui. Duas consequências,
+       * as duas silenciosas:
+       *
+       * - `formatarSlot(new Date(lixo))` lança `RangeError` (ECMA-402: `format`
+       *   com valor não finito lança). O throw acontece dentro de `decidir`,
+       *   antes de `persistir`, então a Evolution recebe 500 e **entra em retry
+       *   do mesmo webhook indefinidamente**, com a conversa travada por 6h.
+       * - A checagem de passado logo abaixo compara `NaN < limiteMinimo`, que é
+       *   `false`: a data inválida **atravessa** e chega a criar agendamento.
+       *
+       * `Number.isFinite` fecha os dois de uma vez e troca o loop pela mensagem
+       * de "faltou alguma informação" que já existe.
+       */
       if (
         typeof servicoId !== "string" ||
         typeof dataHora !== "string" ||
+        !Number.isFinite(new Date(dataHora).getTime()) ||
         typeof duracao !== "number"
       ) {
         return {
