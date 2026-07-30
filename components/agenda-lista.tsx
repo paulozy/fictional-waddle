@@ -1,6 +1,13 @@
 import Link from "next/link";
+import { XIcon } from "lucide-react";
 import type { AgendaDoDia } from "@/lib/agenda-lista";
-import { coresDoStatus, type DiaDoCalendario } from "@/lib/calendario";
+import {
+  coresDoStatus,
+  rotuloDoStatus,
+  type DiaDoCalendario,
+} from "@/lib/calendario";
+import { Button } from "@/components/ui/button";
+import { DialogoCancelarAgendamento } from "@/components/dialogo-cancelar-agendamento";
 
 /**
  * Agenda de um dia, em lista. **Sem estado e sem `'use client'`** — recebe o
@@ -13,19 +20,15 @@ import { coresDoStatus, type DiaDoCalendario } from "@/lib/calendario";
  * a ser compartilhável e a funcionar com o botão voltar.
  */
 
-const ROTULO_STATUS: Record<string, string> = {
-  confirmado: "Confirmado",
-  concluido: "Concluído",
-  cancelado: "Cancelado",
-  falta: "Faltou",
-};
-
 export function AgendaLista({
   agenda,
   dias,
+  cancelaveis,
 }: {
   agenda: AgendaDoDia | null;
   dias: DiaDoCalendario[];
+  /** Ids que ainda podem ser cancelados — ver `idsCancelaveis`. */
+  cancelaveis: Set<string>;
 }) {
   return (
     <div>
@@ -73,8 +76,34 @@ export function AgendaLista({
                  */}
                 {item.status !== "confirmado" && (
                   <span className="shrink-0 self-start text-xs font-medium no-underline opacity-80">
-                    {ROTULO_STATUS[item.status] ?? item.status}
+                    {rotuloDoStatus(item.status)}
                   </span>
+                )}
+
+                {cancelaveis.has(item.id) && (
+                  <DialogoCancelarAgendamento
+                    id={item.id}
+                    descricao={`${agenda.dia.rotuloDia} ${agenda.dia.rotuloNumero} · ${item.horaInicio}–${item.horaFim} · ${item.cliente} · ${item.titulo}`}
+                  >
+                    {/**
+                     * Ícone **com** a palavra, e não só o `X`.
+                     *
+                     * O alvo já estava certo (44px em `max-md`), mas o significado não:
+                     * "X" numa linha de lista lê como "remover isto da lista" — e é o
+                     * oposto do que acontece, porque o cancelado **continua** aqui com o
+                     * rótulo "Cancelado". A palavra desfaz a ambiguidade sem depender de
+                     * o dono descobrir por tentativa.
+                     */}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0 self-start no-underline"
+                    >
+                      <XIcon className="size-4" />
+                      Cancelar
+                    </Button>
+                  </DialogoCancelarAgendamento>
                 )}
               </article>
             </li>

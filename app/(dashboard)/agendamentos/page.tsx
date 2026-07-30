@@ -8,6 +8,8 @@ import { CalendarioSemana } from "@/components/calendario-semana";
 import { diaSelecionado, montarAgendaDoDia } from "@/lib/agenda-lista";
 import {
   MINUTOS_POR_LINHA,
+  blocosVisiveisNaGrade,
+  idsCancelaveis,
   inicioDaSemana,
   montarCalendario,
   type AgendamentoParaCalendario,
@@ -66,13 +68,22 @@ export default async function AgendamentosPage({
     .lt("data_hora", fimJanela.toISOString())
     .order("data_hora");
 
+  const paraCalendario = (agendamentos ?? []) as AgendamentoParaCalendario[];
+
   const calendario = montarCalendario({
     dataInicial,
     dias: 7,
     fusoHorario,
     agora,
-    agendamentos: (agendamentos ?? []) as AgendamentoParaCalendario[],
+    agendamentos: paraCalendario,
   });
+
+  /**
+   * Calculado a partir do instante real, e não de `ItemDaAgenda.passou`: aquele
+   * campo só é verdadeiro quando o dia exibido é hoje, então num dia passado
+   * ofereceria "Cancelar" em agendamento da semana anterior.
+   */
+  const cancelaveis = idsCancelaveis(paraCalendario, agora);
 
   // `format` sobre Date comum usa o fuso do PROCESSO (UTC na Vercel). Em fuso a
   // leste de UTC isso devolveria a data errada e os botões de semana andariam
@@ -123,17 +134,23 @@ export default async function AgendamentosPage({
        * barato perto de hidratar a página inteira só para medir a tela.
        */}
       <div className="mt-6 md:hidden">
-        <AgendaLista agenda={agenda} dias={calendario.dias} />
+        <AgendaLista
+          agenda={agenda}
+          dias={calendario.dias}
+          cancelaveis={cancelaveis}
+        />
       </div>
 
       <div className="mt-6 hidden md:block">
-        {calendario.blocos.length === 0 && (
+        {/* Conta os blocos que a grade de fato desenha: uma semana só com
+            cancelados mostraria grade vazia sem explicar por quê. */}
+        {blocosVisiveisNaGrade(calendario.blocos).length === 0 && (
           <p className="mb-4 text-sm text-muted-foreground">
             Nenhum agendamento nesta semana.
           </p>
         )}
 
-        <CalendarioSemana calendario={calendario} />
+        <CalendarioSemana calendario={calendario} cancelaveis={cancelaveis} />
 
         <p className="mt-4 text-xs text-muted-foreground">
           Cada faixa equivale a {MINUTOS_POR_LINHA} minutos. Horários no fuso{" "}

@@ -10,6 +10,25 @@ import {
   type ParametrosDiasComVaga,
   type Slot,
 } from "./disponibilidade";
+import {
+  CHAVE_OPCOES,
+  lerIndice,
+  listaNumerada,
+  normalizar,
+  opcoesOferecidas,
+  type DadosTemporarios,
+} from "./conversa-comum";
+import {
+  ID_ETAPA_CANCELAMENTO,
+  apresentarEntrada,
+  decidirCancelamento,
+  temAgendamentoParaCancelar,
+  type AgendamentoDoCliente,
+  type EfeitoCancelar,
+} from "./cancelamento";
+
+/** Reexportado: era declarado aqui antes de o cancelamento passar a compartilhá-lo. */
+export type { DadosTemporarios };
 
 /**
  * Engine de execução do fluxo de conversa.
@@ -64,7 +83,6 @@ const CHAVE_SERVICO_NOME = "__servico_nome";
 const CHAVE_DURACAO = "__duracao_minutos";
 const CHAVE_DATA_HORA = "__data_hora";
 /** Valores das opções apresentadas na etapa corrente, na ordem exibida. */
-const CHAVE_OPCOES = "__opcoes_oferecidas";
 
 /**
  * Estado das três fases internas da etapa `horario`.
@@ -125,8 +143,6 @@ const ACAO_PRIMEIROS_DIAS = "__acao:primeiros_dias";
 const ACAO_VOLTAR_DIAS = "__acao:voltar_dias";
 const ACAO_MAIS_HORAS = "__acao:mais_horas";
 
-export type DadosTemporarios = Record<string, unknown>;
-
 export type EstadoConversa = {
   etapaAtualId: string | null;
   fluxoSnapshot: EtapaSnapshot[];
@@ -154,11 +170,19 @@ export type ContextoConversa = {
   grade: HorarioSemanal[];
   /** Agendamentos confirmados no horizonte, já como intervalos. */
   ocupados: Intervalo[];
+  /**
+   * Agendamentos futuros **deste** interlocutor, para o fluxo de cancelamento.
+   *
+   * Separado de `ocupados` porque o papel é outro: `ocupados` é do tenant inteiro e
+   * serve ao cálculo de disponibilidade, sem identidade; aqui a identidade é o ponto,
+   * e ela é o `remote_jid` — nunca o telefone.
+   */
+  agendamentosDoCliente: AgendamentoDoCliente[];
   /** Horas de inatividade após as quais a conversa é considerada nova. */
   expiracaoHoras: number;
 };
 
-export type Efeito = {
+export type EfeitoCriarAgendamento = {
   tipo: "criar_agendamento";
   servicoId: string;
   dataHora: Date;
@@ -166,6 +190,9 @@ export type Efeito = {
   nomeCliente: string | null;
   respostasExtras: Record<string, unknown>;
 };
+
+/** União discriminada por `tipo`: o adaptador estreita antes de executar. */
+export type Efeito = EfeitoCriarAgendamento | EfeitoCancelar;
 
 export type Decisao = {
   /** Mensagens a enviar, na ordem. */
@@ -197,14 +224,6 @@ export const MAX_OPCOES_HORARIO_DO_DIA = 10;
 
 const AFIRMATIVAS = ["1", "sim", "s", "confirmar", "confirmo", "ok", "isso"];
 const NEGATIVAS = ["2", "nao", "não", "n", "cancelar", "cancela"];
-
-function normalizar(texto: string): string {
-  return texto
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
 
 function formatarPreco(preco: number | null): string {
   if (preco === null) return "";
@@ -242,12 +261,6 @@ function formatarSlot(slot: Slot, fusoHorario: string): string {
  * número indexa `__opcoes_oferecidas`, e reiniciar em 1 tornaria a resposta
  * ambígua.
  */
-function listaNumerada(itens: string[], deslocamento = 0): string {
-  return itens
-    .map((item, i) => `${i + 1 + deslocamento}. ${item}`)
-    .join("\n");
-}
-
 /**
  * A string é um instante gerado por esta engine?
  *
@@ -323,21 +336,6 @@ function listaPorTurno(rotulos: string[]): string {
   if (tarde.length > 0) blocos.push(`Tarde\n${tarde.join("\n")}`);
 
   return blocos.join("\n\n");
-}
-
-/** Índice 1-based válido dentro de `opcoes`, ou null. */
-function lerIndice(texto: string, quantidade: number): number | null {
-  const limpo = normalizar(texto);
-  if (!/^\d+$/.test(limpo)) return null;
-
-  const indice = Number(limpo) - 1;
-  if (indice < 0 || indice >= quantidade) return null;
-  return indice;
-}
-
-function opcoesOferecidas(dados: DadosTemporarios): string[] {
-  const valor = dados[CHAVE_OPCOES];
-  return Array.isArray(valor) ? (valor as string[]) : [];
 }
 
 /** Respostas do cliente, sem as chaves internas da engine. */
@@ -813,7 +811,27 @@ export function decidir(
   mensagem: MensagemRecebida,
 ): Decisao {
   if (!estado || !estado.etapaAtualId || conversaExpirou(estado, contexto)) {
-    return iniciar(contexto);
+    /**
+     * Conversa nova (ou expirada): quem já tem horário marcado escolhe entre marcar
+     * e cancelar; quem não tem cai em `iniciar` exatamente como antes. O custo de
+     * +1 mensagem não é pago por quem só quer agendar.
+     */
+    return temAgendamentoParaCancelar(contexto)
+      ? apresentarEntrada(contexto)
+      : iniciar(contexto);
+  }
+
+  /**
+   * O dispatch do fluxo de cancelamento vem **antes** do `find` no snapshot, e a
+   * ordem não é estilo: o id reservado nunca está no snapshot (que é `[]` neste
+   * fluxo), então a guarda `if (!etapaAtual) return iniciar(contexto)` logo abaixo
+   * engoliria o id e a conversa reiniciaria a cada mensagem — o cliente nunca sairia
+   * do menu de entrada.
+   */
+  if (estado.etapaAtualId === ID_ETAPA_CANCELAMENTO) {
+    return decidirCancelamento(contexto, estado, mensagem, () =>
+      iniciar(contexto),
+    );
   }
 
   const snapshot = ordenar(estado.fluxoSnapshot);
@@ -1150,7 +1168,7 @@ export function decidir(
  * Fica aqui para que o texto do bot viva todo num só lugar.
  */
 export function mensagemAgendamentoConfirmado(
-  efeito: Efeito,
+  efeito: EfeitoCriarAgendamento,
   servicoNome: string,
   fusoHorario: string,
 ): string {

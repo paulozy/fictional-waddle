@@ -1,8 +1,10 @@
 import {
   ALTURA_LINHA_REM,
+  blocosVisiveisNaGrade,
   coresDoStatus,
   type Calendario,
 } from "@/lib/calendario";
+import { BlocoAgendamento } from "@/components/bloco-agendamento";
 
 /**
  * Grade semanal de agendamentos. **Sem estado e sem `'use client'`** — recebe o
@@ -16,13 +18,46 @@ import {
 /** A altura da faixa vem do módulo: é ela que decide o modo compacto do bloco. */
 const ALTURA_LINHA = `${ALTURA_LINHA_REM}rem`;
 
-export function CalendarioSemana({ calendario }: { calendario: Calendario }) {
+export function CalendarioSemana({
+  calendario,
+  cancelaveis,
+}: {
+  calendario: Calendario;
+  /** Ids que ainda podem ser cancelados — ver `idsCancelaveis`. */
+  cancelaveis: Set<string>;
+}) {
   const colunas = "4rem repeat(7, minmax(0, 1fr))";
+  const primeiro = calendario.dias[0];
+  const ultimo = calendario.dias.at(-1);
 
   return (
     /* Rola horizontalmente em tela estreita, sem estourar o corpo da página. */
     <div className="overflow-x-auto rounded-lg border border-border bg-card">
-      <div className="min-w-[44rem]">
+      {/**
+       * Nomeia a região, e não é enfeite: os blocos são botões irmãos na ordem do DOM
+       * (`montarCalendario` ordena por coluna e depois por linha), então o Tab varre dia
+       * a dia, hora a hora. O rótulo do grupo é o que diz de que semana se trata.
+       *
+       * Deliberadamente **não** é `role="grid"`: a APG só considera célula-com-widget
+       * quando há gerência de foco completa (roving tabindex, setas, Enter/F2/Escape), o
+       * que exigiria um gerente de foco no cliente para uma grade que hoje é RSC.
+       */}
+      <div
+        role="group"
+        data-slot="grade-semana"
+        aria-label={
+          primeiro && ultimo
+            ? `Agenda de ${primeiro.rotuloNumero} a ${ultimo.rotuloNumero}`
+            : "Agenda da semana"
+        }
+        /**
+         * `-1` para poder receber foco por programa, sem entrar na ordem do Tab: é aqui
+         * que o foco pousa quando o bloco cancelado sai da grade e o gatilho original
+         * deixa de existir.
+         */
+        tabIndex={-1}
+        className="min-w-[44rem] outline-none"
+      >
         <div
           className="grid border-b border-regua-forte"
           style={{ gridTemplateColumns: colunas }}
@@ -79,56 +114,34 @@ export function CalendarioSemana({ calendario }: { calendario: Calendario }) {
             )),
           )}
 
-          {calendario.blocos.map((bloco) => {
-            const cores = coresDoStatus(bloco.status);
-            const descricao = `${bloco.horaInicio}–${bloco.horaFim} · ${bloco.cliente} · ${bloco.titulo}`;
-            // Num bloco de 1h30 ou mais sobra altura: truncar em uma linha só
-            // escondia nome de serviço longo sem necessidade.
-            const tituloEmDuasLinhas = bloco.linhasOcupadas >= 3;
-
-            return (
-              <div
-                key={bloco.id}
-                title={descricao}
-                style={{
-                  gridColumn: bloco.coluna + 1,
-                  gridRow: `${bloco.linhaInicio} / span ${bloco.linhasOcupadas}`,
-                }}
-                className={`relative z-10 m-px overflow-hidden rounded-sm border-y border-r border-l-2 px-1.5 py-0.5 text-xs leading-tight ${cores}`}
-              >
-                {bloco.compacto ? (
-                  /**
-                   * Bloco de menos de 60 min não comporta três linhas: antes o
-                   * `overflow-hidden` cortava a última e o nome do serviço
-                   * sumia. Em linha única a hora fica fixa e o serviço fica com
-                   * o resto do espaço. O `title` acima preserva o texto inteiro.
-                   */
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="shrink-0 font-mono tabular-nums">
-                      {bloco.horaInicio}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate font-medium">
-                      {bloco.titulo}
-                    </span>
-                  </div>
-                ) : (
-                  <>
-                    <div className="font-mono tabular-nums">
-                      {bloco.horaInicio}
-                    </div>
-                    <div
-                      className={`font-medium ${
-                        tituloEmDuasLinhas ? "line-clamp-2" : "truncate"
-                      }`}
-                    >
-                      {bloco.titulo}
-                    </div>
-                    <div className="truncate opacity-80">{bloco.cliente}</div>
-                  </>
-                )}
-              </div>
-            );
-          })}
+          {/**
+           * Cancelado não entra na grade: o horário dele está de fato livre para
+           * reserva (a constraint anti-sobreposição é parcial em `confirmado`), e um
+           * bloco riscado ali faria o dono achar que não pode encaixar ninguém. Na
+           * lista do dia ele continua, com o rótulo.
+           */}
+          {blocosVisiveisNaGrade(calendario.blocos).map((bloco) => (
+            <div
+              key={bloco.id}
+              style={{
+                gridColumn: bloco.coluna + 1,
+                gridRow: `${bloco.linhaInicio} / span ${bloco.linhasOcupadas}`,
+              }}
+              /**
+               * Sem `title`: ele não aparece em toque, não é anunciado com confiança, e
+               * era o **único** lugar onde o nome do cliente existia em bloco compacto.
+               * O detalhe do bloco resolve isso de forma acessível.
+               */
+              className={`relative z-10 m-px overflow-hidden rounded-sm border-y border-r border-l-2 text-xs leading-tight ${coresDoStatus(
+                bloco.status,
+              )}`}
+            >
+              <BlocoAgendamento
+                bloco={bloco}
+                cancelavel={cancelaveis.has(bloco.id)}
+              />
+            </div>
+          ))}
 
           {calendario.agora && (
             <>

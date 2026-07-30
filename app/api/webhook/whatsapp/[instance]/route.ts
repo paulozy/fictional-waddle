@@ -321,7 +321,7 @@ async function processarMensagem(
     return ok("mensagem duplicada");
   }
 
-  const contexto = await montarContexto(admin, perfil);
+  const contexto = await montarContexto(admin, perfil, mensagem.remoteJid);
 
   const estado: EstadoConversa | null = linha?.etapa_atual_id
     ? {
@@ -357,9 +357,14 @@ async function processarMensagem(
   const mensagens = [...decisao.mensagens];
 
   for (const efeito of decisao.efeitos) {
-    mensagens.push(
-      await executarEfeito(admin, perfil, contexto, mensagem, efeito),
-    );
+    const texto = await executarEfeito(admin, perfil, contexto, mensagem, efeito);
+
+    /**
+     * String vazia = o efeito deu certo e a mensagem já veio da engine, que é o caso
+     * do cancelamento (só ela tem o horário formatado no fuso). Empurrar vazio faria
+     * a Evolution receber um `text` em branco.
+     */
+    if (texto) mensagens.push(texto);
   }
 
   await enviarComTolerancia(instancia, mensagem.remoteJid, mensagens);
@@ -403,6 +408,7 @@ async function enviarComTolerancia(
 async function montarContexto(
   admin: ClienteAdmin,
   perfil: Perfil,
+  remoteJid: string,
 ): Promise<ContextoConversa> {
   const agora = new Date();
   const fimDoHorizonte = addDays(agora, perfil.antecedencia_maxima_dias + 1);
@@ -429,7 +435,14 @@ async function montarContexto(
       .eq("usuario_id", perfil.id),
     admin
       .from("agendamentos")
-      .select("data_hora, data_hora_fim")
+      /**
+       * `id`, serviço e o JID do cliente entram para alimentar o fluxo de
+       * cancelamento. É a **mesma** query da disponibilidade, com o select maior, em
+       * vez de uma segunda ida ao banco: os agendamentos do interlocutor são um
+       * subconjunto destes (o horizonte de reserva é o mesmo), então filtrar em
+       * memória custa nada e economiza um round-trip em toda mensagem.
+       */
+      .select("id, data_hora, data_hora_fim, servicos(nome), clientes_finais(remote_jid)")
       .eq("usuario_id", perfil.id)
       .eq("status", "confirmado")
       // Filtra pelo FIM, não pelo início: um serviço de 2h que começou 10:00 e
@@ -452,11 +465,22 @@ async function montarContexto(
       inicio: new Date(a.data_hora),
       fim: new Date(a.data_hora_fim),
     })),
+    /**
+     * Só os deste interlocutor. A identidade é o `remote_jid` — nunca o telefone,
+     * que pode não existir em JID `@lid`.
+     */
+    agendamentosDoCliente: (agendamentos.data ?? [])
+      .filter((a) => a.clientes_finais?.remote_jid === remoteJid)
+      .map((a) => ({
+        id: a.id,
+        dataHora: new Date(a.data_hora),
+        servicoNome: a.servicos?.nome ?? null,
+      })),
     expiracaoHoras: EXPIRACAO_HORAS,
   };
 }
 
-/** Grava o agendamento e devolve a mensagem que o cliente deve receber. */
+/** Aplica o efeito no banco e devolve a mensagem que o cliente deve receber. */
 async function executarEfeito(
   admin: ClienteAdmin,
   perfil: Perfil,
@@ -464,6 +488,10 @@ async function executarEfeito(
   mensagem: MensagemWebhook,
   efeito: Efeito,
 ): Promise<string> {
+  if (efeito.tipo === "cancelar_agendamento") {
+    return cancelarPeloCliente(admin, perfil, efeito.agendamentoId);
+  }
+
   const servico = contexto.servicos.find((s) => s.id === efeito.servicoId);
 
   const { error } = await admin.rpc("confirmar_agendamento", {
@@ -502,6 +530,63 @@ async function executarEfeito(
     "Tive um problema para registrar seu agendamento. " +
     "Pode tentar de novo em instantes?"
   );
+}
+
+/**
+ * Cancela a pedido do cliente.
+ *
+ * O `update` é **condicional em `status = 'confirmado'`**, e é isso que o torna
+ * idempotente por si — independente do compare-and-set sobre `versao`. Zero linhas
+ * significa que o horário já não estava cancelável (o dono cancelou antes, ou já foi
+ * concluído), e aí o cliente ouve isso em vez de uma confirmação falsa.
+ *
+ * `.eq("usuario_id")` não é redundância: a service role **ignora RLS**, então este
+ * filtro é a única barreira entre tenants neste caminho.
+ *
+ * Erro de banco vira mensagem, nunca throw: um 500 aqui faria a Evolution reentregar o
+ * mesmo webhook indefinidamente, com a conversa travada por 6h.
+ */
+async function cancelarPeloCliente(
+  admin: ClienteAdmin,
+  perfil: Perfil,
+  agendamentoId: string,
+): Promise<string> {
+  const { data, error } = await admin
+    .from("agendamentos")
+    .update({
+      status: "cancelado",
+      cancelado_em: new Date().toISOString(),
+      cancelado_por: "cliente",
+      // Motivo fica nulo de propósito: não perguntamos ao cliente. A CHECK do banco
+      // só exige motivo quando quem cancela é o dono.
+    })
+    .eq("id", agendamentoId)
+    .eq("usuario_id", perfil.id)
+    .eq("status", "confirmado")
+    .select("id");
+
+  if (error) {
+    console.error("falha ao cancelar agendamento pelo cliente", {
+      usuario_id: perfil.id,
+      codigo: error.code,
+    });
+
+    return (
+      "Tive um problema para cancelar seu horário. " +
+      "Pode tentar de novo em instantes?"
+    );
+  }
+
+  if (!data || data.length === 0) {
+    return (
+      "Esse horário já não estava confirmado, então não há o que cancelar. " +
+      "Se quiser marcar outro, é só mandar uma mensagem."
+    );
+  }
+
+  // A mensagem de sucesso vem da engine, junto da decisão — aqui só confirmamos que
+  // o efeito aconteceu. String vazia não é enviada.
+  return "";
 }
 
 type LinhaConversa = {

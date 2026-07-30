@@ -49,9 +49,14 @@ export const PERGUNTAS = [
       "São seus. Guardamos nome e o contato do WhatsApp apenas para o bot agendar e mandar o lembrete, e nada disso é compartilhado com outro estabelecimento. Se você excluir sua conta, os dados dos seus clientes são apagados junto.",
   },
   {
-    pergunta: "Posso cancelar quando quiser?",
+    pergunta: "E se o cliente precisar desmarcar?",
     resposta:
-      `Pode, sem multa e sem fidelidade. Sendo direto sobre como funciona hoje: não existe botão de cancelamento no painel — você manda uma mensagem e a gente cancela. Como também não há cartão cadastrado nem débito automático, não existe o risco de continuar sendo cobrado. O teste de ${DIAS_TRIAL} dias não pede cartão.`,
+      "Ele desmarca pelo WhatsApp, sem falar com você. Quem já tem horário marcado recebe, na primeira mensagem, a opção de cancelar — em menu numerado, como o resto do fluxo. O horário volta na hora para a sua agenda e fica livre para outro cliente, que é o ponto: horário desmarcado e não liberado é prejuízo parado. Você também pode cancelar pelo painel, escolhendo o motivo, e aí é o cliente que recebe o aviso pelo WhatsApp. Remarcar em uma etapa só ainda não existe: cancela e marca de novo.",
+  },
+  {
+    pergunta: "Posso cancelar a assinatura quando quiser?",
+    resposta:
+      `Pode, sem multa e sem fidelidade. Sendo direto sobre como funciona hoje: não existe botão para cancelar a assinatura no painel — você manda uma mensagem e a gente cancela. (O botão de cancelar que existe no painel é para desmarcar horário de cliente, que é outra coisa.) Como também não há cartão cadastrado nem débito automático, não existe o risco de continuar sendo cobrado. O teste de ${DIAS_TRIAL} dias não pede cartão.`,
   },
   {
     pergunta: `Como funciona o teste de ${DIAS_TRIAL} dias?`,

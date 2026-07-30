@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { instanteNoFuso } from "@/lib/bot/disponibilidade";
 import {
+  ROTULO_STATUS,
+  blocosVisiveisNaGrade,
+  descricaoDoBloco,
+  idsCancelaveis,
   inicioDaSemana,
   montarCalendario,
+  motivoNaoCancelavel,
+  rotuloDoStatus,
   type AgendamentoParaCalendario,
   type ParametrosCalendario,
 } from "./calendario";
@@ -327,5 +333,210 @@ describe("montarCalendario · marca de agora", () => {
     );
 
     expect(calendario.agora?.rotulo).toBe("10:00");
+  });
+});
+
+describe("idsCancelaveis", () => {
+  const AGORA = instanteNoFuso(SEGUNDA, "10:00", FUSO);
+
+  it("inclui confirmado que ainda não começou", () => {
+    const futuro = agendamento({ hora: "15:00" });
+
+    expect(idsCancelaveis([futuro], AGORA)).toEqual(new Set([futuro.id]));
+  });
+
+  /**
+   * Cancelar atendimento em curso é legítimo — o cliente foi embora — e libera o
+   * slot. Por isso a comparação é com o FIM, não com o início.
+   */
+  it("inclui confirmado em curso", () => {
+    const emCurso = agendamento({ hora: "09:30", duracao_minutos: 60 });
+
+    expect(idsCancelaveis([emCurso], AGORA)).toEqual(new Set([emCurso.id]));
+  });
+
+  it("exclui confirmado que já terminou", () => {
+    const terminado = agendamento({ hora: "08:00", duracao_minutos: 60 });
+
+    expect(idsCancelaveis([terminado], AGORA)).toEqual(new Set());
+  });
+
+  /**
+   * Num dia passado, `ItemDaAgenda.passou` é `false` para tudo (o "agora" só existe
+   * no dia de hoje). Este caso é a razão de `idsCancelaveis` existir em vez de
+   * reusar aquele campo: sem ele, a tela ofereceria "Cancelar" na semana anterior.
+   */
+  it("exclui agendamento de dia anterior", () => {
+    const semanaPassada = agendamento({ data: "2026-08-03", hora: "15:00" });
+
+    expect(idsCancelaveis([semanaPassada], AGORA)).toEqual(new Set());
+  });
+
+  /**
+   * A Server Action é condicional em `status = 'confirmado'`, então oferecer o botão
+   * nos outros status só renderia "já não estava confirmado" — mentira na UI.
+   */
+  it("exclui status que não é confirmado", () => {
+    const outros = ["cancelado", "concluido", "falta"].map((status, i) =>
+      agendamento({ hora: `1${i}:00`, status }),
+    );
+
+    expect(idsCancelaveis(outros, AGORA)).toEqual(new Set());
+  });
+});
+
+describe("blocosVisiveisNaGrade", () => {
+  it("tira o cancelado da grade e mantém o resto", () => {
+    const { blocos } = montarCalendario(
+      parametros({
+        agendamentos: [
+          agendamento({ hora: "09:00" }),
+          agendamento({ hora: "11:00", status: "cancelado" }),
+          agendamento({ hora: "13:00", status: "falta" }),
+        ],
+      }),
+    );
+
+    // Os três entram no calendário — a lista do dia ainda precisa do cancelado.
+    expect(blocos).toHaveLength(3);
+
+    const visiveis = blocosVisiveisNaGrade(blocos);
+    expect(visiveis).toHaveLength(2);
+    expect(visiveis.map((b) => b.status)).toEqual(["confirmado", "falta"]);
+  });
+});
+
+describe("descricaoDoBloco", () => {
+  /**
+   * O teste que trava o bug: na grade o dia de um agendamento era só posição de
+   * coluna, então a confirmação de uma ação irreversível não dizia de que dia era o
+   * horário. Um clique na terça em vez da quarta não era detectável na leitura.
+   */
+  it("inclui o dia e a data", () => {
+    const { blocos } = montarCalendario(
+      parametros({
+        agendamentos: [agendamento({ data: "2026-08-12", hora: "09:00" })],
+      }),
+    );
+
+    const descricao = descricaoDoBloco(blocos[0]);
+
+    expect(descricao).toContain("12");
+    expect(descricao).toMatch(/qua/i);
+  });
+
+  it("inclui hora de início e fim, cliente, serviço e status em palavra", () => {
+    const { blocos } = montarCalendario(
+      parametros({ agendamentos: [agendamento({ hora: "09:00" })] }),
+    );
+
+    const descricao = descricaoDoBloco(blocos[0]);
+
+    expect(descricao).toContain("09:00");
+    expect(descricao).toContain("10:00");
+    expect(descricao).toContain("Joana");
+    expect(descricao).toContain("Corte");
+    expect(descricao).toContain("Confirmado");
+  });
+});
+
+describe("data e rótulos no bloco", () => {
+  it("propaga a data da coluna correspondente", () => {
+    const { blocos } = montarCalendario(
+      parametros({
+        agendamentos: [
+          agendamento({ data: "2026-08-10", hora: "09:00", id: "seg" }),
+          agendamento({ data: "2026-08-12", hora: "09:00", id: "qua" }),
+        ],
+      }),
+    );
+
+    expect(blocos.map((b) => [b.coluna, b.data])).toEqual([
+      [1, "2026-08-10"],
+      [3, "2026-08-12"],
+    ]);
+  });
+
+  /**
+   * `data` é a data de parede do estabelecimento, não a UTC. 2026-08-10T02:00Z é
+   * 23:00 do dia 9 em São Paulo — se a propagação usasse o instante cru, o bloco
+   * diria dia 10 e a confirmação mentiria a data.
+   */
+  it("usa a data de parede do estabelecimento, não a UTC", () => {
+    const { blocos } = montarCalendario(
+      parametros({
+        dataInicial: "2026-08-03",
+        agendamentos: [
+          {
+            id: "vira-o-dia",
+            data_hora: "2026-08-10T02:00:00.000Z",
+            duracao_minutos: 30,
+            status: "confirmado",
+            servicos: { nome: "Corte" },
+            clientes_finais: { nome: "Joana" },
+          },
+        ],
+      }),
+    );
+
+    expect(blocos[0].data).toBe("2026-08-09");
+  });
+});
+
+describe("motivoNaoCancelavel", () => {
+  const bloco = (status: string) =>
+    montarCalendario(
+      parametros({ agendamentos: [agendamento({ hora: "09:00", status })] }),
+    ).blocos[0];
+
+  it("devolve null quando é cancelável", () => {
+    expect(motivoNaoCancelavel(bloco("confirmado"), true)).toBeNull();
+  });
+
+  it("explica cada status que não dá para cancelar", () => {
+    expect(motivoNaoCancelavel(bloco("cancelado"), false)).toMatch(/cancelado/i);
+    expect(motivoNaoCancelavel(bloco("concluido"), false)).toMatch(/conclu/i);
+    expect(motivoNaoCancelavel(bloco("falta"), false)).toMatch(/compareceu/i);
+  });
+
+  /** Confirmado e não cancelável só acontece por um motivo: a hora passou. */
+  it("confirmado e não cancelável é horário que passou", () => {
+    expect(motivoNaoCancelavel(bloco("confirmado"), false)).toMatch(/passou/i);
+  });
+
+  /**
+   * Coerência com `idsCancelaveis`: nenhum bloco pode ser ao mesmo tempo cancelável e
+   * ter motivo de não sê-lo. Se as duas funções divergirem, a UI mostra o botão e a
+   * frase juntos, ou nenhum dos dois.
+   */
+  it("é coerente com idsCancelaveis", () => {
+    const agora = instanteNoFuso(SEGUNDA, "10:00", FUSO);
+    const lista = [
+      agendamento({ hora: "15:00", id: "futuro" }),
+      agendamento({ hora: "08:00", id: "passado" }),
+      agendamento({ hora: "15:00", id: "cancelado", status: "cancelado" }),
+    ];
+
+    const { blocos } = montarCalendario(parametros({ agendamentos: lista, agora }));
+    const podemCancelar = idsCancelaveis(lista, agora);
+
+    for (const b of blocos) {
+      const podeCancelar = podemCancelar.has(b.id);
+      expect(motivoNaoCancelavel(b, podeCancelar) === null, b.id).toBe(
+        podeCancelar,
+      );
+    }
+  });
+});
+
+describe("ROTULO_STATUS", () => {
+  it("tem rótulo para os quatro status do CHECK do banco", () => {
+    for (const status of ["confirmado", "cancelado", "concluido", "falta"]) {
+      expect(ROTULO_STATUS[status], status).toBeTruthy();
+    }
+  });
+
+  it("status desconhecido volta como veio, em vez de sumir", () => {
+    expect(rotuloDoStatus("bizarro")).toBe("bizarro");
   });
 });

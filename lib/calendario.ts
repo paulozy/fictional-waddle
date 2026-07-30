@@ -56,6 +56,119 @@ export function coresDoStatus(status: string): string {
   return CORES_STATUS[status] ?? CORES_STATUS.confirmado;
 }
 
+/**
+ * Status em palavra.
+ *
+ * Mora aqui pelo mesmo motivo que `CORES_STATUS`: agora são **três** superfícies
+ * escrevendo status — a lista do dia, o detalhe do bloco na grade e o nome acessível do
+ * botão. Duplicar o mapa faria as três divergirem no primeiro status novo. E a palavra
+ * não é redundante com a cor: cor sozinha não é informação acessível (WCAG 1.4.1).
+ */
+export const ROTULO_STATUS: Record<string, string> = {
+  confirmado: "Confirmado",
+  concluido: "Concluído",
+  cancelado: "Cancelado",
+  falta: "Faltou",
+};
+
+export function rotuloDoStatus(status: string): string {
+  return ROTULO_STATUS[status] ?? status;
+}
+
+/**
+ * Ids que o dono ainda pode cancelar: confirmados que **não terminaram**.
+ *
+ * Compara instantes, e é por isso que existe em vez de reusar `ItemDaAgenda.passou`
+ * — aquele campo só é verdadeiro quando o dia exibido é hoje (`minutoAgora` é nulo
+ * nos outros), então num dia passado ele devolve `false` para tudo e a tela ofereceria
+ * "Cancelar" em agendamento da semana anterior.
+ *
+ * O fim é `data_hora + duracao_minutos`, e não só o início: cancelar um atendimento
+ * em curso é legítimo (o cliente foi embora) e libera o slot; cancelar um que já
+ * acabou não é — aquilo é `concluido` ou `falta`, que são outra ação.
+ *
+ * Cancelado, concluído e falta ficam de fora porque a Server Action é condicional em
+ * `status = 'confirmado'`: oferecer o botão só para receber "já não estava confirmado"
+ * seria mentir na UI.
+ */
+export function idsCancelaveis(
+  agendamentos: AgendamentoParaCalendario[],
+  agora: Date,
+): Set<string> {
+  const limite = agora.getTime();
+
+  return new Set(
+    agendamentos
+      .filter(
+        (a) =>
+          a.status === "confirmado" &&
+          new Date(a.data_hora).getTime() + a.duracao_minutos * 60_000 > limite,
+      )
+      .map((a) => a.id),
+  );
+}
+
+/**
+ * Blocos que a **grade** desenha: tudo menos os cancelados.
+ *
+ * A grade comunica ocupação, e a constraint anti-sobreposição é parcial em
+ * `status = 'confirmado'` — então o horário de um cancelado está de fato livre para
+ * reserva. Deixar o bloco riscado ali faria o dono olhar a tela e achar que não pode
+ * encaixar ninguém, que é informação errada num produto cujo nome é "onde se dá
+ * encaixe".
+ *
+ * Na lista do dia o cancelado **continua aparecendo**, com o rótulo "Cancelado": lá
+ * existe espaço para texto, e o histórico é útil ("o que aconteceu com as 14h?").
+ */
+export function blocosVisiveisNaGrade(
+  blocos: BlocoCalendario[],
+): BlocoCalendario[] {
+  return blocos.filter((bloco) => bloco.status !== "cancelado");
+}
+
+/**
+ * Descrição completa de um bloco, em uma linha.
+ *
+ * Fonte única para três consumidores: o texto `sr-only` que compõe o nome acessível do
+ * botão, o detalhe do bloco e a confirmação do cancelamento. **Inclui a data**, e é
+ * exatamente essa a correção: sem ela, a confirmação de uma ação irreversível na grade
+ * não dizia de que dia era o agendamento.
+ */
+export function descricaoDoBloco(bloco: BlocoCalendario): string {
+  return [
+    `${bloco.rotuloDia} ${bloco.rotuloNumero}`,
+    `${bloco.horaInicio}–${bloco.horaFim}`,
+    bloco.cliente,
+    bloco.titulo,
+    rotuloDoStatus(bloco.status),
+  ].join(" · ");
+}
+
+/**
+ * Por que este agendamento **não** pode ser cancelado, ou `null` se pode.
+ *
+ * Espelha `idsCancelaveis` de propósito: a UI precisava de uma frase, e não da ausência
+ * de um botão. O comentário de `idsCancelaveis` registra que oferecer o botão só para
+ * receber "já não estava confirmado" seria mentir na UI — mas a alternativa que estava no
+ * ar era pior, porque o produto simplesmente se calava.
+ *
+ * Recebe o fim já calculado pelo chamador (o bloco não carrega instante, só hora de
+ * parede), então o cálculo de "já terminou" fica com quem tem os dados.
+ */
+export function motivoNaoCancelavel(
+  bloco: BlocoCalendario,
+  cancelavel: boolean,
+): string | null {
+  if (cancelavel) return null;
+
+  if (bloco.status === "cancelado") return "Este horário foi cancelado.";
+  if (bloco.status === "concluido") return "Este atendimento foi concluído.";
+  if (bloco.status === "falta") return "O cliente não compareceu.";
+
+  // Confirmado e não cancelável só acontece por um motivo: a hora já passou.
+  return "Este horário já passou.";
+}
+
 export type AgendamentoParaCalendario = {
   id: string;
   data_hora: string;
@@ -69,6 +182,17 @@ export type BlocoCalendario = {
   id: string;
   /** 1-based, para casar com `grid-column`. */
   coluna: number;
+  /**
+   * `YYYY-MM-DD` no fuso do estabelecimento, e os rótulos do dia.
+   *
+   * Existiam dentro de `montarCalendario` e não eram propagados, e a falta custou um
+   * defeito real: na grade o dia de um agendamento era **só posição de coluna**, então
+   * a confirmação de uma ação irreversível não tinha como dizer de que dia era o
+   * horário. Um clique na terça em vez da quarta não era detectável na leitura.
+   */
+  data: string;
+  rotuloDia: string;
+  rotuloNumero: string;
   /** 1-based dentro da faixa exibida, para casar com `grid-row`. */
   linhaInicio: number;
   linhasOcupadas: number;
@@ -229,9 +353,14 @@ export function montarCalendario(p: ParametrosCalendario): Calendario {
         Math.ceil(agendamento.duracao_minutos / MINUTOS_POR_LINHA),
       );
 
+      const dia = dias[coluna];
+
       return {
         id: agendamento.id,
         coluna: coluna + 1,
+        data: dia.data,
+        rotuloDia: dia.rotuloDia,
+        rotuloNumero: dia.rotuloNumero,
         linhaInicio,
         linhasOcupadas,
         horaInicio: rotularHora(minutoInicio),

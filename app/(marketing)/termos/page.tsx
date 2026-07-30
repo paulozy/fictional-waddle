@@ -94,17 +94,36 @@ export default function TermosPage() {
         continua acessível e nenhum dado é apagado por causa disso.
       </p>
 
-      <h2>Cancelamento</h2>
+      <h2>Cancelamento da assinatura</h2>
       <p>
         Sem multa, sem fidelidade e sem prazo mínimo. Sendo direto sobre como
-        funciona hoje: <strong>não existe botão de cancelamento no painel</strong>.
+        funciona hoje:{" "}
+        <strong>não existe botão para cancelar a assinatura no painel</strong>.
         Você manda uma mensagem e a gente cancela. Como também não há débito
         automático, não há o risco de continuar sendo cobrado.
+      </p>
+      <p>
+        Isso é diferente de cancelar o <em>horário</em> de um cliente, que você faz
+        no painel a qualquer momento — ver abaixo.
       </p>
       <p>
         Para apagar seus dados, a exclusão da conta remove também os dados dos seus
         clientes — com uma exceção descrita na{" "}
         <Link href="/privacidade">política de privacidade</Link>.
+      </p>
+
+      <h2>Cancelamento de horário</h2>
+      <p>
+        Você cancela um horário no painel quando precisar, escolhendo o motivo numa
+        lista fechada. O horário volta a ficar livre na hora, e o cliente é avisado
+        pelo WhatsApp — se a conexão estiver caída, o painel avisa você de que a
+        mensagem não saiu, para você falar com ele por outro caminho.
+      </p>
+      <p>
+        <strong>A política de cancelamento é a do seu estabelecimento</strong>, não
+        a nossa: prazo para desmarcar, cobrança por falta e o que você combina com
+        cada cliente são decisões suas. A Encaixaria registra o cancelamento e
+        transmite o aviso — não fazemos e não intermediamos cobrança de nenhum tipo.
       </p>
 
       <h2>Disponibilidade e limites</h2>

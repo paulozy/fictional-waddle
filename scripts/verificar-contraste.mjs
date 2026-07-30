@@ -157,6 +157,18 @@ function paresDoTema(t) {
     ],
     ["falta tinta/fundo", t["status-falta-tinta"], t["status-falta"], 4.5],
 
+    /**
+     * Anel de foco **dentro** do bloco do calendário — WCAG 1.4.11.
+     *
+     * O par `ring / card` acima não cobre isto: o bloco usa `ring-inset`, então o anel
+     * é desenhado sobre o fundo do próprio status, não sobre o papel do card. Foi o que
+     * ninguém tinha medido quando o bloco virou botão focável.
+     */
+    ["ring / fundo confirmado", t.ring, t["status-confirmado"], 3],
+    ["ring / fundo concluido", t.ring, t["status-concluido"], 3],
+    ["ring / fundo cancelado", t.ring, t["status-cancelado"], 3],
+    ["ring / fundo falta", t.ring, t["status-falta"], 3],
+
     // Compostos com alfa — em uso real no app.
     [
       "destructive sobre destructive/10",
