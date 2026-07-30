@@ -37,6 +37,22 @@ yarn-error.log*
 # vercel
 .vercel
 
+# Saída do spike de pagamentos. O `.env*` acima já cobre o `.env.spike`, mas não
+# estes: `.tokens.json` guarda o access_token de uma conta de VENDEDOR, que
+# movimenta conta bancária de terceiro — é o segredo mais sensível que já passou
+# por este repositório. `cobranca.json` carrega o payload Pix e o que o Mercado
+# Pago devolve sobre o pagador, que pode incluir CPF e nome.
+spikes/**/.tokens.json
+spikes/**/cobranca.json
+# O `.env*` da linha 34 não tem barra inicial, então casa em qualquer nível e
+# engoliria o exemplo junto com o arquivo real. Esta negação vem depois de
+# propósito: em .gitignore a última regra que casa é a que vale.
+#
+# Não ignorar `spikes/` por inteiro: o registro de decisão do spike (o README) é o
+# que sobrevive ao descarte dos scripts, e um ignore da pasta também tornaria esta
+# negação inerte — o git não desce em diretório excluído.
+!spikes/**/.env.spike.example
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
