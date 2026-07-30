@@ -53,6 +53,11 @@ spikes/**/cobranca.json
 # negação inerte — o git não desce em diretório excluído.
 !spikes/**/.env.spike.example
 
+# Vídeos gerados por scripts/demo. Os scripts entram no repositório, a saída não:
+# são binários de alguns MB que mudam por inteiro a cada gravação, e podem ser
+# refeitos com um comando. O que vale versionar é o roteiro.
+scripts/demo/saida/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
