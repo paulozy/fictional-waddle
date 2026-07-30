@@ -82,6 +82,13 @@ export default function PrivacidadePage() {
           <strong>código irreversível</strong> — ver a seção sobre o teste
           gratuito.
         </li>
+        <li>
+          O histórico de quando a conexão do seu WhatsApp caiu e voltou, com o
+          código numérico do motivo, quando o WhatsApp o informa.{" "}
+          <strong>Nenhum conteúdo de mensagem entra nesse registro.</strong> Ele
+          existe para o suporte conseguir responder por que o bot parou de
+          atender.
+        </li>
       </ul>
       <p>Sobre os clientes do seu estabelecimento:</p>
       <ul>

@@ -93,6 +93,7 @@ Essa diferença afeta o desenho de dados, onboarding e o roteamento de webhooks 
 | `fluxo_etapas` | Roteiro de perguntas do bot, montado pelo dono |
 | `conversas_estado` | Estado da conversa por instância + interlocutor |
 | `log_envio` | Registro de lembretes enviados. O CHECK aceita `tipo = 'confirmacao'`, mas **nada escreve esse valor**: o único escritor é o cron, sempre com `'lembrete'`. A confirmação sai pelo webhook e não é registrada |
+| `log_conexao` | Histórico append-only de transições de conexão e de motivo de queda. Único escritor é o webhook |
 
 ### Decisões de schema que não são óbvias
 
@@ -111,6 +112,14 @@ Estas existem por um motivo concreto. Mexer nelas sem entender o motivo reintrod
 **Conversa expira na leitura, sem cron.** `atualizado_em` mais antigo que 6h é tratado como conversa nova.
 
 **`log_envio` tem índice único parcial em `(agendamento_id, tipo) where tipo = 'lembrete'`.** O cron insere **antes** de enviar, com `on conflict do nothing`: se o insert não criou linha, alguém já enviou. Sem isso, um redeploy ou retry manda dois lembretes ao cliente.
+
+**`log_conexao` grava transição, não evento — e são duas linhas independentes, não uma enriquecida.** `perfis.status_conexao_whatsapp` é estado atual e sobrescrito: uma sessão que cai e volta não deixava rastro nenhum, e "o bot funcionou mais ou menos" ficava indistinguível de "o WhatsApp caiu na terça" — que é a hipótese mais provável, porque o QR code é a fragilidade conhecida da stack. Três coisas que mexer nelas reintroduz o bug que elas resolvem:
+
+- **A dedup é a feature.** O webhook compara com `perfil.status_conexao_whatsapp` (que já vem no `select` do topo, sem query nova) e só grava quando muda. `CONNECTION_UPDATE` chega várias vezes, e durante o pareamento cada tick de `connecting` colapsa para `desconectado`: sem a comparação seria uma linha a cada 2-5s, afogando o sinal. Com ela, um pareamento inteiro é **uma** linha e cada oscilação são duas.
+- **`estado` usa o vocabulário de 2 valores de `perfis`, não os 3 de `traduzirEstado`.** Persistir `conectando` já foi bug uma vez.
+- **`motivo_codigo` vem em linha separada porque chega em outro webhook.** `disconnectionReasonCode` viaja só no `STATUS_INSTANCE`, e a Evolution não garante ordem contra o `CONNECTION_UPDATE`. Fazer o segundo evento atualizar "a última transição" custaria uma leitura extra e assumiria uma ordenação que não existe. Log é sequência de observações; quem lê correlaciona por tempo. Há três pontos de escrita, e o terceiro é o caminho de recuperação por mensagem — sem ele, um `CONNECTION_UPDATE` perdido apareceria como conexão que caiu e nunca voltou.
+
+Diferente de `trials_numero_whatsapp`, esta tabela **cascateia** com `auth.users`: é dado operacional do próprio tenant, sem nada a proteger contra ele. A escrita é fail-open (erro só vira `console.error`) — trocar a atualização de `status_conexao_whatsapp` por uma linha de log seria o negócio errado. Ainda **não** existe retenção; a mitigação, quando incomodar, é um `delete` por idade no cron.
 
 **`fluxo_etapas` tem as regras do builder como constraints**, não só como validação de UI: `campo_destino` único por usuário (índice parcial), no máximo uma etapa de cada tipo de sistema (índice parcial em `tipo in ('servico','horario','confirmacao')`), coerência entre `tipo` e `campo_destino`, e proibição do prefixo `__` em `campo_destino` — reservado para chaves internas da engine em `dados_temporarios`, para nunca colidir com resposta do cliente. **Não** existe unique em `(usuario_id, ordem)`: a reordenação regrava todas as linhas de uma vez e colidiria transitoriamente.
 
@@ -183,13 +192,13 @@ Duas operações precisam de atomicidade real. O query builder do supabase-js n�
 
 ### RLS
 
-Todas as 8 tabelas com RLS habilitada. O padrão está em `supabase/migrations/*_rls_policies.sql`, com três detalhes que importam:
+Todas as 10 tabelas com RLS habilitada. O padrão está em `supabase/migrations/*_rls_policies.sql`, com três detalhes que importam:
 
 1. **`(select auth.uid())`, nunca `auth.uid()` solto** — o subselect faz o planner avaliar a função uma vez e cachear, em vez de chamá-la por linha (a doc de performance de RLS do Supabase mede 179ms → 9ms).
 2. **`to authenticated` em toda policy** — descarta a role `anon` sem custo de avaliação.
 3. **Índice em toda coluna usada em policy** — sem ele o Postgres faz seq scan e reavalia a policy linha a linha.
 
-`conversas_estado` e `log_envio` seguem menor privilégio: o dono só tem `select` (para debug no dashboard); quem escreve é sempre o webhook ou o cron via service role.
+`conversas_estado`, `log_envio` e `log_conexao` seguem menor privilégio: o dono só tem `select` (para debug no dashboard); quem escreve é sempre o webhook ou o cron via service role.
 
 **A service role ignora RLS por completo.** No webhook e no cron o `.eq("usuario_id", ...)` explícito deixa de ser otimização e passa a ser a **única** barreira entre tenants — tratar como código crítico.
 
