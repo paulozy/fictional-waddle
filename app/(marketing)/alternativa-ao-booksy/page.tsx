@@ -74,7 +74,7 @@ export default function AlternativaAoBooksyPage() {
   return (
     <>
       <section className="mx-auto max-w-5xl px-4 sm:px-6 pb-12 pt-14 sm:pt-20">
-        <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+        <p className="font-mono text-sm uppercase tracking-widest sm:text-xs text-muted-foreground">
           Comparação
         </p>
         <h1 className="mt-4 font-heading text-4xl font-semibold leading-[1.1] tracking-tight text-balance sm:text-5xl">

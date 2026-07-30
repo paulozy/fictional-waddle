@@ -8,6 +8,13 @@
  *
  * Mostrado do lado do **cliente final**, não do dono: é o que prova o
  * diferencial de não precisar instalar nada.
+ *
+ * **O corpo é `text-sm` (14px) e não pode encolher.** Estava em 13px, e esta é a
+ * peça que a landing pede para o visitante ler primeiro — medido a 375px, era o
+ * menor texto da primeira dobra. 14px é também o **teto**: as linhas de menu
+ * ("1. Corte masculino (30 min) — R$ 60,00") são as mais largas do produto e a
+ * 15px passam a quebrar na bolha, o que faz o menu numerado parecer desalinhado.
+ * O `max-w-[92%]` abaixo de `sm` compra a folga que 14px exige.
  */
 
 type Fala = { de: "bot" | "cliente"; texto: string };
@@ -91,7 +98,7 @@ export function ConversaDemo() {
         {CONVERSA.map((fala, i) => (
           <p
             key={i}
-            className={`max-w-[85%] whitespace-pre-line rounded-lg px-3 py-2 text-[13px] leading-snug ${
+            className={`max-w-[92%] whitespace-pre-line rounded-lg px-3 py-2 text-sm leading-relaxed sm:max-w-[85%] ${
               fala.de === "cliente"
                 ? "self-end bg-accent text-accent-foreground"
                 : "self-start bg-muted text-foreground"

@@ -44,8 +44,13 @@ export function MenuSecoes({
         side="bottom"
         className="rounded-t-xl pb-[max(1rem,env(safe-area-inset-bottom))]"
       >
+        {/*
+          "Menu" e não "Seções": a folha passou a carregar também o "Entrar", que
+          não é seção da página. O título nomeia o que está dentro — e é ele que o
+          leitor de tela anuncia ao abrir.
+        */}
         <SheetHeader>
-          <SheetTitle>Seções</SheetTitle>
+          <SheetTitle>Menu</SheetTitle>
         </SheetHeader>
 
         <ul className="px-4">
@@ -68,6 +73,22 @@ export function MenuSecoes({
               </a>
             </li>
           ))}
+
+          {/*
+            O "Entrar" do cabeçalho não existe abaixo de `sm` — ele e o botão
+            "Começar grátis" apontavam para o mesmo `/login` e juntos estouravam a
+            largura da tela. Aqui ele volta, separado por regra porque não é seção
+            da página, e nomeado do jeito que quem já é cliente procura.
+          */}
+          <li className="mt-2 border-t border-border pt-2">
+            <a
+              href="/login"
+              onClick={() => setAberto(false)}
+              className="flex min-h-12 items-center rounded-lg px-2 text-sm font-medium transition-colors hover:bg-muted"
+            >
+              Entrar na minha conta
+            </a>
+          </li>
         </ul>
       </SheetContent>
     </Sheet>

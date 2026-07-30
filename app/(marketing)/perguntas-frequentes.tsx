@@ -45,7 +45,13 @@ export function PerguntasFrequentes() {
               className="mt-1 size-4 shrink-0 text-muted-foreground transition-transform group-open:-rotate-180"
             />
           </summary>
-          <p className="pb-3 text-sm leading-6 text-muted-foreground">
+          {/*
+            `text-base` no celular e `max-w-[36rem]` sempre. São as respostas mais
+            longas do site: a 14px num contêiner de 720px davam ~80 caracteres por
+            linha, e no celular eram o menor corpo de uma lista de nove blocos de
+            leitura.
+          */}
+          <p className="max-w-[36rem] pb-3 text-base leading-7 text-muted-foreground md:text-sm md:leading-6">
             {resposta}
           </p>
         </details>

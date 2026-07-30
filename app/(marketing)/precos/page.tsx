@@ -31,7 +31,7 @@ export default function PrecoPage() {
         <h1 className="font-heading text-4xl font-semibold leading-[1.1] tracking-tight text-balance sm:text-5xl">
           Um horário que não fura já pagou o mês
         </h1>
-        <p className="mt-5 max-w-2xl text-lg leading-8 text-muted-foreground">
+        <p className="mt-5 max-w-[36rem] text-lg leading-8 text-muted-foreground">
           Com corte entre R$ 50 e R$ 65 na maior parte do país, basta uma falta
           evitada para a assinatura se pagar. O resto do mês é lucro — e os
           agendamentos que a Encaixaria fecha enquanto você está de mãos ocupadas
@@ -43,7 +43,7 @@ export default function PrecoPage() {
         <div className="mx-auto max-w-5xl px-4 sm:px-6 py-16">
           <div className="grid gap-8 rounded-lg border border-border bg-background p-6 sm:p-8 sm:grid-cols-[auto_1fr] sm:gap-12">
             <div>
-              <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+              <p className="font-mono text-sm uppercase tracking-widest text-muted-foreground sm:text-xs">
                 Plano único
               </p>
               <p className="mt-4 flex items-baseline gap-1">
@@ -53,19 +53,19 @@ export default function PrecoPage() {
                 </span>
                 <span className="text-sm text-muted-foreground">/mês</span>
               </p>
-              <p className="mt-2 text-sm text-muted-foreground">
+              <p className="mt-2 text-base text-muted-foreground md:text-sm">
                 Um estabelecimento, um número de WhatsApp.
               </p>
               <Button asChild size="lg" className="mt-6 w-full sm:w-auto">
                 <Link href="/login">Começar teste grátis</Link>
               </Button>
-              <p className="mt-3 text-xs text-muted-foreground">
+              <p className="mt-3 text-sm leading-6 text-muted-foreground sm:text-xs sm:leading-5">
                 {DIAS_TRIAL} dias grátis, sem cartão — o dobro do que a maioria
                 dá.
               </p>
             </div>
 
-            <ul className="space-y-3 text-sm sm:border-l sm:border-border sm:pl-12">
+            <ul className="space-y-3 text-base md:text-sm sm:border-l sm:border-border sm:pl-12">
               {INCLUSO.map((item) => (
                 <li key={item} className="flex items-start gap-2.5">
                   <CheckIcon
@@ -86,12 +86,12 @@ export default function PrecoPage() {
             <h2 className="font-heading text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
               Preço único. Não contamos cadeira nem cliente
             </h2>
-            <p className="mt-4 text-muted-foreground">
+            <p className="mt-4 max-w-[36rem] text-muted-foreground lg:max-w-none">
               Quase todo sistema de agendamento cobra por profissional: você
               cresce, contrata mais um, e a mensalidade sobe. Aqui é um valor só,
               e ele não muda porque a agenda encheu.
             </p>
-            <p className="mt-3 text-muted-foreground">
+            <p className="mt-3 max-w-[36rem] text-muted-foreground lg:max-w-none">
               Também não há teto de agendamentos. Existem alternativas mais
               baratas que param em 100 ou 150 marcações por mês — uma barbearia
               movimentada passa disso na terceira semana, e aí ou a conta sobe ou
@@ -100,10 +100,10 @@ export default function PrecoPage() {
           </div>
 
           <div className="rounded-lg border border-border bg-card p-6">
-            <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+            <p className="font-mono text-sm uppercase tracking-widest text-muted-foreground sm:text-xs">
               O que a Encaixaria não faz
             </p>
-            <ul className="mt-4 space-y-3 text-sm">
+            <ul className="mt-4 space-y-3 text-base md:text-sm">
               {NAO_INCLUSO.map((item) => (
                 <li key={item} className="flex items-start gap-2.5">
                   <MinusIcon
@@ -114,7 +114,8 @@ export default function PrecoPage() {
                 </li>
               ))}
             </ul>
-            <p className="mt-5 text-xs leading-5 text-muted-foreground">
+            {/* `max-w-[28rem]`: medida de 12px, não a de 16px da prosa. */}
+            <p className="mt-5 max-w-[28rem] text-sm leading-6 text-muted-foreground sm:text-xs sm:leading-5">
               Está aqui na frente de propósito. É melhor você descobrir agora do
               que na segunda semana de uso.
             </p>
@@ -127,7 +128,7 @@ export default function PrecoPage() {
           <h2 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
             Como funciona o pagamento
           </h2>
-          <div className="mt-6 grid gap-6 text-sm leading-6 text-muted-foreground sm:grid-cols-2">
+          <div className="mt-6 grid gap-6 text-base leading-7 text-muted-foreground md:text-sm md:leading-6 sm:grid-cols-2">
             <p>
               Nesta fase a assinatura é combinada direto com a gente pelo
               WhatsApp — sem cartão cadastrado, sem cobrança automática. Você
@@ -148,14 +149,14 @@ export default function PrecoPage() {
         <h2 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
           E se a conexão do WhatsApp cair?
         </h2>
-        <p className="mt-4 max-w-2xl text-muted-foreground">
+        <p className="mt-4 max-w-[36rem] text-muted-foreground">
           Cai, sim — celular sem bateria, chip trocado, aparelho desconectado. A
           conexão é a mesma do WhatsApp Web, e ela depende do seu celular estar
           vivo. Quando cai, o painel mostra um aviso claro e reconectar leva um
           minuto: é ler um QR code novo. Enquanto estiver desconectado, o bot não
           responde e os lembretes não saem.
         </p>
-        <p className="mt-3 max-w-2xl text-muted-foreground">
+        <p className="mt-3 max-w-[36rem] text-muted-foreground">
           A gente diz isso na página de preço porque é a pergunta certa a fazer
           antes de assinar, não depois.
         </p>

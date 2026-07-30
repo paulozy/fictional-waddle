@@ -54,7 +54,7 @@ export function TabelaComparacao({
         <thead>
           <tr className="border-b border-border bg-card text-left">
             <th scope="col" className="p-4 font-medium text-muted-foreground">
-              <span className="font-mono text-xs uppercase tracking-widest">
+              <span className="font-mono text-sm uppercase tracking-widest sm:text-xs">
                 Aspecto
               </span>
             </th>

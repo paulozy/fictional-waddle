@@ -101,7 +101,14 @@ export default function LandingPage() {
       <section className="mx-auto max-w-5xl px-4 sm:px-6 pb-16 pt-14 sm:pt-20">
         <div className="grid items-center gap-12 lg:grid-cols-[1.05fr_1fr]">
           <div>
-            <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+            {/*
+              `text-sm sm:text-xs`: maior no celular e menor no desktop, que é o
+              mesmo idioma de `components/ui/input.tsx` (`text-base md:text-sm`) e
+              não um deslize. Mono, caixa-alta e `tracking-widest` a 12px é a
+              combinação mais difícil de ler da página — três penalidades de
+              legibilidade no menor corpo do documento.
+            */}
+            <p className="font-mono text-sm uppercase tracking-widest text-muted-foreground sm:text-xs">
               Para salões, barbearias, clínicas e estética
             </p>
 
@@ -128,7 +135,13 @@ export default function LandingPage() {
 
           <div className="lg:pl-4">
             <ConversaDemo />
-            <p className="mt-3 text-center text-xs text-muted-foreground">
+            {/*
+              Esta legenda não é enfeite: é a linha que afirma que a conversa acima
+              é transcrição e não ilustração, e a landing sustenta essa afirmação em
+              `/como-funciona`. A 12px era, junto com o rodapé, o menor texto da
+              primeira dobra no celular.
+            */}
+            <p className="mt-3 text-center text-sm text-muted-foreground sm:text-xs">
               Conversa real do bot — é exatamente isso que seu cliente recebe.
             </p>
           </div>
@@ -141,7 +154,17 @@ export default function LandingPage() {
           <h2 className="max-w-2xl font-heading text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
             Cada mensagem não respondida é uma cadeira vazia
           </h2>
-          <p className="mt-4 max-w-2xl text-muted-foreground">
+          {/*
+            `max-w-[36rem]` e não `max-w-2xl`: 42rem (672px) a 16px dá ~85
+            caracteres por linha, medido a 768px. O teto de conforto é 75, acima do
+            qual o olho perde o começo da linha seguinte; 36rem (576px) cai em ~75.
+
+            A conta que faltava é a largura média de caractere da Instrument Sans a
+            16px: **~7,7px**, não os ~8,4px que a escolha de `2xl` assumia. Por isso
+            a medida certa é 36rem e não 38 — e por isso ela **não** serve para
+            texto de 12px, que no mesmo espaço rende ~96 caracteres.
+          */}
+          <p className="mt-4 max-w-[36rem] text-muted-foreground">
             Quem manda mensagem para marcar horário não espera. Se você está com
             a mão na cabeça de alguém, não dá para parar — e meia hora depois o
             cliente já resolveu em outro lugar. As faltas fazem o resto do
@@ -157,10 +180,20 @@ export default function LandingPage() {
           Como funciona
         </h2>
 
-        {/* Numerado porque aqui a ordem é informação: cada passo depende do anterior. */}
-        <ol className="mt-8 grid gap-8 sm:grid-cols-3">
+        {/*
+          Numerado porque aqui a ordem é informação: cada passo depende do
+          anterior.
+
+          Três colunas só a partir de `lg`, e isso é medido. Com `sm:grid-cols-3`
+          a grade virava três colunas já a 640px: a 768px cada coluna tinha ~224px
+          e o texto caía para **~24 caracteres por linha em 5 linhas** — coluna de
+          jornal estreita, em que o olho salta linha. Empilhado, o `max-w-[34rem]`
+          impede o problema oposto (a linha de 90 caracteres que uma coluna de
+          720px produziria).
+        */}
+        <ol className="mt-8 grid gap-8 lg:grid-cols-3">
           {PASSOS.map(({ icone: Icone, titulo, texto }, i) => (
-            <li key={titulo}>
+            <li key={titulo} className="max-w-[34rem] lg:max-w-none">
               <div className="flex items-center gap-3">
                 <span className="grid size-8 shrink-0 place-items-center rounded-md bg-primary font-mono text-sm tabular-nums text-primary-foreground">
                   {i + 1}
@@ -168,7 +201,7 @@ export default function LandingPage() {
                 <Icone aria-hidden className="size-5 text-primary" />
               </div>
               <h3 className="mt-4 font-medium">{titulo}</h3>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              <p className="mt-2 text-base leading-7 text-muted-foreground lg:text-sm lg:leading-6">
                 {texto}
               </p>
             </li>
@@ -178,11 +211,12 @@ export default function LandingPage() {
 
       <section className="border-y border-border bg-card">
         <div className="mx-auto max-w-5xl px-4 sm:px-6 py-16">
-          <dl className="grid gap-8 sm:grid-cols-3">
+          {/* Mesma razão da grade de passos: 3 colunas de prosa só a partir de `lg`. */}
+          <dl className="grid gap-8 lg:grid-cols-3">
             {BENEFICIOS.map(({ titulo, texto }) => (
-              <div key={titulo}>
+              <div key={titulo} className="max-w-[34rem] lg:max-w-none">
                 <dt className="font-medium">{titulo}</dt>
-                <dd className="mt-2 text-sm leading-6 text-muted-foreground">
+                <dd className="mt-2 text-base leading-7 text-muted-foreground lg:text-sm lg:leading-6">
                   {texto}
                 </dd>
               </div>
@@ -197,13 +231,13 @@ export default function LandingPage() {
             <h2 className="font-heading text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
               Por que não usar um aplicativo de agendamento?
             </h2>
-            <p className="mt-4 text-muted-foreground">
+            <p className="mt-4 max-w-[36rem] text-muted-foreground lg:max-w-none">
               Booksy, Trinks e parecidos são bons produtos, e funcionam bem para
               quem já tem público acostumado a marcar por aplicativo. Só que eles
               pedem uma coisa do seu cliente: baixar, criar conta e lembrar de
               abrir.
             </p>
-            <p className="mt-3 text-muted-foreground">
+            <p className="mt-3 max-w-[36rem] text-muted-foreground lg:max-w-none">
               A Encaixaria não pede nada disso. Ela vive no WhatsApp que seu
               cliente já usa todo dia, e responde pelo número que ele já tem
               salvo com o nome do seu estabelecimento.
@@ -211,10 +245,10 @@ export default function LandingPage() {
           </div>
 
           <div className="rounded-lg border border-border bg-card p-6">
-            <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+            <p className="font-mono text-sm uppercase tracking-widest text-muted-foreground sm:text-xs">
               Do lado do seu cliente
             </p>
-            <ul className="mt-4 space-y-3 text-sm">
+            <ul className="mt-4 space-y-3 text-base md:text-sm">
               {DO_LADO_DO_CLIENTE.map((item) => (
                 <li key={item} className="flex items-start gap-2.5">
                   <CheckIcon
@@ -250,7 +284,7 @@ export default function LandingPage() {
               <Button asChild size="lg" className="mt-6 w-full sm:w-auto">
                 <Link href="/login">Começar teste grátis</Link>
               </Button>
-              <p className="mt-3 text-xs text-muted-foreground">
+              <p className="mt-3 text-sm leading-6 text-muted-foreground sm:text-xs sm:leading-5">
                 {DIAS_TRIAL} dias grátis, sem cartão. Cancele quando quiser.{" "}
                 <Link href="/precos" className="underline underline-offset-2">
                   Ver o que está incluído
@@ -259,7 +293,7 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <ul className="space-y-3 text-sm sm:border-l sm:border-border sm:pl-12">
+            <ul className="space-y-3 text-base md:text-sm sm:border-l sm:border-border sm:pl-12">
               {INCLUSO.map((item) => (
                 <li key={item} className="flex items-start gap-2.5">
                   <CheckIcon

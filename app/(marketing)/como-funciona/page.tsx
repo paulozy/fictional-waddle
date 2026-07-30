@@ -56,7 +56,7 @@ export default function ComoFuncionaPage() {
         <h1 className="font-heading text-4xl font-semibold leading-[1.1] tracking-tight text-balance sm:text-5xl">
           Do QR code ao lembrete
         </h1>
-        <p className="mt-5 max-w-2xl text-lg leading-8 text-muted-foreground">
+        <p className="mt-5 max-w-[36rem] text-lg leading-8 text-muted-foreground">
           A Encaixaria não é um aplicativo que seu cliente instala. Ela atende
           pelo WhatsApp que ele já usa, respondendo do número que ele já tem
           salvo com o nome do seu estabelecimento.
@@ -76,7 +76,7 @@ export default function ComoFuncionaPage() {
                     {titulo}
                   </h2>
                 </div>
-                <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                <p className="mt-3 text-base leading-7 text-muted-foreground md:text-sm md:leading-6">
                   {texto}
                 </p>
               </li>
@@ -91,12 +91,12 @@ export default function ComoFuncionaPage() {
             <h2 className="font-heading text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
               A conversa que seu cliente recebe
             </h2>
-            <p className="mt-4 text-muted-foreground">
+            <p className="mt-4 max-w-[36rem] text-muted-foreground lg:max-w-none">
               Não é ilustração: é o que o bot responde hoje. O cliente não baixa
               nada, não cria conta e não decora endereço de site — ele manda
               mensagem como sempre fez e responde com números.
             </p>
-            <p className="mt-3 text-muted-foreground">
+            <p className="mt-3 max-w-[36rem] text-muted-foreground lg:max-w-none">
               Se ele digitar qualquer coisa fora das opções, o bot repete a
               pergunta em vez de travar. E em grupos e nos status ele não
               responde nada.
@@ -134,14 +134,14 @@ export default function ComoFuncionaPage() {
         <h2 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
           O que depende do seu celular
         </h2>
-        <p className="mt-4 max-w-2xl text-muted-foreground">
+        <p className="mt-4 max-w-[36rem] text-muted-foreground">
           A conexão é a mesma tecnologia do WhatsApp Web, então ela depende do seu
           aparelho estar ligado e com o WhatsApp conectado. Se cair — bateria,
           chip trocado, aparelho desvinculado — o painel avisa e reconectar leva
           um minuto, lendo um QR code novo. Enquanto estiver fora, o bot não
           responde e os lembretes não saem.
         </p>
-        <p className="mt-3 max-w-2xl text-muted-foreground">
+        <p className="mt-3 max-w-[36rem] text-muted-foreground">
           Um detalhe que vale conferir antes: se o número já estiver cadastrado na
           API oficial do WhatsApp da Meta, a conexão não funciona. O QR code é
           aceito, mas as mensagens não chegam. Nesse caso use outro número.

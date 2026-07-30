@@ -1,9 +1,17 @@
 /**
  * Moldura das páginas de texto corrido: sobre, privacidade, termos.
  *
- * Existe para a tipografia de leitura longa ficar num lugar só. `max-w-2xl` é
- * medida de conforto, não estética — passa de perto dos 75 caracteres por linha
- * acima dos quais o olho perde o começo da linha seguinte.
+ * Existe para a tipografia de leitura longa ficar num lugar só. A largura é
+ * medida de conforto, não estética: acima de ~75 caracteres por linha o olho
+ * perde o começo da linha seguinte.
+ *
+ * **Era `max-w-2xl`, e não passava "de perto" — passava por cima.** Medido no
+ * Chromium a 768px: 42rem dá 672px de coluna, e a 16px isso rende 76 a 84
+ * caracteres por linha em todos os parágrafos de `/sobre`, `/privacidade` e
+ * `/termos`. `36rem` (576px) cai em ~75.
+ *
+ * A conta que faltava é a largura média de caractere da Instrument Sans a 16px:
+ * **~7,7px**, não os ~8,4px que a escolha de `2xl` assumia.
  *
  * `atualizadoEm` é data escrita à mão, e não `new Date()`, de propósito: numa
  * página jurídica ela informa **quando o texto mudou**, e um build noturno não
@@ -22,7 +30,7 @@ export function PaginaTexto({
   children: React.ReactNode;
 }) {
   return (
-    <article className="mx-auto max-w-2xl px-4 sm:px-6 pb-20 pt-14 sm:pt-20">
+    <article className="mx-auto max-w-[36rem] px-4 sm:px-6 pb-20 pt-14 sm:pt-20">
       <h1 className="font-heading text-3xl font-semibold leading-tight tracking-tight text-balance sm:text-4xl">
         {titulo}
       </h1>
@@ -32,7 +40,7 @@ export function PaginaTexto({
       ) : null}
 
       {atualizadoEm ? (
-        <p className="mt-4 font-mono text-xs uppercase tracking-widest text-muted-foreground">
+        <p className="mt-4 font-mono text-sm uppercase tracking-widest text-muted-foreground sm:text-xs">
           Atualizado em {atualizadoEm}
         </p>
       ) : null}
