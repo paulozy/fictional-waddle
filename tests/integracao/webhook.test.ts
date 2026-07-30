@@ -157,6 +157,15 @@ async function chamar(
   );
 }
 
+async function lerLogConexao(usuarioId: string) {
+  const { data } = await admin
+    .from("log_conexao")
+    .select("tipo, estado, motivo_codigo")
+    .eq("usuario_id", usuarioId)
+    .order("em", { ascending: true });
+  return data ?? [];
+}
+
 async function lerConversa(usuarioId: string) {
   const { data } = await admin
     .from("conversas_estado")
@@ -323,6 +332,159 @@ describe.skipIf(!stackNoAr)("webhook do WhatsApp (integração)", () => {
         .single();
 
       expect(data!.status_conexao_whatsapp).toBe("conectado");
+    });
+  });
+
+  /**
+   * `perfis.status_conexao_whatsapp` é estado atual e sobrescrito: sem estas
+   * linhas, uma sessão que cai e volta não deixa rastro, e "o bot funcionou mais
+   * ou menos" fica indistinguível de "o WhatsApp caiu na terça".
+   */
+  describe("log_conexao", () => {
+    it("registra a queda como transição", async () => {
+      const { usuarioId } = await criarTenant(); // nasce conectado
+
+      await chamar(usuarioId, {
+        event: "connection.update",
+        data: { state: "close" },
+      });
+
+      expect(await lerLogConexao(usuarioId)).toEqual([
+        { tipo: "transicao", estado: "desconectado", motivo_codigo: null },
+      ]);
+    });
+
+    it("registra o pareamento como transição", async () => {
+      const { usuarioId } = await criarTenant();
+      await admin
+        .from("perfis")
+        .update({ status_conexao_whatsapp: "desconectado" })
+        .eq("id", usuarioId);
+
+      await chamar(usuarioId, {
+        event: "connection.update",
+        data: { state: "open" },
+      });
+
+      expect(await lerLogConexao(usuarioId)).toEqual([
+        { tipo: "transicao", estado: "conectado", motivo_codigo: null },
+      ]);
+    });
+
+    /**
+     * O teste que trava a dedup. `CONNECTION_UPDATE` chega várias vezes para o
+     * mesmo estado — é por isso que a RPC do trial é idempotente — e sem a
+     * comparação com o estado anterior o log ganharia uma linha por reentrega.
+     */
+    it("não registra segunda linha quando o estado se repete", async () => {
+      const { usuarioId } = await criarTenant();
+      await admin
+        .from("perfis")
+        .update({ status_conexao_whatsapp: "desconectado" })
+        .eq("id", usuarioId);
+
+      for (let i = 0; i < 3; i++) {
+        await chamar(usuarioId, {
+          event: "connection.update",
+          data: { state: "open" },
+        });
+      }
+
+      expect(await lerLogConexao(usuarioId)).toHaveLength(1);
+    });
+
+    /**
+     * O caso que mais gera volume no mundo real: `connecting` é o estado INICIAL
+     * do socket Baileys, emitido a cada tentativa durante todo o pareamento.
+     * Colapsa para `desconectado`, que é o estado em que a instância já está —
+     * então nada é gravado.
+     */
+    it("não registra os ticks de connecting durante o pareamento", async () => {
+      const { usuarioId } = await criarTenant();
+      await admin
+        .from("perfis")
+        .update({ status_conexao_whatsapp: "desconectado" })
+        .eq("id", usuarioId);
+
+      for (let i = 0; i < 4; i++) {
+        await chamar(usuarioId, {
+          event: "connection.update",
+          data: { state: "connecting" },
+        });
+      }
+
+      expect(await lerLogConexao(usuarioId)).toEqual([]);
+    });
+
+    // Já pareado, `connecting` significa que a sessão caiu e está tentando
+    // voltar — aí a transição é real e tem de aparecer.
+    it("registra queda quando connecting chega numa sessão já aberta", async () => {
+      const { usuarioId } = await criarTenant(); // nasce conectado
+
+      await chamar(usuarioId, {
+        event: "connection.update",
+        data: { state: "connecting" },
+      });
+
+      expect(await lerLogConexao(usuarioId)).toEqual([
+        { tipo: "transicao", estado: "desconectado", motivo_codigo: null },
+      ]);
+    });
+
+    // `disconnectionReasonCode` viaja só no STATUS_INSTANCE: o CONNECTION_UPDATE
+    // de queda diz que caiu, nunca por quê. 401 = o dono desvinculou o aparelho.
+    it("registra o motivo da queda que vem no STATUS_INSTANCE", async () => {
+      const { usuarioId } = await criarTenant();
+
+      await chamar(usuarioId, {
+        event: "status.instance",
+        data: { disconnectionReasonCode: 401 },
+      });
+
+      expect(await lerLogConexao(usuarioId)).toEqual([
+        { tipo: "motivo_queda", estado: null, motivo_codigo: 401 },
+      ]);
+    });
+
+    it("não registra nada quando o STATUS_INSTANCE vem sem motivo", async () => {
+      const { usuarioId } = await criarTenant();
+
+      await chamar(usuarioId, { event: "status.instance", data: {} });
+
+      expect(await lerLogConexao(usuarioId)).toEqual([]);
+    });
+
+    /**
+     * O `CONNECTION_UPDATE` de pareamento se perde (é o que `verificarConexao`
+     * documenta, e o motivo de a tela de QR fazer polling). Sem registrar no
+     * caminho de recuperação, o log mostraria uma conexão que caiu e nunca
+     * voltou, enquanto o bot atende normalmente.
+     */
+    it("registra a transição no caminho de recuperação por mensagem", async () => {
+      const { usuarioId } = await criarTenant();
+      await admin
+        .from("perfis")
+        .update({ status_conexao_whatsapp: "desconectado" })
+        .eq("id", usuarioId);
+
+      await chamar(usuarioId, payloadMensagem("oi", "recuperacao-1"));
+
+      expect(await lerLogConexao(usuarioId)).toEqual([
+        { tipo: "transicao", estado: "conectado", motivo_codigo: null },
+      ]);
+    });
+
+    it("não escreve no log do outro tenant", async () => {
+      const a = await criarTenant();
+      const b = await criarTenant();
+
+      await chamar(a.usuarioId, {
+        event: "connection.update",
+        data: { state: "close" },
+      });
+
+      expect(await lerLogConexao(a.usuarioId)).toHaveLength(1);
+      expect(await lerLogConexao(b.usuarioId)).toEqual([]);
     });
   });
 

@@ -120,17 +120,15 @@ export async function POST(
   }
 
   /**
-   * Motivo da queda. **Só registra** — guardar exigiria coluna nova e
-   * migration, e a tela ainda não usa a informação.
+   * Motivo da queda, e é o **único** evento que o traz: o `CONNECTION_UPDATE`
+   * diz que caiu, nunca por quê.
    *
    * O ganho é de suporte, e é imediato: quando o dono disser "não conecta", o
    * log responde se foi `401` (ele desvinculou o aparelho, precisa re-parear)
-   * ou uma queda transitória que volta sozinha. Antes disto o app recebia o
-   * `CONNECTION_UPDATE` de queda e nunca o porquê.
+   * ou uma queda transitória que volta sozinha.
    *
-   * Próximo passo natural, quando incomodar: persistir e diferenciar o texto
-   * do box "WhatsApp desconectado" — hoje ele dá o mesmo conselho nos dois
-   * casos, e num deles o conselho não resolve.
+   * O `console.info` continua: ele é o caminho de depuração ao vivo, e `em`
+   * na tabela tem granularidade de linha, não de requisição.
    */
   if (evento === "status") {
     const motivo = extrairMotivoDesconexao(payload);
@@ -138,18 +136,49 @@ export async function POST(
       usuario_id: perfil.id,
       motivo_desconexao: motivo,
     });
+
+    if (motivo !== null) {
+      await registrarEventoConexao(admin, perfil.id, {
+        tipo: "motivo_queda",
+        motivo_codigo: motivo,
+      });
+    }
+
     return ok(`status (${motivo ?? "sem motivo"})`);
   }
 
   if (evento === "conexao") {
     const estado = traduzirEstado(extrairEstadoConexao(payload) ?? undefined);
+
+    // `traduzirEstado` tem três valores; `perfis` só aceita dois. `conectando` é
+    // transitório e cai para `desconectado`, que é a decisão registrada na
+    // migration de `log_conexao` e no CLAUDE.md.
+    const persistido = estado === "conectado" ? "conectado" : "desconectado";
+
     await admin
       .from("perfis")
-      .update({
-        status_conexao_whatsapp:
-          estado === "conectado" ? "conectado" : "desconectado",
-      })
+      .update({ status_conexao_whatsapp: persistido })
       .eq("id", perfil.id);
+
+    /**
+     * Só transição, nunca o evento cru — e é isso que mantém o log legível.
+     *
+     * `CONNECTION_UPDATE` chega várias vezes (é por isso que a RPC do trial é
+     * idempotente), e durante o pareamento cada tick de `connecting` colapsa
+     * para `desconectado`. Sem esta comparação, um pareamento gravaria uma
+     * linha a cada 2-5s e afogaria o sinal que a tabela existe para dar. Com
+     * ela, um pareamento inteiro gera UMA linha e cada oscilação gera duas.
+     *
+     * O estado anterior vem do `select` do topo, então não custa query nova.
+     * Depois do `update` de propósito: o log não deve afirmar transição que não
+     * chegou a ser persistida.
+     */
+    if (perfil.status_conexao_whatsapp !== persistido) {
+      await registrarEventoConexao(admin, perfil.id, {
+        tipo: "transicao",
+        estado: persistido,
+      });
+    }
 
     // Pareou: é aqui, e só aqui, que o número do dono passa pelo nosso lado.
     if (estado === "conectado") {
@@ -179,6 +208,14 @@ export async function POST(
       .from("perfis")
       .update({ status_conexao_whatsapp: "conectado" })
       .eq("id", perfil.id);
+
+    // A condição do `if` já É a transição. Sem registrar aqui, um
+    // `CONNECTION_UPDATE` perdido (o parágrafo abaixo explica que isso
+    // acontece) apareceria no log como uma conexão que nunca voltou.
+    await registrarEventoConexao(admin, perfil.id, {
+      tipo: "transicao",
+      estado: "conectado",
+    });
 
     /**
      * E reivindica o número aqui também, pelo mesmo motivo que este bloco existe:
@@ -218,6 +255,42 @@ export async function POST(
   }
 
   return processarMensagem(admin, perfil, instance, mensagem);
+}
+
+/**
+ * Uma linha no histórico de conexão (`supabase/migrations/20260730045400_*`).
+ *
+ * Fail-open, pelo mesmo motivo da reivindicação de trial abaixo: a falha aqui é
+ * nossa (tabela, privilégio, rede), e o custo de errar para o lado permissivo é
+ * uma linha de log ausente. Errar para o outro lado interromperia a atualização
+ * de `status_conexao_whatsapp` e faria o painel mentir sobre a conexão — trocar
+ * observabilidade por funcionalidade é exatamente o negócio errado.
+ *
+ * Linha duplicada sob corrida é aceitável: dois webhooks simultâneos podem ler o
+ * mesmo estado anterior e inserir a mesma transição. É log append-only, não
+ * estado, então não há o que proteger com compare-and-set (diferente de
+ * `conversas_estado`).
+ */
+type EventoConexao =
+  | { tipo: "transicao"; estado: "conectado" | "desconectado" }
+  | { tipo: "motivo_queda"; motivo_codigo: number };
+
+async function registrarEventoConexao(
+  admin: ClienteAdmin,
+  usuarioId: string,
+  evento: EventoConexao,
+) {
+  const { error } = await admin
+    .from("log_conexao")
+    .insert({ usuario_id: usuarioId, ...evento });
+
+  if (error) {
+    console.error("falha ao registrar evento de conexão", {
+      usuario_id: usuarioId,
+      tipo: evento.tipo,
+      codigo: error.code,
+    });
+  }
 }
 
 /**

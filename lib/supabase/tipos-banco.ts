@@ -232,6 +232,33 @@ export type Database = {
         }
         Relationships: []
       }
+      log_conexao: {
+        Row: {
+          em: string
+          estado: string | null
+          id: string
+          motivo_codigo: number | null
+          tipo: string
+          usuario_id: string
+        }
+        Insert: {
+          em?: string
+          estado?: string | null
+          id?: string
+          motivo_codigo?: number | null
+          tipo: string
+          usuario_id: string
+        }
+        Update: {
+          em?: string
+          estado?: string | null
+          id?: string
+          motivo_codigo?: number | null
+          tipo?: string
+          usuario_id?: string
+        }
+        Relationships: []
+      }
       log_envio: {
         Row: {
           agendamento_id: string | null
