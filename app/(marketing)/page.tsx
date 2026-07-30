@@ -11,6 +11,7 @@ import { jsonLdHome, serializarJsonLd } from "@/lib/json-ld";
 import { DIAS_TRIAL, INCLUSO, PRECO_MENSAL } from "@/lib/plano";
 import { metadataPagina } from "@/lib/site";
 import { PerguntasFrequentes } from "./perguntas-frequentes";
+import { VideoDemonstracao } from "./video-demonstracao";
 
 /**
  * Sem `titulo`: a home usa o título padrão do site. Passar "Início" aqui daria
@@ -148,6 +149,8 @@ export default function LandingPage() {
           </p>
         </div>
       </section>
+
+      <VideoDemonstracao />
 
       <section id="como-funciona" className="mx-auto max-w-5xl px-4 sm:px-6 py-16">
         <h2 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">

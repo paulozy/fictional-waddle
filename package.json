@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "tipos:banco": "supabase gen types typescript --local > lib/supabase/tipos-banco.ts",
-    "verificar:contraste": "node scripts/verificar-contraste.mjs"
+    "verificar:contraste": "node scripts/verificar-contraste.mjs",
+    "demo:video": "node scripts/demo/gravar.mjs && node scripts/demo/converter.mjs"
   },
   "dependencies": {
     "@date-fns/tz": "^1.5.0",
@@ -46,6 +47,7 @@
     "eslint-config-next": "16.2.11",
     "jsdom": "^29.1.1",
     "msw": "^2.15.0",
+    "playwright": "^1.62.0",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vite-tsconfig-paths": "^6.1.1",

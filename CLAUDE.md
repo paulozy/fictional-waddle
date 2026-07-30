@@ -239,6 +239,8 @@ A palavra ao lado do símbolo fica em `text-foreground`, não em `text-primary` 
 
 **O que só um navegador verifica.** O jsdom não tem engine de layout nem cascata CSS: `getBoundingClientRect()` devolve zero, `matchMedia` não existe e classe do Tailwind é string opaca. Um `toHaveClass("min-h-11")` afirma que a classe foi escrita, **não** que o pixel tem 44. Tamanho real de alvo, overflow, media query aplicando, zoom do iOS, safe area e teclado virtual pedem aparelho ou emulação de device — testar a 375×667 e 768×1024 ao mexer em layout. `@testing-library/jest-dom` e `user-event` **não** estão instalados: os testes de componente usam `fireEvent` e asserção sobre atributo.
 
+**O Playwright entrou no repositório, mas ainda não há teste de navegador.** Ele foi adicionado para `scripts/demo/` (o vídeo de prospecção) e roda Chromium de verdade, com layout e cascata — então o parágrafo acima deixou de ser um beco sem saída: um `getBoundingClientRect()` ali mede pixel, não string de classe. Foi assim que se descobriu que **as páginas públicas transbordam horizontalmente a 375px** (`scrollWidth` 409 contra `clientWidth` 375; o culpado é o grupo de ações do cabeçalho em `app/(marketing)/layout.tsx`, e o CTA "Começar grátis" fica cortado) — defeito que nenhum teste de jsdom podia ver. O que **não** existe é suíte usando isso. Ao criar a primeira, mantê-la separada da suíte do Vitest: browser real é ordens de grandeza mais lento, e misturar as duas faz o feedback rápido virar lento para todo mundo.
+
 ---
 
 ## SEO e páginas públicas
