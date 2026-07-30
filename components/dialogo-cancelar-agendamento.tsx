@@ -41,6 +41,7 @@ export function DialogoCancelarAgendamento({
   children,
   aberto: abertoControlado,
   onAbertoChange,
+  onSucesso,
 }: {
   id: string;
   descricao: string;
@@ -55,6 +56,16 @@ export function DialogoCancelarAgendamento({
    */
   aberto?: boolean;
   onAbertoChange?: (aberto: boolean) => void;
+  /**
+   * Chamado só quando o cancelamento **deu certo**.
+   *
+   * Existe para quem some da tela depois de cancelar: na grade o bloco é retirado
+   * (`blocosVisiveisNaGrade`), então o elemento para onde o Radix devolveria o foco
+   * deixa de existir e ele cai no `<body>` — perda de foco, SC 2.4.3, medida em
+   * navegador. Na lista do celular a linha permanece com o rótulo "Cancelado", o foco
+   * volta sozinho, e este callback não é passado.
+   */
+  onSucesso?: () => void;
 }) {
   const [abertoInterno, setAbertoInterno] = useState(false);
   const [estado, setEstado] = useState<EstadoFormulario>(undefined);
@@ -83,6 +94,8 @@ export function DialogoCancelarAgendamento({
          */
         if (resultado.aviso) toast.warning(resultado.aviso);
         else toast.success("Agendamento cancelado e horário liberado");
+
+        onSucesso?.();
       }
     });
   }

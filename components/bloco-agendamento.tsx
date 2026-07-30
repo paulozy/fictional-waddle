@@ -91,17 +91,19 @@ export function BlocoAgendamento({
 
           {bloco.compacto ? (
             /**
-             * Bloco de menos de 60 min não comporta três linhas: em linha única a hora
-             * fica fixa e o serviço fica com o resto. O nome do cliente vai para o
-             * detalhe — antes ele existia só no `title`, inacessível em toque.
+             * Bloco compacto mostra **só o nome do serviço**, sem a hora.
+             *
+             * Medido a 768px (o pior caso: a grade tem `min-w-[44rem]` e sete colunas,
+             * dando ~88px por bloco): com a hora ao lado, o nome ficava com **23px de
+             * 211px — 11%**, ou seja "Esc…", que não distingue uma escova de uma
+             * esmaltação. Sem a hora sobram ~64px, o suficiente para identificar.
+             *
+             * A hora não se perde: a linha do grid já a codifica, o `sr-only` acima a
+             * anuncia por extenso e o detalhe a mostra exata. Trocar 11% do nome por
+             * uma hora redundante era o pior dos dois mundos.
              */
-            <span aria-hidden className="flex items-baseline gap-1.5 pr-3">
-              <span className="shrink-0 font-mono tabular-nums">
-                {bloco.horaInicio}
-              </span>
-              <span className="min-w-0 flex-1 truncate font-medium">
-                {bloco.titulo}
-              </span>
+            <span aria-hidden className="block truncate pr-3 font-medium">
+              {bloco.titulo}
             </span>
           ) : (
             <span aria-hidden className="block pr-3">
@@ -188,6 +190,24 @@ export function BlocoAgendamento({
         descricao={descricao}
         aberto={dialogoAberto}
         onAbertoChange={setDialogoAberto}
+        /**
+         * Devolve o foco para a região da grade.
+         *
+         * Medido em navegador: no sucesso este bloco é retirado da grade, então o
+         * gatilho para onde o Radix restauraria o foco deixa de existir e o foco cai no
+         * `<body>` — quem navega por teclado perde o lugar (SC 2.4.3).
+         *
+         * A busca é por DOM porque o contêiner é renderizado por um Server Component
+         * acima; passar ref atravessaria a fronteira RSC. O `requestAnimationFrame`
+         * espera o Radix terminar a própria restauração, senão ele sobrescreve isto.
+         */
+        onSucesso={() => {
+          requestAnimationFrame(() => {
+            document
+              .querySelector<HTMLElement>('[data-slot="grade-semana"]')
+              ?.focus();
+          });
+        }}
       />
     </>
   );

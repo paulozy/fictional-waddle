@@ -44,12 +44,19 @@ export function CalendarioSemana({
        */}
       <div
         role="group"
+        data-slot="grade-semana"
         aria-label={
           primeiro && ultimo
             ? `Agenda de ${primeiro.rotuloNumero} a ${ultimo.rotuloNumero}`
             : "Agenda da semana"
         }
-        className="min-w-[44rem]"
+        /**
+         * `-1` para poder receber foco por programa, sem entrar na ordem do Tab: é aqui
+         * que o foco pousa quando o bloco cancelado sai da grade e o gatilho original
+         * deixa de existir.
+         */
+        tabIndex={-1}
+        className="min-w-[44rem] outline-none"
       >
         <div
           className="grid border-b border-regua-forte"

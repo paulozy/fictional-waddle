@@ -103,6 +103,36 @@ describe("BlocoAgendamento", () => {
     expect(screen.getByRole("button").textContent).toContain("Joana");
   });
 
+  /**
+   * Medido em navegador a 768px (~88px por coluna): com a hora ao lado, o nome do
+   * serviço ficava com 23px de 211px — 11%, ou seja "Esc…", que não distingue uma
+   * escova de uma esmaltação. Sem a hora sobram ~76px (~11 caracteres), e nome curto
+   * cabe inteiro. A hora não se perde: a linha do grid a codifica e o nome acessível
+   * a anuncia.
+   */
+  it("bloco compacto nao desenha a hora, mas a anuncia", () => {
+    const { container } = render(
+      <BlocoAgendamento bloco={bloco({ compacto: true })} cancelavel />,
+    );
+
+    // O que é pintado: só o nome do serviço.
+    const visivel = container.querySelector('[aria-hidden="true"].truncate');
+    expect(visivel?.textContent).toBe("Corte de cabelo");
+    expect(visivel?.textContent).not.toContain("09:00");
+
+    // O que é anunciado: tudo, hora incluída.
+    expect(screen.getByRole("button").textContent).toContain("09:00");
+  });
+
+  /** Bloco alto continua mostrando hora, serviço e cliente — só o compacto muda. */
+  it("bloco alto continua desenhando a hora", () => {
+    const { container } = render(
+      <BlocoAgendamento bloco={bloco({ compacto: false })} cancelavel />,
+    );
+
+    expect(container.textContent).toContain("09:00");
+  });
+
   /** Radix marca o gatilho como abridor de diálogo; é o que o leitor de tela usa. */
   it("declara que abre um painel", () => {
     render(<BlocoAgendamento bloco={bloco()} cancelavel />);
