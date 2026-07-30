@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
+  MAX_OBSERVACAO_CANCELAMENTO,
+  MOTIVOS_CANCELAMENTO,
+  ROTULOS_MOTIVO_CANCELAMENTO,
+  cancelamentoSchema,
   conflitaComGrade,
   errosDoFormulario,
   faixaInvertida,
   faixasSobrepostas,
   gradeSemanalSchema,
   horarioSchema,
+  primeiroErro,
   servicoSchema,
   type EntradaHorario,
   type Faixa,
@@ -288,5 +293,84 @@ describe("errosDoFormulario", () => {
     expect(erro).toBeTruthy();
     expect(campos.nome).toEqual(["Informe o nome."]);
     expect(campos.duracao).toEqual(["Informe a duração."]);
+  });
+});
+
+describe("cancelamentoSchema", () => {
+  const valido = {
+    id: "3f1c5b2e-0a9d-4c7e-8b1a-2d3e4f5a6b7c",
+    motivo: "cliente_pediu",
+    observacao: "",
+  };
+
+  it("aceita os cinco motivos do vocabulário", () => {
+    for (const motivo of MOTIVOS_CANCELAMENTO) {
+      const r = cancelamentoSchema.safeParse({ ...valido, motivo });
+      expect(r.success, motivo).toBe(true);
+    }
+  });
+
+  it("rejeita motivo fora do vocabulário", () => {
+    const r = cancelamentoSchema.safeParse({
+      ...valido,
+      motivo: "porque_eu_quis",
+    });
+
+    expect(r.success).toBe(false);
+  });
+
+  /** Radio sem escolha manda string vazia — a mensagem tem de dizer o que falta. */
+  it("exige o motivo", () => {
+    const r = cancelamentoSchema.safeParse({ ...valido, motivo: "" });
+
+    expect(r.success).toBe(false);
+    if (r.success) return;
+    expect(primeiroErro(r.error)).toMatch(/motivo/i);
+  });
+
+  it("rejeita id que não é uuid", () => {
+    const r = cancelamentoSchema.safeParse({ ...valido, id: "42" });
+
+    expect(r.success).toBe(false);
+  });
+
+  /**
+   * Vazio vira `null` e não `""`: a coluna não deve guardar string vazia
+   * indistinguível de "não escreveu nada".
+   */
+  it("converte observação vazia em null", () => {
+    const r = cancelamentoSchema.safeParse({ ...valido, observacao: "   " });
+
+    expect(r.success).toBe(true);
+    if (!r.success) return;
+    expect(r.data.observacao).toBeNull();
+  });
+
+  it("apara a observação e mantém o texto", () => {
+    const r = cancelamentoSchema.safeParse({
+      ...valido,
+      observacao: "  cliente avisou por telefone  ",
+    });
+
+    expect(r.success).toBe(true);
+    if (!r.success) return;
+    expect(r.data.observacao).toBe("cliente avisou por telefone");
+  });
+
+  it("rejeita observação acima do teto", () => {
+    const r = cancelamentoSchema.safeParse({
+      ...valido,
+      observacao: "x".repeat(MAX_OBSERVACAO_CANCELAMENTO + 1),
+    });
+
+    expect(r.success).toBe(false);
+  });
+});
+
+describe("ROTULOS_MOTIVO_CANCELAMENTO", () => {
+  it("tem rótulo para todo motivo", () => {
+    for (const motivo of MOTIVOS_CANCELAMENTO) {
+      expect(ROTULOS_MOTIVO_CANCELAMENTO[motivo]).toBeTruthy();
+    }
   });
 });

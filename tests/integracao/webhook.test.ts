@@ -424,6 +424,88 @@ describe.skipIf(!stackNoAr)("webhook do WhatsApp (integração)", () => {
       expect((await lerConversa(usuarioId))?.etapa_atual_id).toBeNull();
     });
 
+    /**
+     * O que só a rota real prova: o id de etapa reservado do fluxo de cancelamento é
+     * gravado numa coluna `uuid`, atravessa `persistir` e o compare-and-set, e volta
+     * na leitura seguinte. Um id sintético em string (o idioma `__acao:*` das
+     * sentinelas de opção) levantaria `22P02` aqui — 500 na rota, e a Evolution
+     * reentregando o mesmo webhook até a conversa expirar em 6h.
+     */
+    it("cancela pelo bot um agendamento já marcado", async () => {
+      const { usuarioId } = await criarTenant();
+
+      await chamar(usuarioId, payloadMensagem("oi", "c1"));
+      await chamar(usuarioId, payloadMensagem("1", "c2"));
+      await chamar(usuarioId, payloadMensagem("1", "c3"));
+      await chamar(usuarioId, payloadMensagem("1", "c4"));
+      expect(enviadas.at(-1)!.texto).toContain("Agendamento confirmado");
+
+      // Conversa nova: agora o cliente tem horário, então vê o menu de entrada.
+      await chamar(usuarioId, payloadMensagem("oi", "c5"));
+      expect(enviadas.at(-1)!.texto).toContain("Você já tem horário marcado");
+
+      const conversa = await lerConversa(usuarioId);
+      expect(conversa?.etapa_atual_id).toBe(
+        "00000000-0000-0000-0000-0000000000c1",
+      );
+
+      await chamar(usuarioId, payloadMensagem("2", "c6"));
+      expect(enviadas.at(-1)!.texto).toMatch(/Confirma o cancelamento/);
+
+      await chamar(usuarioId, payloadMensagem("1", "c7"));
+      expect(enviadas.at(-1)!.texto).toMatch(/foi cancelado/);
+
+      const { data: agendamentos } = await admin
+        .from("agendamentos")
+        .select("status, cancelado_por, cancelamento_motivo, cancelado_em")
+        .eq("usuario_id", usuarioId);
+
+      expect(agendamentos).toHaveLength(1);
+      expect(agendamentos![0]).toMatchObject({
+        status: "cancelado",
+        cancelado_por: "cliente",
+        // Não perguntamos o motivo ao cliente — a CHECK só o exige do dono.
+        cancelamento_motivo: null,
+      });
+      expect(agendamentos![0].cancelado_em).toBeTruthy();
+    });
+
+    it("não cancela duas vezes quando a confirmação do cancelamento é reentregue", async () => {
+      const { usuarioId } = await criarTenant();
+
+      await chamar(usuarioId, payloadMensagem("oi", "d1"));
+      await chamar(usuarioId, payloadMensagem("1", "d2"));
+      await chamar(usuarioId, payloadMensagem("1", "d3"));
+      await chamar(usuarioId, payloadMensagem("1", "d4"));
+      await chamar(usuarioId, payloadMensagem("oi", "d5"));
+      await chamar(usuarioId, payloadMensagem("2", "d6"));
+      await chamar(usuarioId, payloadMensagem("1", "d7"));
+
+      const antes = enviadas.length;
+      const cancelamentoEm = (
+        await admin
+          .from("agendamentos")
+          .select("cancelado_em")
+          .eq("usuario_id", usuarioId)
+          .single()
+      ).data!.cancelado_em;
+
+      // Reentrega do MESMO data.key.id.
+      await chamar(usuarioId, payloadMensagem("1", "d7"));
+
+      // Nada enviado de novo, e o carimbo do cancelamento não mudou.
+      expect(enviadas.length).toBe(antes);
+
+      const { data } = await admin
+        .from("agendamentos")
+        .select("cancelado_em, status")
+        .eq("usuario_id", usuarioId)
+        .single();
+
+      expect(data!.status).toBe("cancelado");
+      expect(data!.cancelado_em).toBe(cancelamentoEm);
+    });
+
     it("não reinicia a conversa quando a confirmação é reentregue", async () => {
       const { usuarioId } = await criarTenant();
 

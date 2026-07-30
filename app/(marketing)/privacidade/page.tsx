@@ -104,6 +104,14 @@ export default function PrivacidadePage() {
           O estado da conversa em andamento: em que ponto do roteiro a pessoa
           está e o que ela já respondeu ali.
         </li>
+        <li>
+          Quando um agendamento é cancelado: a data do cancelamento, quem
+          cancelou (você ou o cliente) e, se foi você, o motivo escolhido numa
+          lista fechada — e uma observação opcional que <em>você</em> escreve.{" "}
+          <strong>Não perguntamos o motivo ao cliente</strong>, e a sua observação
+          nunca é enviada a ele: fica só no seu painel. Ela também não é lugar
+          para informação de saúde.
+        </li>
       </ul>
       <p>
         <strong>Não guardamos o conteúdo</strong> das mensagens fora do roteiro de
@@ -119,6 +127,9 @@ export default function PrivacidadePage() {
         <li>Manter sua conta e autenticar seu acesso.</li>
         <li>Atender seus clientes no WhatsApp e registrar os agendamentos.</li>
         <li>Enviar o lembrete automático no dia anterior.</li>
+        <li>
+          Avisar o cliente pelo WhatsApp quando você cancela um horário dele.
+        </li>
         <li>
           Registrar o envio dos lembretes, para que o mesmo lembrete não saia
           duas vezes e para investigar reclamação de mensagem não recebida.

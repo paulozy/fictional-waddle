@@ -268,6 +268,189 @@ describe.skipIf(!stackNoAr)("banco (integração)", () => {
     });
   });
 
+  describe("cancelamento", () => {
+    /**
+     * Dia distinto por chamada.
+     *
+     * Com horário fixo, o segundo agendamento **confirmado** do mesmo tenant bate na
+     * `agendamentos_sem_sobreposicao` — e só não bateria se o teste anterior tivesse
+     * conseguido cancelar, o que acopla cada teste ao sucesso do anterior. Um dia
+     * por chamada mantém os casos independentes.
+     */
+    let diaDoCaso = 0;
+
+    async function agendamentoConfirmado(u: Usuario, rotulo: string) {
+      const servicoId = await criarServico(u, `Serviço ${rotulo}`, 60);
+      const clienteId = await criarClienteFinal(u, `jid-${rotulo}`);
+
+      diaDoCaso += 1;
+      // Ano distante para não colidir com os slots dos outros describes.
+      const dia = String(diaDoCaso).padStart(2, "0");
+
+      const { data, error } = await u.cliente
+        .from("agendamentos")
+        .insert({
+          usuario_id: u.id,
+          cliente_id: clienteId,
+          servico_id: servicoId,
+          data_hora: `2027-03-${dia}T13:00:00Z`,
+          duracao_minutos: 60,
+        })
+        .select("id")
+        .single();
+
+      if (error) throw error;
+      return data.id as string;
+    }
+
+    /**
+     * O teste que justifica a suíte de integração existir para esta feature.
+     *
+     * `20260725121300_correcoes_privilegios.sql` revogou `update` na TABELA e
+     * concedeu por coluna. Coluna nova nasce sem privilégio, e o efeito é
+     * `42501 permission denied` — só em runtime, só com usuário logado. Nenhum teste
+     * unitário vê isso: o mock do supabase-js não conhece grant.
+     */
+    it("permite ao dono escrever as colunas de cancelamento", async () => {
+      const id = await agendamentoConfirmado(dono, "grant");
+
+      const { data, error } = await dono.cliente
+        .from("agendamentos")
+        .update({
+          status: "cancelado",
+          cancelado_em: new Date().toISOString(),
+          cancelado_por: "dono",
+          cancelamento_motivo: "estabelecimento_indisponivel",
+          cancelamento_observacao: "Fechei mais cedo",
+        })
+        .eq("id", id)
+        .eq("usuario_id", dono.id)
+        .eq("status", "confirmado")
+        .select("id, cancelado_por, cancelamento_motivo");
+
+      expect(error).toBeNull();
+      expect(data).toHaveLength(1);
+      expect(data![0].cancelado_por).toBe("dono");
+    });
+
+    /**
+     * A cláusula `status = 'confirmado'` do update é o que dá idempotência: duplo
+     * clique ou duas abas não podem mandar um segundo aviso de cancelamento ao
+     * cliente. Zero linhas é o sinal que a Server Action lê para não enviar.
+     */
+    it("update condicional não afeta linha já cancelada", async () => {
+      const id = await agendamentoConfirmado(outroDono, "idem");
+
+      const primeiro = await outroDono.cliente
+        .from("agendamentos")
+        .update({
+          status: "cancelado",
+          cancelado_por: "dono",
+          cancelamento_motivo: "cliente_pediu",
+        })
+        .eq("id", id)
+        .eq("status", "confirmado")
+        .select("id");
+
+      expect(primeiro.data).toHaveLength(1);
+
+      const segundo = await outroDono.cliente
+        .from("agendamentos")
+        .update({
+          status: "cancelado",
+          cancelado_por: "dono",
+          cancelamento_motivo: "cliente_pediu",
+        })
+        .eq("id", id)
+        .eq("status", "confirmado")
+        .select("id");
+
+      expect(segundo.error).toBeNull();
+      expect(segundo.data).toEqual([]);
+    });
+
+    it("exige motivo quando quem cancela é o dono", async () => {
+      const id = await agendamentoConfirmado(dono, "sem-motivo");
+
+      const { error } = await dono.cliente
+        .from("agendamentos")
+        .update({ status: "cancelado", cancelado_por: "dono" })
+        .eq("id", id);
+
+      // 23514 = check_violation (cancelamento_do_dono_tem_motivo)
+      expect(error?.code).toBe("23514");
+    });
+
+    /** O cliente cancela pelo bot sem ser perguntado — a assimetria é deliberada. */
+    it("aceita cancelamento do cliente sem motivo", async () => {
+      const id = await agendamentoConfirmado(dono, "cliente");
+
+      const { error } = await dono.cliente
+        .from("agendamentos")
+        .update({ status: "cancelado", cancelado_por: "cliente" })
+        .eq("id", id);
+
+      expect(error).toBeNull();
+    });
+
+    it("rejeita motivo fora do vocabulário", async () => {
+      const id = await agendamentoConfirmado(dono, "motivo-invalido");
+
+      const { error } = await dono.cliente
+        .from("agendamentos")
+        .update({
+          status: "cancelado",
+          cancelado_por: "dono",
+          cancelamento_motivo: "porque_eu_quis",
+        })
+        .eq("id", id);
+
+      expect(error?.code).toBe("23514");
+    });
+
+    it("rejeita observação acima do teto", async () => {
+      const id = await agendamentoConfirmado(dono, "observacao-longa");
+
+      const { error } = await dono.cliente
+        .from("agendamentos")
+        .update({
+          status: "cancelado",
+          cancelado_por: "dono",
+          cancelamento_motivo: "outro",
+          cancelamento_observacao: "x".repeat(201),
+        })
+        .eq("id", id);
+
+      expect(error?.code).toBe("23514");
+    });
+
+    it("impede o dono de cancelar agendamento de outro tenant", async () => {
+      const id = await agendamentoConfirmado(dono, "rls");
+
+      const { data, error } = await outroDono.cliente
+        .from("agendamentos")
+        .update({
+          status: "cancelado",
+          cancelado_por: "dono",
+          cancelamento_motivo: "cliente_pediu",
+        })
+        .eq("id", id)
+        .select("id");
+
+      // A RLS não deixa a linha nem ser vista: zero linhas, sem erro.
+      expect(error).toBeNull();
+      expect(data).toEqual([]);
+
+      const { data: intacto } = await dono.cliente
+        .from("agendamentos")
+        .select("status")
+        .eq("id", id)
+        .single();
+
+      expect(intacto!.status).toBe("confirmado");
+    });
+  });
+
   describe("fluxo_etapas", () => {
     it("proíbe campo_destino duplicado no mesmo usuário", async () => {
       const etapa = {

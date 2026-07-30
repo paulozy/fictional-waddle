@@ -131,9 +131,22 @@ export function conflitaComGrade(
  * adota o mapa passa a marcar o input culpado com `aria-invalid`, e quem não
  * adota continua lendo `erro` como antes.
  */
+/**
+ * `aviso` existe para o caso em que a escrita deu certo mas um **efeito
+ * secundário** falhou — hoje só o cancelamento: o horário foi liberado na agenda e
+ * o aviso ao cliente não saiu porque o WhatsApp está desconectado.
+ *
+ * Não é `erro`: tratar como erro faria o dono achar que o cancelamento não
+ * aconteceu e tentar de novo. E não é silêncio: o CLAUDE.md exige que quem dispara
+ * mensagem "falhe de forma clara", e para um dono operando à mão entre atendimentos
+ * a tela que ele está olhando naquele segundo é mais clara que qualquer log.
+ *
+ * Opcional de propósito: as outras quatro telas que usam `EstadoFormulario` não
+ * mudam nada.
+ */
 export type EstadoFormulario =
   | { erro: string; campos?: Record<string, string[]> }
-  | { ok: true }
+  | { ok: true; aviso?: string }
   | undefined;
 
 export function primeiroErro(erro: z.ZodError): string {
@@ -231,3 +244,75 @@ export function faixasSobrepostas(faixas: Faixa[]): boolean {
     (janela, i) => i > 0 && janela.inicio < janelas[i - 1].fim,
   );
 }
+
+// --------------------------------------------------------------- cancelamento
+
+/**
+ * Motivos de cancelamento, em vocabulário fechado.
+ *
+ * Espelha o CHECK de `agendamentos.cancelamento_motivo`. Enum e não texto livre
+ * porque num contexto de clínica um campo aberto capturaria dado de saúde — dado
+ * sensível pela LGPD Art. 11, com base legal que nós, operadores, não podemos
+ * suprir. E porque o que vende como diferencial é agregação ("40% dos
+ * cancelamentos foram do estabelecimento"), que texto livre não dá.
+ *
+ * Tupla `as const` para o `z.enum` abaixo aceitar direto, sem cast.
+ */
+export const MOTIVOS_CANCELAMENTO = [
+  "cliente_pediu",
+  "cliente_vai_remarcar",
+  "estabelecimento_indisponivel",
+  "agendamento_errado",
+  "outro",
+] as const;
+
+export type MotivoCancelamento = (typeof MOTIVOS_CANCELAMENTO)[number];
+
+/**
+ * Rótulos da UI.
+ *
+ * `Record<MotivoCancelamento, string>` e não um objeto solto: acrescentar valor em
+ * `MOTIVOS_CANCELAMENTO` sem escrever o rótulo aqui quebra o build, em vez de
+ * renderizar um radio sem texto.
+ */
+export const ROTULOS_MOTIVO_CANCELAMENTO: Record<MotivoCancelamento, string> = {
+  cliente_pediu: "O cliente pediu para cancelar",
+  cliente_vai_remarcar: "O cliente vai remarcar",
+  estabelecimento_indisponivel: "Não vou poder atender",
+  agendamento_errado: "Agendamento errado ou duplicado",
+  outro: "Outro motivo",
+};
+
+/**
+ * Teto da observação interna.
+ *
+ * Igual ao CHECK da coluna. Curto de propósito: sem limite, "nota" vira
+ * prontuário — e prontuário é exatamente o que este campo não deve ser.
+ */
+export const MAX_OBSERVACAO_CANCELAMENTO = 200;
+
+export const cancelamentoSchema = z.object({
+  id: z.uuid("Agendamento não encontrado."),
+  motivo: z.enum(MOTIVOS_CANCELAMENTO, {
+    error: "Escolha o motivo do cancelamento.",
+  }),
+  /**
+   * Nota interna, opcional. **Nunca é enviada ao cliente** — é o que permite o
+   * campo existir apesar do risco de dado sensível: texto livre que sai para o
+   * titular seria um canal de saída para o que o dono digitou, inclusive um
+   * deslize.
+   *
+   * Vazio vira `null` e não `""`, para a coluna não guardar string vazia
+   * indistinguível de "não escreveu nada".
+   */
+  observacao: z
+    .string()
+    .trim()
+    .max(
+      MAX_OBSERVACAO_CANCELAMENTO,
+      `Observação muito longa (máximo ${MAX_OBSERVACAO_CANCELAMENTO} caracteres).`,
+    )
+    .transform((valor) => (valor === "" ? null : valor)),
+});
+
+export type EntradaCancelamento = z.infer<typeof cancelamentoSchema>;

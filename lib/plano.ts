@@ -30,6 +30,7 @@ export const INCLUSO = [
   "Agendamento automático pelo WhatsApp, 24 horas por dia",
   "Agendamentos ilimitados — não contamos cadeira, cliente nem mensagem",
   "Lembrete automático um dia antes",
+  "Cliente desmarca pelo WhatsApp e o horário volta na hora para a agenda",
   "Serviços e horários que você mesmo configura",
   "Roteiro da conversa do bot montado por você",
   "Painel com a agenda da semana",

@@ -36,6 +36,10 @@ export type Database = {
     Tables: {
       agendamentos: {
         Row: {
+          cancelado_em: string | null
+          cancelado_por: string | null
+          cancelamento_motivo: string | null
+          cancelamento_observacao: string | null
           cliente_id: string
           created_at: string
           data_hora: string
@@ -48,6 +52,10 @@ export type Database = {
           usuario_id: string
         }
         Insert: {
+          cancelado_em?: string | null
+          cancelado_por?: string | null
+          cancelamento_motivo?: string | null
+          cancelamento_observacao?: string | null
           cliente_id: string
           created_at?: string
           data_hora: string
@@ -60,6 +68,10 @@ export type Database = {
           usuario_id: string
         }
         Update: {
+          cancelado_em?: string | null
+          cancelado_por?: string | null
+          cancelamento_motivo?: string | null
+          cancelamento_observacao?: string | null
           cliente_id?: string
           created_at?: string
           data_hora?: string

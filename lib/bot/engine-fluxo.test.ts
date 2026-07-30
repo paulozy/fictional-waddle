@@ -91,6 +91,12 @@ function contexto(
     ],
     grade: GRADE,
     ocupados: [],
+    /**
+     * Vazio por default: sem agendamento futuro, a entrada da conversa é a primeira
+     * etapa do roteiro, exatamente como antes do fluxo de cancelamento existir. Todos
+     * os testes de agendamento deste arquivo dependem disso.
+     */
+    agendamentosDoCliente: [],
     expiracaoHoras: 6,
     ...sobrescritas,
   };
@@ -98,6 +104,21 @@ function contexto(
 
 function mensagem(texto: string, pushName: string | null = "Cliente") {
   return { id: `msg-${texto}`, texto, pushName };
+}
+
+/**
+ * Estreita `Efeito` para o de criação.
+ *
+ * `Efeito` virou união discriminada quando o cancelamento entrou, então acessar
+ * `dataHora` direto não compila. Lançar com o tipo recebido dá diagnóstico melhor que
+ * um `as` — se um dia a conversa emitir o efeito errado, o teste diz qual veio.
+ */
+function efeitoCriar(decisao: Decisao) {
+  const efeito = decisao.efeitos[0];
+  if (efeito?.tipo !== "criar_agendamento") {
+    throw new Error(`esperava criar_agendamento, veio ${efeito?.tipo ?? "nenhum"}`);
+  }
+  return efeito;
 }
 
 /** Encadeia mensagens a partir de um estado, como o webhook faria. */
@@ -747,7 +768,7 @@ describe("confirmação", () => {
       duracaoMinutos: 60,
       nomeCliente: "Cliente",
     });
-    expect(ultima.efeitos[0].dataHora.toISOString()).toBe(
+    expect(efeitoCriar(ultima).dataHora.toISOString()).toBe(
       instanteNoFuso("2026-08-07", "09:00", FUSO).toISOString(),
     );
     // Estado limpo: a conversa terminou.
@@ -766,7 +787,7 @@ describe("confirmação", () => {
 
     const { ultima } = conversar(ctx, ["oi", "1", "1", "trazer alguém", "1"]);
 
-    expect(ultima.efeitos[0].respostasExtras).toEqual({
+    expect(efeitoCriar(ultima).respostasExtras).toEqual({
       observacao: "trazer alguém",
     });
   });
