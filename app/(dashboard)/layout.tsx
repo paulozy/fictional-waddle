@@ -49,6 +49,10 @@ const ABAS_PRINCIPAIS: ItemNavegacao[] = [
 const ITENS_EXTRAS: ItemNavegacao[] = [
   { href: "/fluxo-conversa", rotulo: "Fluxo da conversa", icone: "fluxo" },
   { href: "/conexao-whatsapp", rotulo: "WhatsApp", icone: "whatsapp" },
+  // Em ITENS_EXTRAS, e não nas abas: as 4 abas principais são decisão registrada
+  // no CLAUDE.md (5 destinos dariam ~65px cada a 375px). Pagamento é
+  // configuração que se mexe uma vez, como fluxo e WhatsApp — não uso diário.
+  { href: "/pagamentos", rotulo: "Pagamentos", icone: "pagamentos" },
 ];
 
 /**

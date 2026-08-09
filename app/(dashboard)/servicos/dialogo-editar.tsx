@@ -26,13 +26,16 @@ import { CamposServico } from "./campos-servico";
  */
 export function DialogoEditar({
   servico,
+  cobraSinal = false,
 }: {
   servico: {
     id: string;
     nome: string;
     duracao_minutos: number;
     preco: number | null;
+    valor_sinal: number | null;
   };
+  cobraSinal?: boolean;
 }) {
   const [aberto, setAberto] = useState(false);
   const [estado, setEstado] = useState<EstadoFormulario>(undefined);
@@ -80,6 +83,7 @@ export function DialogoEditar({
           <div className="py-4">
             <CamposServico
               erros={erros}
+              cobraSinal={cobraSinal}
               inicial={{
                 nome: servico.nome,
                 duracaoMinutos: servico.duracao_minutos,
@@ -89,6 +93,10 @@ export function DialogoEditar({
                   servico.preco === null
                     ? ""
                     : String(servico.preco).replace(".", ","),
+                valorSinal:
+                  servico.valor_sinal === null
+                    ? ""
+                    : String(servico.valor_sinal).replace(".", ","),
               }}
             />
           </div>

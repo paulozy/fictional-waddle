@@ -31,7 +31,7 @@ Três consequências que não são óbvias:
 
 **Não é escopo deste produto (evitar scope creep):**
 - Não é um CRM completo de clientes.
-- Não faz cobrança/pagamento — esse produto trata apenas de agendamento e triagem via WhatsApp.
+- Não recebe o pagamento do serviço. **Cobrar sinal por Pix existe como capacidade adicional** (ver a seção própria), e mesmo nela o dinheiro nunca passa por nós: o dono conecta a conta dele e o Pix pousa lá. Financeiro, comissão e controle de caixa continuam fora.
 - Na v0, não usa IA/NLP para entender linguagem natural — o fluxo é máquina de estados com menu numerado.
 
 ---
@@ -54,6 +54,7 @@ Essa diferença afeta o desenho de dados, onboarding e o roteamento de webhooks 
 | Auth | **Supabase Auth** via `@supabase/ssr` | Sessão sincronizada via cookies, compatível com RLS |
 | WhatsApp | **Evolution API** (self-hosted), **modelo multi-instância** | Uma instância por usuário/estabelecimento, cada uma conectada ao número de WhatsApp real do negócio via QR code (protocolo Baileys/WhatsApp Web) |
 | Scheduler | **Vercel Cron Jobs** | Dispara 1x/dia um Route Handler pra verificar agendamentos do dia seguinte e enviar lembretes |
+| Pagamento (adicional) | **Mercado Pago via OAuth**, modelo *nunca custodiar* | O dono autoriza a própria conta; a cobrança é criada com o token dele e o Pix cai direto nele. Pix a 0%, aceita CPF. Alternativas foram investigadas e descartadas com motivo — ver a seção de sinal |
 
 **Importante:** não sugerir trocar Supabase, nem propor backend Express separado, nem migrar pra API oficial da Meta sem pedido explícito — essas decisões já foram avaliadas e fechadas para a fase atual.
 
@@ -94,6 +95,8 @@ Essa diferença afeta o desenho de dados, onboarding e o roteamento de webhooks 
 | `conversas_estado` | Estado da conversa por instância + interlocutor |
 | `log_envio` | Registro de lembretes enviados. O CHECK aceita `tipo = 'confirmacao'`, mas **nada escreve esse valor**: o único escritor é o cron, sempre com `'lembrete'`. A confirmação sai pelo webhook e não é registrada |
 | `log_conexao` | Histórico append-only de transições de conexão e de motivo de queda. Único escritor é o webhook |
+| `credenciais_pagamento` | Tokens OAuth do PSP do dono, **cifrados**. RLS com zero policies |
+| `cobrancas_sinal` | Rastro de cada Pix de sinal: id no provedor, valor, prazo, desfecho |
 
 ### Decisões de schema que não são óbvias
 
@@ -183,12 +186,198 @@ O one-liner acima duplica a lógica de `lib/trial-numero.ts`. `lib/trial-numero.
 
 Ainda **não** implementado, e adiado de propósito: canonicalização de e-mail (dots e `+tag` do Gmail), bloqueio de domínio descartável e log de IP de signup via `before_user_created` hook. Com o trial atrelado ao número, N contas por e-mail rendem N trials **inúteis**, então aquilo deixa de proteger receita e passa a proteger só recurso (sockets Baileys). Fazer quando incomodar.
 
+### Cobrança de sinal por Pix (adicional)
+
+O bot pode pedir um sinal antes de fechar o agendamento, segurando o horário até
+o Pix cair. Desligada por padrão: exige `perfis.plano = 'sinal'` **e** a conta do
+PSP conectada. O gate é `lib/pagamentos/capacidade.ts`, função pura no molde de
+`lib/assinatura.ts`, com os dois campos **obrigatórios** no tipo pelo mesmo
+motivo de `trial_bloqueado_em` — o TypeScript quebra no `select` incompleto em
+vez de deixar o gate cego.
+
+**O eixo é regulatório, não técnico.** O art. 90-A do Regulamento do Pix
+(Res. BCB 269/2022) veda a "conta bolsão": ninguém pode receber Pix por meio de
+conta transacional provida por terceiro. Logo o dinheiro **tem** de pousar numa
+conta do próprio dono, e o único modelo viável para dev solo é *nunca custodiar*
+— ele autoriza a conta dele por OAuth, a cobrança é criada com o token dele, e o
+`collector_id` é ele por construção. **Não passar `application_fee` e não propor
+split** é o que mantém isso verdadeiro. (O spike citava a Res. 522/2025; aquela
+trata de *subcredenciador*, figura de arranjo de **cartão**, e é a citação errada
+para Pix.)
+
+**Três provedores foram descartados com motivo, e reabrir custa a mesma
+pesquisa.** "Sem conta para o dono" **não existe** — é norma, não limitação de
+PSP. **AbacatePay** é carteira: os Termos só permitem saque "para contas de mesma
+titularidade", então não há como pagar o dono, e o split está "em
+desenvolvimento" sem data. **Stripe** tem Pix *invite-only* no Brasil, exigindo
+**60 dias de pagamentos já processados** (pré-requisito circular para quem é
+pré-receita), e o Brasil está fora dos cross-border payouts, o que fecha o
+Connect. **Asaas/Iugu/Pagar.me** oferecem onboarding embutido de verdade, mas
+exigem **CNPJ nosso**, movem o atrito em vez de removê-lo (selfie e documento
+passam a ser coletados por nós, contra a linha de LGPD do projeto) e custam
+R$ 1,99 fixo ou preço não público — 10% de um sinal de R$ 20.
+
+#### Decisões de schema que não são óbvias
+
+**Não existe `status = 'aguardando_sinal'`, e criar um reintroduz um bug já
+resolvido.** O agendamento nasce `confirmado` e portanto **bloqueia o slot desde
+o primeiro instante**, pela `agendamentos_sem_sobreposicao` que já existia; o
+sinal vive em `sinal_status`/`sinal_expira_em`. O argumento está escrito em
+`20260730025014_cancelamento_agendamento.sql`: `status` participa da EXCLUDE
+parcial e de três `.eq("status","confirmado")` no app, então um valor a mais
+obrigaria todo lugar que pergunta "está ocupado?" a conhecer os dois — e o
+primeiro que esquecesse um reofereceria vaga já reservada. Vencido o prazo, o
+agendamento é **cancelado** pela máquina que já existe, o que libera o slot sem
+nenhuma regra nova.
+
+**`sinal_aguardando_tem_prazo` existe porque `null < now()` é NULL, não falso.**
+Um sinal exigido com prazo nulo nunca venceria, e o horário ficaria bloqueado
+para sempre — exatamente o bug que a migration de cancelamento existiu para
+eliminar.
+
+**`cancelado_por` ganhou `'sistema'`.** A expiração não é decisão de ninguém;
+atribuí-la a `'dono'` faria o relatório de ocupação da V2 culpar quem não
+desmarcou.
+
+**As colunas de sinal ficam FORA do `grant update` de `authenticated`, e isso é a
+feature.** `sinal_status` é a afirmação de que dinheiro entrou: se o dono pudesse
+escrevê-la com a anon key e o próprio JWT, o registro deixaria de valer como
+prova numa disputa. Quem escreve é sempre o webhook de pagamento, via service
+role, e só depois de reconsultar o PSP. Pelo mesmo motivo `plano` e
+`pagamento_conectado_em` continuam fora — quem os escrevesse se autoconcederia a
+capacidade.
+
+**`credenciais_pagamento` e `cobrancas_sinal` levam `revoke all from anon,
+authenticated` antes do grant.** O `alter default privileges` do Supabase concede
+`Dxtm` em toda tabela nova, e **TRUNCATE não passa por RLS** — sem o revoke,
+qualquer dono logado apagaria o registro financeiro de todos os tenants. É o
+mesmo raciocínio de `trials_numero_whatsapp`.
+
+**O token é cifrado com AES-256-GCM (`lib/cripto.ts`), não hasheado**: diferente
+do trial por número, aqui o valor precisa **voltar** para assinar a chamada. GCM
+e não CBC porque adulterar o texto cifrado tem de **lançar**, não devolver bytes
+diferentes — um token trocado no banco significaria emitir cobrança para a conta
+errada. A chave vive em `PAGAMENTO_CRYPTO_KEY` e **trocá-la invalida todas as
+conexões**.
+
+#### Expiração é preguiçosa, e o cron é rede de segurança
+
+`expirar_sinais_vencidos(p_usuario_id)` roda no **início de `montarContexto`**,
+imediatamente antes do cálculo de disponibilidade — o único instante em que um
+slot indevidamente travado causa dano. É o idioma das 6h de `conversas_estado`, e
+existe porque o cron da Vercel no plano Hobby é 1x/dia, grosso demais para um
+prazo de 30 minutos. Sequencial e **fora do `Promise.all`** de propósito: é uma
+escrita que muda o resultado da leitura seguinte.
+
+**O mesmo cron diário varre TODOS os tenants, e essa parte não é redundante.** A
+varredura do bot só roda para quem tem a capacidade ligada; quem **desliga** —
+desconectando a conta ou saindo do plano — deixaria de ser varrido para sempre,
+com os holds abertos prendendo aqueles horários sem nenhum caminho de liberação.
+O cron fica **acima do gate de assinatura** pelo mesmo motivo: liberar horário
+não é entrega de feature, é higiene de dados.
+
+A RPC também **reconcilia** agendamento cancelado por outro caminho (dono no
+painel, cliente pelo bot): os dois gravam `status = 'cancelado'` e não sabem nada
+sobre sinal, e sem isso a agenda mostraria "Aguardando sinal" ao lado de um
+horário cancelado, com a cobrança `pendente` para sempre.
+
+**A ordem de lock das duas RPCs é a mesma — `cobrancas_sinal` e só então
+`agendamentos` — e inverter uma delas cria deadlock.** Elas foram desenhadas para
+correr juntas: a varredura está no caminho quente de toda mensagem, e um Pix que
+cai rente ao prazo é o caso central. Em ordens opostas o Postgres aborta uma com
+40P01, e se a abortada for o webhook, um pagamento real depende de reentrega.
+
+#### O webhook de pagamento
+
+Três invariantes, e a terceira custou uma correção:
+
+1. **A assinatura é o único portão**, validada **antes** de qualquer I/O — sem
+   isso, uma lista de ids viraria amplificador de tráfego contra o nosso banco e
+   a API do PSP. Fail-closed com segredo vazio.
+2. **O corpo do POST não é confiável.** A assinatura cobre um manifesto montado
+   com id, `x-request-id` e `ts` — **não** o payload. Um POST forjado com
+   `status: "approved"` é idêntico a um legítimo, então o status vem sempre de
+   `GET /v1/payments/{id}` com o token do dono. O valor comparado é o da
+   reconsulta.
+3. **Responder 200 e pedir reentrega são coisas diferentes.** 200 é para o que
+   não muda tentando de novo (id desconhecido, reentrega já processada, valor
+   divergente, pagamento não aprovado). Timeout, erro de RPC, falha de leitura e
+   `/oauth/token` fora do ar devolvem **503**. Não há reconciliação em lugar
+   nenhum — este endpoint é o único chamador de `consultarPagamento` —, então um
+   200 por engano é confirmação perdida **para sempre**, com o cliente pagando e
+   o agendamento sendo cancelado pela varredura minutos depois, sem sequer
+   levantar `estorno_pendente`.
+
+**Não há janela de validade sobre o `ts`, de propósito.** O PSP reentrega horas
+depois, e uma janela apertada recusaria justamente a retentativa de um pagamento
+que a primeira tentativa não registrou. O replay já é inócuo:
+`confirmar_sinal_pago` é idempotente por `provedor_pagamento_id`.
+
+**`confirmar_sinal_pago` nunca ressuscita agendamento cancelado pelo DONO nem
+horário já vencido.** Reconfirmar por causa de um Pix atrasado desfaria uma
+decisão humana pelas costas dele; e a EXCLUDE não barra passado, então sem a
+guarda o agendamento voltaria vencido e o lembrete nunca sairia. Nos dois casos,
+e no 23P01 (slot tomado na janela), o desfecho é `estorno_pendente`.
+
+#### Falhar ao cobrar NÃO derruba o agendamento
+
+Toda exceção de `cobrarSinal` é engolida e o horário fica de pé sem sinal. A
+direção é **oposta** à do gate de assinatura: lá a falha aceitável é "cliente
+reclama que parou"; aqui é "o dono não recebeu o sinal desta vez". Cancelar um
+agendamento real porque o PSP estava fora do ar puniria o cliente por um problema
+que não é dele — e o produto existe para não perder agendamento.
+
+A guarda de `collector_id`, porém, falha **fechada**, inclusive quando o campo não
+vem: não mandar o código custa um agendamento sem sinal; mandar custa o dinheiro
+do cliente na conta errada.
+
+#### Detalhes que custam um build ou uma cobrança
+
+- **Arquivo `"use server"` só exporta função async.** Exportar uma constante de
+  lá não vira erro de tipo — vira um módulo sem exports em tempo de build. É por
+  isso que `COOKIE_STATE` mora em `lib/pagamentos/oauth-state.ts`.
+- **O campo de sinal só é renderizado para quem pode cobrar**, então ele
+  realmente não existe no FormData da maioria. `servicoSchema` usa `preprocess`
+  para tolerar a ausência, e `criarServico`/`editarServico` só escrevem
+  `valor_sinal` quando `formData.has("valorSinal")` — sem isso, editar o nome de
+  um serviço com a capacidade desligada **zerava o valor do sinal em silêncio**.
+- **O copia-e-cola Pix vai sozinho na mensagem.** No WhatsApp o cliente segura
+  para copiar, e texto em volta entra na cópia — o banco recusa e ele não tem
+  como saber por quê. Com sinal, a mensagem de "agendamento confirmado" **não**
+  é enviada: as duas se contradiriam.
+- **`date_of_expiration` vai com offset explícito**, nunca com o `Z` que
+  `toISOString()` produz.
+- **`X-Idempotency-Key` é o id da cobrança**, decidido por nós antes de falar com
+  o PSP: sem um id estável, uma retentativa de rede criaria uma segunda cobrança
+  e o cliente poderia pagar as duas.
+- **Nunca colocar a resposta crua do `/oauth/token` num erro.** Quando falta só o
+  `refresh_token` (o caso comum, `offline_access` desmarcado), aquele corpo ainda
+  traz um `access_token` válido, e quem captura o erro costuma logar o objeto
+  inteiro.
+- **O `refresh_token` rotaciona.** A gravação do par novo é a mesma operação da
+  renovação, com compare-and-set sobre `expira_em` — perder isso mata a conexão
+  do tenant em silêncio, e o sintoma chega dias depois como "o bot parou de mandar
+  o Pix".
+
+#### O que ainda não foi medido
+
+O teste ponta a ponta (`tests/e2e/sinal-pix.test.ts`) valida a **nossa** lógica
+contra stubs, não o comportamento do Mercado Pago. Continuam abertas, e **só uma
+segunda conta real responde** — a candidata é o primeiro salão piloto:
+liquidação de fato, webhook em produção, taxa efetiva no extrato, e o piso real
+do `date_of_expiration` (hoje travado em 30 min por leitura de doc). O sandbox do
+MP **não cobre este fluxo** (`user_allowed_only_in_test`); insistir nele não
+compra informação. **Ir ao ar pede revisão jurídica** — GO técnico não é
+autorização para enviar.
+
 ### RPCs
 
 Duas operações precisam de atomicidade real. O query builder do supabase-js não abre transação, mas `rpc()` roda dentro de uma. Ambas são `security invoker`, **não** `definer`: uma versão definer que recebe `p_usuario_id` como parâmetro seria escalada de privilégio.
 
 - `reordenar_fluxo_etapas(p_ids uuid[])` — regrava `ordem` na sequência dos ids via `unnest ... with ordinality`. Índices densos regravados em bloco em vez de ranks fracionários (LexoRank): são ~10 linhas por usuário. Rejeita lista parcial e id de outro tenant.
-- `confirmar_agendamento(...)` — garante o cliente (upsert por `remote_jid`, sem sobrescrever nome conhecido com `null`) e cria o agendamento na mesma transação. Deixa o `23P01` propagar.
+- `confirmar_agendamento(...)` — garante o cliente (upsert por `remote_jid`, sem sobrescrever nome conhecido com `null`) e cria o agendamento na mesma transação. Deixa o `23P01` propagar. **O uuid devolvido deixou de ser descartado**: é o elo com a cobrança de sinal.
+- `expirar_sinais_vencidos(p_usuario_id)` — libera slots de sinal vencido e reconcilia cancelamentos. Ver a seção de sinal para a ordem de lock, que não é livre.
+- `confirmar_sinal_pago(p_provedor_pagamento_id, p_valor_centavos)` — promove o agendamento depois da reconsulta ao PSP. Idempotente, e devolve contrato textual: cada valor é um caminho de UX distinto no webhook.
 
 ### RLS
 
@@ -320,6 +509,7 @@ O objetivo declarado era ser encontrado pesquisando o nome no Google. Isso depen
   /(dashboard)
     layout.tsx                      → verifica sessão, redireciona se ausente
     conexao-whatsapp/page.tsx        → exibe QR code, status da instância
+    pagamentos/page.tsx               → conectar conta do PSP, prazo do sinal, devoluções pendentes
     servicos/page.tsx
     horarios/page.tsx
     agendamentos/page.tsx             → dashboard com visão de calendário dos agendamentos
@@ -329,6 +519,9 @@ O objetivo declarado era ser encontrado pesquisando o nome no Google. Isso depen
       enviar-lembretes/route.ts      → chamado 1x/dia pelo Vercel Cron
     /webhook
       whatsapp/[instance]/route.ts   → recebe mensagens da Evolution API, processa conversas_estado
+      pagamento/mercadopago/route.ts → confirma o sinal; reconsulta o pagamento antes de promover
+    /pagamentos
+      mercadopago/callback/route.ts  → volta do OAuth, valida `state`, cifra e grava o token
 /components
   navegacao-dashboard.tsx             → ilha de cliente: barra de abas no celular, header no desktop
   calendario-semana.tsx               → grade de 7 colunas, só a partir de `md`
@@ -341,6 +534,14 @@ O objetivo declarado era ser encontrado pesquisando o nome no Google. Isso depen
   json-ld.ts                          → WebSite + Organization da home
   plano.ts                            → preço, trial e o que está/não está incluído
   evolution-api.ts                    → funções: criar instância, gerar QR code, enviar mensagem, checar status
+  cripto.ts                           → AES-256-GCM, chave por parâmetro (único uso: token do PSP)
+  pagamentos/
+    mercado-pago.ts                   → OAuth, criar Pix, consultar, estornar. Base URL sobrescrevível
+    assinatura-webhook.ts             → HMAC do `x-signature` (puro)
+    capacidade.ts                     → "este tenant pode cobrar sinal?" (puro, molde de assinatura.ts)
+    credenciais.ts                    → guarda/recupera o token, com renovação e compare-and-set
+    cobranca-sinal.ts                 → emite o Pix pós-confirmação e devolve as mensagens
+    oauth-state.ts                    → só a constante do cookie (arquivo "use server" não exporta const)
   telefone.ts                         → normaliza o número do dono para o código de pareamento
   calendario.ts                       → layout da grade semanal (puro)
   agenda-lista.ts                     → deriva a lista de um dia do mesmo Calendario (puro)
@@ -492,7 +693,16 @@ SUPABASE_SERVICE_ROLE_KEY=
 EVOLUTION_API_URL=
 EVOLUTION_API_ADMIN_KEY=
 CRON_SECRET=
+MERCADO_PAGO_CLIENT_ID=
+MERCADO_PAGO_CLIENT_SECRET=
+MERCADO_PAGO_REDIRECT_URI=
+MERCADO_PAGO_WEBHOOK_SECRET=
+PAGAMENTO_CRYPTO_KEY=
 ```
+
+O `.env.example` é a fonte com as explicações: cada variável documenta **o que
+acontece quando ela está vazia**, que é a informação que falta na hora do
+incidente.
 
 ---
 
@@ -506,6 +716,11 @@ CRON_SECRET=
 - Dashboard completo de agendamentos com visão de calendário.
 - Lembrete automático 1 dia antes via cron.
 - Testar com 2-3 estabelecimentos reais antes de expandir.
+
+**Adicional já implementado, fora da faixa única:**
+- Cobrança de sinal por Pix (`perfis.plano = 'sinal'`), com a conta do dono
+  conectada por OAuth. **Aguarda piloto real** para medir liquidação, webhook em
+  produção e taxa — e revisão jurídica antes de ir ao ar.
 
 **V1:**
 - Cancelamento/reagendamento pelo próprio WhatsApp.

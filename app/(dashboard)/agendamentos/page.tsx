@@ -61,7 +61,7 @@ export default async function AgendamentosPage({
   const { data: agendamentos } = await supabase
     .from("agendamentos")
     .select(
-      "id, data_hora, duracao_minutos, status, servicos(nome), clientes_finais(nome)",
+      "id, data_hora, duracao_minutos, status, sinal_status, servicos(nome), clientes_finais(nome)",
     )
     .eq("usuario_id", usuarioId)
     .gte("data_hora", inicioJanela.toISOString())

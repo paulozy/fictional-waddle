@@ -54,6 +54,11 @@ export const PERGUNTAS = [
       "Ele desmarca pelo WhatsApp, sem falar com você. Quem já tem horário marcado recebe, na primeira mensagem, a opção de cancelar — em menu numerado, como o resto do fluxo. O horário volta na hora para a sua agenda e fica livre para outro cliente, que é o ponto: horário desmarcado e não liberado é prejuízo parado. Você também pode cancelar pelo painel, escolhendo o motivo, e aí é o cliente que recebe o aviso pelo WhatsApp. Remarcar em uma etapa só ainda não existe: cancela e marca de novo.",
   },
   {
+    pergunta: "Dá para cobrar sinal antes de confirmar o horário?",
+    resposta:
+      "Dá, como adicional. Você conecta sua conta do Mercado Pago uma vez e define um valor de sinal por serviço — pode cobrar só na progressiva e deixar o corte livre, por exemplo. O bot manda o Pix na conversa e segura o horário pelo prazo que você escolher; se o pagamento não cair, o agendamento é cancelado sozinho e o horário volta a ser oferecido. O ponto que mais importa: o dinheiro cai direto na sua conta, a Encaixaria não recebe, não retém e não cobra comissão sobre ele. Em troca, a devolução também é sua — se o cliente desmarcar, quem decide estornar é você, pelo painel. E vale saber que uma contestação de Pix é resolvida entre o cliente e o banco dele, e pode bloquear o valor enquanto isso.",
+  },
+  {
     pergunta: "Posso cancelar a assinatura quando quiser?",
     resposta:
       `Pode, sem multa e sem fidelidade. Sendo direto sobre como funciona hoje: não existe botão para cancelar a assinatura no painel — você manda uma mensagem e a gente cancela. (O botão de cancelar que existe no painel é para desmarcar horário de cliente, que é outra coisa.) Como também não há cartão cadastrado nem débito automático, não existe o risco de continuar sendo cobrado. O teste de ${DIAS_TRIAL} dias não pede cartão.`,

@@ -46,7 +46,7 @@ export const INCLUSO = [
  * todo mês.
  */
 export const NAO_INCLUSO = [
-  "Não recebe pagamento nem cobra sinal — a Encaixaria marca o horário, quem cobra é você",
+  "Não recebe o pagamento do serviço — cobrar sinal por Pix é um adicional, e o valor cai direto na sua conta",
   "Não divide a agenda por profissional: ela é do estabelecimento",
   "Não entende texto livre — o cliente responde por números, e é de propósito",
   "Não sincroniza com Google Calendar nem com outro sistema de agenda",

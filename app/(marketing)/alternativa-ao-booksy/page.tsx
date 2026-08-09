@@ -65,7 +65,7 @@ const LINHAS: LinhaComparacao[] = [
   },
   {
     aspecto: "Gestão além da agenda",
-    encaixaria: "Não tem: sem financeiro, comissão ou pagamento.",
+    encaixaria: "Não tem: sem financeiro nem comissão. Só cobrança de sinal, como adicional.",
     concorrente: "Bem mais completo nesse aspecto.",
   },
 ];
@@ -123,8 +123,10 @@ export default function AlternativaAoBooksyPage() {
             <strong className="font-medium text-foreground">
               Ele faz muito mais que agenda.
             </strong>{" "}
-            Financeiro, comissão, controle de equipe, pagamento. A Encaixaria faz
-            uma coisa só, de propósito. Se você precisa de sistema de gestão, está
+            Financeiro, comissão, controle de equipe, pagamento do serviço. A
+            Encaixaria faz uma coisa só, de propósito — o mais perto disso que
+            ela chega é cobrar sinal por Pix, como adicional, com o dinheiro indo
+            direto para a conta do dono. Se você precisa de sistema de gestão, está
             comparando produtos de categorias diferentes.
           </p>
         </div>

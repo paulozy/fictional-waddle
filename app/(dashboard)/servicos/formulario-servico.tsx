@@ -8,7 +8,11 @@ import type { EstadoFormulario } from "@/lib/validacao/agenda";
 import { criarServico } from "./actions";
 import { CamposServico } from "./campos-servico";
 
-export function FormularioServico() {
+export function FormularioServico({
+  cobraSinal = false,
+}: {
+  cobraSinal?: boolean;
+}) {
   const [estado, acao, enviando] = useActionState<EstadoFormulario, FormData>(
     criarServico,
     undefined,
@@ -32,7 +36,7 @@ export function FormularioServico() {
       action={acao}
       className="rounded-lg border border-border bg-card p-4"
     >
-      <CamposServico erros={erros} />
+      <CamposServico erros={erros} cobraSinal={cobraSinal} />
 
       {estado && "erro" in estado && !estado.campos && (
         <p role="alert" className="mt-3 text-sm text-destructive">

@@ -12,6 +12,7 @@ import { DialogoCancelarAgendamento } from "@/components/dialogo-cancelar-agenda
 import {
   descricaoDoBloco,
   motivoNaoCancelavel,
+  rotuloDoSinal,
   rotuloDoStatus,
   type BlocoCalendario,
 } from "@/lib/calendario";
@@ -149,6 +150,12 @@ export function BlocoAgendamento({
               {/* Em palavra, não só cor: cor sozinha não é acessível (WCAG 1.4.1). */}
               <dd>{rotuloDoStatus(bloco.status)}</dd>
             </div>
+            {rotuloDoSinal(bloco.sinalStatus) && (
+              <div className="flex gap-2">
+                <dt className="sr-only">Sinal</dt>
+                <dd>{rotuloDoSinal(bloco.sinalStatus)}</dd>
+              </div>
+            )}
           </dl>
 
           {/**

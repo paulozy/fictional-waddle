@@ -9,6 +9,7 @@ import {
   MenuIcon,
   MessagesSquareIcon,
   ScissorsIcon,
+  BanknoteIcon,
   SmartphoneIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -62,6 +63,7 @@ const ICONES = {
   horarios: ClockIcon,
   fluxo: MessagesSquareIcon,
   whatsapp: SmartphoneIcon,
+  pagamentos: BanknoteIcon,
 } satisfies Record<string, LucideIcon>;
 
 export function NavegacaoDashboard({

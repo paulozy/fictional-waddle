@@ -56,7 +56,7 @@ export default function TermosPage() {
 
       <h2>O que o serviço não faz</h2>
       <ul>
-        <li>Não recebe pagamento e não cobra sinal do seu cliente.</li>
+        <li>Não recebe o pagamento do serviço. A cobrança de sinal por Pix é um adicional, e mesmo com ela o dinheiro nunca passa por nós.</li>
         <li>Não divide a agenda por profissional.</li>
         <li>Não interpreta texto livre: o cliente responde por números.</li>
         <li>Não integra com Google Calendar nem com outros sistemas de agenda.</li>
@@ -123,7 +123,37 @@ export default function TermosPage() {
         <strong>A política de cancelamento é a do seu estabelecimento</strong>, não
         a nossa: prazo para desmarcar, cobrança por falta e o que você combina com
         cada cliente são decisões suas. A Encaixaria registra o cancelamento e
-        transmite o aviso — não fazemos e não intermediamos cobrança de nenhum tipo.
+        transmite o aviso.
+      </p>
+
+      <h2>Cobrança de sinal (adicional)</h2>
+      <p>
+        Se o adicional estiver contratado e você conectar sua conta do Mercado
+        Pago, o bot pode pedir um sinal por Pix antes de fechar o agendamento.
+        Três pontos que valem estar escritos:
+      </p>
+      <ul>
+        <li>
+          <strong>O dinheiro nunca passa por nós.</strong> A cobrança é criada em
+          seu nome, com a autorização que você deu, e o Pix cai direto na sua
+          conta. Não retemos, não repassamos e não cobramos comissão sobre ela.
+        </li>
+        <li>
+          <strong>A devolução é sua.</strong> Se o cliente desmarcar, ou se o
+          pagamento cair depois de o horário já ter sido reservado por outra
+          pessoa, quem decide devolver é você — o painel mostra os casos que
+          pedem essa decisão e oferece o botão, mas a conta é sua.
+        </li>
+        <li>
+          <strong>Contestação bate na sua conta.</strong> O cliente pode acionar o
+          mecanismo de devolução do Pix junto ao banco dele, e nesse caso o valor
+          pode ficar bloqueado enquanto a análise corre. Isso é regra do arranjo
+          de pagamento, não nossa, e não temos como interferir.
+        </li>
+      </ul>
+      <p>
+        O horário fica segurado pelo prazo que você configurar. Passado o prazo
+        sem pagamento, o agendamento é cancelado e o horário volta a ser oferecido.
       </p>
 
       <h2>Disponibilidade e limites</h2>

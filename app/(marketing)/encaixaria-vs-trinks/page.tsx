@@ -116,7 +116,8 @@ export default function EncaixariaVsTrinksPage() {
             </p>
             <p className="mt-3 text-muted-foreground">
               Aqui o valor não muda porque a agenda encheu. Também não há cobrança
-              por mensagem enviada.
+              por mensagem enviada. Cobrar sinal do cliente final é adicional, e
+              não muda com o volume.
             </p>
           </div>
 

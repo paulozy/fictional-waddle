@@ -28,6 +28,8 @@ type Resumo = {
   tenants: number;
   /** Tenants pulados por trial expirado ou assinatura cancelada. */
   pulados_assinatura: number;
+  /** Agendamentos cujo sinal venceu e cujo horário foi devolvido ao mercado. */
+  sinais_expirados: number;
 };
 
 export async function GET(request: Request) {
@@ -60,9 +62,42 @@ export async function GET(request: Request) {
     erros: 0,
     tenants: perfis?.length ?? 0,
     pulados_assinatura: 0,
+    sinais_expirados: 0,
   };
 
   for (const perfil of perfis ?? []) {
+    /**
+     * Faxina de sinais vencidos — ANTES do gate de assinatura, e para TODOS os
+     * tenants.
+     *
+     * A varredura preguiçosa do webhook do bot só roda para quem tem a
+     * capacidade ligada (`cobrancaSinalHabilitada`), e é justamente aí que mora
+     * o buraco: quem DESLIGA a cobrança — desconectando a conta do Mercado Pago
+     * ou saindo do plano — deixa de ser varrido para sempre, e os agendamentos
+     * que estavam esperando sinal prendem aqueles horários pela EXCLUDE sem
+     * nenhum caminho de liberação. Este laço é o único que alcança esse tenant.
+     *
+     * Fica acima do gate de assinatura pelo mesmo raciocínio: liberar um horário
+     * que ninguém vai pagar não é entrega de feature, é higiene de dados, e uma
+     * conta suspensa que volte não deve reencontrar a agenda travada.
+     *
+     * Fora do try/catch de `processarTenant` para que uma falha aqui não seja
+     * contada como tenant que falhou no lembrete, que é outra coisa.
+     */
+    const { data: expirados, error: erroExpiracao } = await admin.rpc(
+      "expirar_sinais_vencidos",
+      { p_usuario_id: perfil.id },
+    );
+
+    if (erroExpiracao) {
+      console.error("cron: falha ao expirar sinais vencidos", {
+        usuario_id: perfil.id,
+        codigo: erroExpiracao.code,
+      });
+    } else {
+      resumo.sinais_expirados += expirados ?? 0;
+    }
+
     /**
      * Gate de assinatura, antes de qualquer query: quem está com trial expirado
      * ou assinatura cancelada não tem lembrete enviado. Fica fora do try/catch

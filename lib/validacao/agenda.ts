@@ -58,6 +58,21 @@ export const servicoSchema = z.object({
     .max(80, "Nome muito longo (máximo 80 caracteres)."),
   duracaoMinutos: duracaoEmMinutos,
   preco: precoOpcional,
+  /**
+   * Mesmo formato do preço — vírgula decimal, vazio vira `null`. Reusar
+   * `precoOpcional` é o que garante que "20,00" digitado no teclado brasileiro
+   * signifique a mesma coisa nos dois campos.
+   *
+   * `null` e `0` colapsam em "sem sinal" mais adiante (`sinalEmCentavos`): um Pix
+   * de R$ 0,00 seria recusado pelo provedor e travaria a conversa.
+   *
+   * **O `preprocess` não é conveniência: o campo REALMENTE não existe** no
+   * formulário de quem não tem a capacidade de cobrar (`CamposServico` só o
+   * renderiza com `cobraSinal`). Exigir a chave faria todo salvamento de serviço
+   * de um tenant comum falhar na validação — e a mensagem seria sobre um campo
+   * que ele nunca viu.
+   */
+  valorSinal: z.preprocess((valor) => valor ?? "", precoOpcional),
 });
 
 export type EntradaServico = z.infer<typeof servicoSchema>;
