@@ -124,8 +124,19 @@ redireciona. Duas consequências para configuração:
 
 - **A URL `/auth/confirmar` precisa estar na allowlist de Redirect URLs** do projeto
   Supabase (Authentication → URL Configuration), com o domínio de produção e o de
-  desenvolvimento. Sem isso o Supabase recusa o `redirectTo` com "requested path is
-  invalid" — e só em produção.
+  desenvolvimento, e o **Site URL** precisa ser o domínio em uso. Quando o
+  `redirectTo` não vale, o Supabase manda o link para o Site URL — a doc é explícita
+  que ele é o destino padrão ([Redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls)) —
+  e o dono cai na landing com `?code=` na URL. Aconteceu em produção.
+
+  O `proxy.ts` resgata esse caso: `?code=` (ou `token_hash` + `type`) **na raiz** é
+  encaminhado para `/auth/confirmar` com a query intacta, e lá o destino sai do
+  estado do perfil, já que o `fluxo=` não sobrevive ao fallback. É rede de
+  segurança para links já enviados, não substituto da configuração.
+
+- Se o app roda em domínio próprio, defina **`SITE_URL`** na Vercel. Sem ela
+  `urlSite()` cai em `VERCEL_PROJECT_PRODUCTION_URL`, e o `redirectTo` sai apontando
+  para o endereço `*.vercel.app` — que precisaria estar na allowlist também.
 - **Com a confirmação de e-mail ligada, o cadastro se parte entre o passo 1 e o
   passo 2**, por necessidade: `signUp` não devolve sessão, e os passos 2 e 3 escrevem
   em `perfis` e criam instância na Evolution. O `supabase/config.toml` local tem

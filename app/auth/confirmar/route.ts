@@ -64,14 +64,47 @@ function ehTipoAceito(valor: string | null): valor is EmailOtpType {
 export function destinoDoLink(
   tipo: string | null,
   fluxo: string | null,
-): string {
+): string | null {
   if (tipo === "recovery" || fluxo === "recuperacao") {
     return ROTA_REDEFINIR_SENHA;
   }
   if (tipo === "signup" || tipo === "email" || fluxo === "cadastro") {
     return ROTA_REGISTRO_ESTABELECIMENTO;
   }
-  return ROTA_PADRAO_LOGADO;
+  // Indeterminado. Quem resolve é o estado do perfil — ver `destinoPeloPerfil`.
+  return null;
+}
+
+/**
+ * Destino quando o link não diz de onde veio.
+ *
+ * Isto não é caso de laboratório: quando o `redirectTo` não está na allowlist do
+ * projeto Supabase, o link cai no Site URL levando **só** o `code`, sem o `fluxo`
+ * que escrevemos. O `proxy.ts` encaminha para cá, e aqui não há como saber se era
+ * cadastro ou recuperação.
+ *
+ * A pergunta que o perfil responde é a que importa: o cadastro terminou? Sem
+ * `nome_estabelecimento` os passos 2 e 3 nunca rodaram, e mandar essa pessoa ao
+ * painel a deixa com o bot sem nome e sem WhatsApp pareado — que é exatamente o
+ * problema que o wizard existe para resolver. Quem já preencheu vai para o painel,
+ * inclusive quem clicou num link de confirmação antigo.
+ */
+async function destinoPeloPerfil(
+  supabase: Awaited<ReturnType<typeof criarClienteServidor>>,
+): Promise<string> {
+  const { data: claims } = await supabase.auth.getClaims();
+  const usuarioId = claims?.claims?.sub;
+  if (typeof usuarioId !== "string") return ROTA_PADRAO_LOGADO;
+
+  const { data: perfil } = await supabase
+    .from("perfis")
+    .select("nome_estabelecimento")
+    .eq("id", usuarioId)
+    .maybeSingle();
+
+  return perfil?.nome_estabelecimento
+    ? ROTA_PADRAO_LOGADO
+    : ROTA_REGISTRO_ESTABELECIMENTO;
 }
 
 export async function GET(request: NextRequest) {
@@ -111,7 +144,8 @@ export async function GET(request: NextRequest) {
     destino.pathname = ROTA_LOGIN;
     destino.searchParams.set("erro", "link_invalido");
   } else {
-    destino.pathname = destinoDoLink(tipo, fluxo);
+    destino.pathname =
+      destinoDoLink(tipo, fluxo) ?? (await destinoPeloPerfil(supabase));
   }
 
   return NextResponse.redirect(destino);

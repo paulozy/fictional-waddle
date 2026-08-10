@@ -14,10 +14,20 @@ import { NextRequest } from "next/server";
 
 const verifyOtp = vi.fn();
 const exchangeCodeForSession = vi.fn();
+const getClaims = vi.fn();
+/** O que `select nome_estabelecimento from perfis` devolve neste teste. */
+let perfil: { nome_estabelecimento: string | null } | null = null;
 
 vi.mock("@/lib/supabase/server", () => ({
   criarClienteServidor: () =>
-    Promise.resolve({ auth: { verifyOtp, exchangeCodeForSession } }),
+    Promise.resolve({
+      auth: { verifyOtp, exchangeCodeForSession, getClaims },
+      from: () => ({
+        select: () => ({
+          eq: () => ({ maybeSingle: () => Promise.resolve({ data: perfil }) }),
+        }),
+      }),
+    }),
 }));
 
 const { GET, destinoDoLink } = await import("./route");
@@ -28,6 +38,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   verifyOtp.mockResolvedValue({ error: null });
   exchangeCodeForSession.mockResolvedValue({ error: null });
+  getClaims.mockResolvedValue({ data: { claims: { sub: "uuid-do-dono" } } });
+  perfil = { nome_estabelecimento: "Barbearia do Nino" };
 });
 
 async function chamar(query: string) {
@@ -74,9 +86,43 @@ describe("formato code (templates padrão do Supabase)", () => {
     expect(destino.pathname).toBe("/registro/estabelecimento");
   });
 
-  it("sem `fluxo` nenhum, leva ao painel em vez de adivinhar", async () => {
-    const destino = await chamar("code=xyz");
-    expect(destino.pathname).toBe("/agendamentos");
+  /**
+   * O caso que aconteceu em produção: com o `redirectTo` fora da allowlist, o
+   * Supabase manda o link para o Site URL levando só o `code`. O `proxy.ts`
+   * encaminha para cá, e aqui o `fluxo` não existe — quem decide é o perfil.
+   */
+  describe("sem `fluxo`, o destino sai do estado do perfil", () => {
+    it("cadastro incompleto volta para o passo 2", async () => {
+      perfil = { nome_estabelecimento: null };
+
+      const destino = await chamar("code=xyz");
+
+      expect(destino.pathname).toBe("/registro/estabelecimento");
+    });
+
+    it("quem já preencheu vai para o painel", async () => {
+      perfil = { nome_estabelecimento: "Salão da Rita" };
+
+      const destino = await chamar("code=xyz");
+
+      expect(destino.pathname).toBe("/agendamentos");
+    });
+
+    it("perfil ausente não impede a entrada", async () => {
+      perfil = null;
+
+      const destino = await chamar("code=xyz");
+
+      expect(destino.pathname).toBe("/registro/estabelecimento");
+    });
+
+    it("sem claims legíveis, cai no painel em vez de lançar", async () => {
+      getClaims.mockResolvedValue({ data: null });
+
+      const destino = await chamar("code=xyz");
+
+      expect(destino.pathname).toBe("/agendamentos");
+    });
   });
 });
 
@@ -123,8 +169,10 @@ describe("o destino nunca vem da query", () => {
   });
 
   /**
-   * A função de destino é pura, e é a única fonte da decisão. Só três saídas
-   * existem; qualquer quarta significaria caminho novo, e é aqui que apareceria.
+   * A função de destino é pura, e é a única fonte da decisão vinda do link. Só
+   * dois caminhos saem dela, mais o `null` de "não sei" — qualquer terceiro
+   * caminho significaria destino novo, e é aqui que apareceria. Nenhuma entrada,
+   * por hostil que seja, produz URL de outro host.
    */
   it("só devolve caminho nosso, para qualquer entrada", () => {
     const saidas = new Set(
@@ -141,9 +189,11 @@ describe("o destino nunca vem da query", () => {
       ].map(([tipo, fluxo]) => destinoDoLink(tipo, fluxo)),
     );
 
-    expect([...saidas].every((caminho) => caminho.startsWith("/"))).toBe(true);
+    expect(
+      [...saidas].every((caminho) => caminho === null || caminho.startsWith("/")),
+    ).toBe(true);
     expect(saidas).toEqual(
-      new Set(["/redefinir-senha", "/registro/estabelecimento", "/agendamentos"]),
+      new Set(["/redefinir-senha", "/registro/estabelecimento", null]),
     );
   });
 });
