@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import { UsersIcon } from "lucide-react";
 import { traduzirEstado, type EstadoConexao } from "@/lib/evolution-api";
+import {
+  dataHoraLocal,
+  janelasDoDia,
+  tempoRelativo,
+} from "@/lib/metricas-whatsapp";
 import { criarClienteServidor, exigirUsuario } from "@/lib/supabase/server";
 import { normalizarNumeroWhatsApp } from "@/lib/telefone";
 import { PainelConexao } from "./painel-conexao";
@@ -31,9 +36,58 @@ export default async function ConexaoWhatsAppPage({
 
   const { data: perfil } = await supabase
     .from("perfis")
-    .select("status_conexao_whatsapp")
+    .select("status_conexao_whatsapp, fuso_horario")
     .eq("id", usuarioId)
     .single();
+
+  const fusoHorario = perfil?.fuso_horario ?? "America/Sao_Paulo";
+  const agora = new Date();
+  const { inicioHoje, inicioOntem } = janelasDoDia(agora, fusoHorario);
+
+  /**
+   * As três medidas do painel, todas com o client que respeita RLS: o dono tem
+   * `select` nas três tabelas, então nada aqui precisa de service role.
+   *
+   * O `.eq("usuario_id", ...)` é redundante sob RLS e fica assim mesmo — o dia
+   * em que alguma destas leituras migrar para o client admin, ele é a única
+   * barreira entre tenants.
+   */
+  const [conexao, lembretes, conversasHoje, ultimaConversa] = await Promise.all(
+    [
+      supabase
+        .from("log_conexao")
+        .select("em")
+        .eq("usuario_id", usuarioId)
+        .eq("estado", "conectado")
+        .order("em", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("log_envio")
+        .select("id", { count: "exact", head: true })
+        .eq("usuario_id", usuarioId)
+        .eq("tipo", "lembrete")
+        .gte("data_envio", inicioOntem.toISOString())
+        .lt("data_envio", inicioHoje.toISOString()),
+      supabase
+        .from("conversas_estado")
+        .select("id", { count: "exact", head: true })
+        .eq("usuario_id", usuarioId)
+        .gte("atualizado_em", inicioHoje.toISOString()),
+      supabase
+        .from("conversas_estado")
+        .select("atualizado_em")
+        .eq("usuario_id", usuarioId)
+        .order("atualizado_em", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ],
+  );
+
+  const conectadoDesde = conexao.data?.em ? new Date(conexao.data.em) : null;
+  const ultimaMensagem = ultimaConversa.data?.atualizado_em
+    ? new Date(ultimaConversa.data.atualizado_em)
+    : null;
 
   /**
    * Estado guardado no banco, alimentado pelo webhook `CONNECTION_UPDATE`. O
@@ -85,9 +139,9 @@ export default async function ConexaoWhatsAppPage({
       </div>
 
       {estado !== "conectado" && (
-        <div className="mt-6 rounded-lg border border-aviso/40 bg-aviso-suave p-4">
+        <div className="mt-6 max-w-2xl rounded-xl border border-aviso/40 bg-aviso-suave p-5">
           <p className="font-medium text-aviso">WhatsApp desconectado</p>
-          <p className="mt-1 text-sm text-aviso">
+          <p className="mt-1.5 text-sm leading-relaxed text-aviso">
             Enquanto estiver assim, o bot não responde e os lembretes não são
             enviados. Gere um QR code e faça a leitura para reconectar.
           </p>
@@ -100,11 +154,70 @@ export default async function ConexaoWhatsAppPage({
         iniciarAutomaticamente={iniciar === "1"}
       />
 
-      <p className="mt-8 text-xs text-muted-foreground">
+      {/**
+       * Três medidas, e só o que os dados sustentam.
+       *
+       * O design pedia também o número conectado e "mensagens respondidas
+       * hoje". O número não pode ser exibido: o produto guarda apenas
+       * `hmac_sha256(numero, TRIAL_HASH_PEPPER)` (ver `lib/trial-numero.ts`), e
+       * é essa pseudonimização que sustenta a minimização de dados da LGPD.
+       * "Mensagens respondidas" não tem fonte — nada conta mensagem, e inventar
+       * o número exigiria coluna nova. "Conversas atendidas" é o que
+       * `conversas_estado` de fato responde.
+       *
+       * O bloco só aparece conectado: desconectado, três zeros ao lado do aviso
+       * âmbar leem como consequência da queda, e não como o histórico que são.
+       */}
+      {estado === "conectado" && (
+        <dl className="mt-9 max-w-2xl">
+          <Medida rotulo="Conectado desde">
+            {conectadoDesde ? dataHoraLocal(conectadoDesde, fusoHorario) : "—"}
+          </Medida>
+          <Medida rotulo="Conversas atendidas hoje">
+            {conversasHoje.count ?? 0}
+          </Medida>
+          <Medida rotulo="Lembretes enviados ontem">
+            {lembretes.count ?? 0}
+          </Medida>
+          <Medida rotulo="Última mensagem recebida" ultima>
+            {tempoRelativo(ultimaMensagem, agora, fusoHorario) ?? "nenhuma"}
+          </Medida>
+        </dl>
+      )}
+
+      <p className="mt-8 max-w-[62ch] text-xs leading-relaxed text-muted-foreground">
         Deixe o celular do estabelecimento com bateria e conectado à internet. Se
         o WhatsApp for desconectado no aparelho ou o chip for trocado, será
         preciso ler um novo QR code aqui.
       </p>
     </>
+  );
+}
+
+/**
+ * Uma linha de `rótulo … valor`, em lista de definição.
+ *
+ * `<dl>` e não `<div>`: são pares nome/valor, e é o que faz o leitor de tela
+ * anunciar "Lembretes enviados ontem, 8" em vez de dois textos soltos que
+ * dependem da posição na tela para significar alguma coisa.
+ */
+function Medida({
+  rotulo,
+  ultima = false,
+  children,
+}: {
+  rotulo: string;
+  ultima?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={`flex items-center justify-between gap-4 border-t border-border py-3.5 text-sm ${
+        ultima ? "border-b" : ""
+      }`}
+    >
+      <dt className="text-muted-foreground">{rotulo}</dt>
+      <dd className="font-mono">{children}</dd>
+    </div>
   );
 }

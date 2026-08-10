@@ -5,7 +5,9 @@ import { TZDate } from "@date-fns/tz";
 import { instanteNoFuso } from "@/lib/bot/disponibilidade";
 import { AgendaLista } from "@/components/agenda-lista";
 import { CalendarioSemana } from "@/components/calendario-semana";
+import { Button } from "@/components/ui/button";
 import { diaSelecionado, montarAgendaDoDia } from "@/lib/agenda-lista";
+import { rotuloDoPeriodo } from "@/lib/datas";
 import {
   MINUTOS_POR_LINHA,
   blocosVisiveisNaGrade,
@@ -97,12 +99,31 @@ export default async function AgendamentosPage({
     diaSelecionado(calendario.dias, diaPedido),
   );
 
+  const fechados = blocosVisiveisNaGrade(calendario.blocos).length;
+
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Agendamentos</h1>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Agendamentos
+          </h1>
+          {/* O fuso vem junto do período porque é ele que decide o que "esta
+              semana" quer dizer — e o runtime da Vercel roda em UTC, então
+              quem lê precisa saber contra qual relógio a grade foi montada. */}
+          <p className="mt-2 text-sm text-muted-foreground">
+            {rotuloDoPeriodo(
+              dataInicial,
+              format(addDays(janelaLocal, 6), "yyyy-MM-dd"),
+            )}{" "}
+            · <span className="font-mono">{fusoHorario}</span>
+          </p>
+        </div>
 
-        <nav aria-label="Trocar de semana" className="flex items-center gap-1 text-sm">
+        <nav
+          aria-label="Trocar de semana"
+          className="flex items-center gap-1 text-sm"
+        >
           <Link
             href={`/agendamentos?semana=${semanaAnterior}`}
             className="flex min-h-11 items-center rounded-md px-3 transition-colors hover:bg-muted"
@@ -111,7 +132,7 @@ export default async function AgendamentosPage({
           </Link>
           <Link
             href="/agendamentos"
-            className="flex min-h-11 items-center rounded-md px-3 transition-colors hover:bg-muted"
+            className="flex min-h-11 items-center rounded-md px-3 font-medium transition-colors hover:bg-muted"
           >
             Hoje
           </Link>
@@ -144,19 +165,76 @@ export default async function AgendamentosPage({
       <div className="mt-6 hidden md:block">
         {/* Conta os blocos que a grade de fato desenha: uma semana só com
             cancelados mostraria grade vazia sem explicar por quê. */}
-        {blocosVisiveisNaGrade(calendario.blocos).length === 0 && (
-          <p className="mb-4 text-sm text-muted-foreground">
-            Nenhum agendamento nesta semana.
-          </p>
+        {fechados === 0 ? (
+          <div className="rounded-xl border border-border bg-card px-10 py-14 text-center">
+            <p className="font-heading text-xl font-semibold tracking-tight">
+              Nenhum agendamento nesta semana
+            </p>
+            <p className="mx-auto mt-3 max-w-[42ch] text-sm leading-relaxed text-muted-foreground">
+              Quando o bot fechar um horário, ele aparece aqui na hora, com
+              nome, serviço e duração.
+            </p>
+            {/* Semana vazia tem duas explicações, e só uma delas é "ninguém
+                chamou": se o WhatsApp caiu, o bot não respondeu ninguém. O
+                atalho leva à causa que o dono consegue resolver. */}
+            <Button asChild size="lg" className="mt-6">
+              <Link href="/conexao-whatsapp">
+                Conferir a conexão do WhatsApp
+              </Link>
+            </Button>
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
+              <Legenda className="bg-confirmado border-confirmado-borda">
+                Confirmado
+              </Legenda>
+              <Legenda className="bg-concluido border-concluido-borda">
+                Concluído
+              </Legenda>
+              <span className="ml-auto">
+                {fechados === 1
+                  ? "1 horário fechado nesta semana"
+                  : `${fechados} horários fechados nesta semana`}
+              </span>
+            </div>
+
+            <div className="mt-4">
+              <CalendarioSemana
+                calendario={calendario}
+                cancelaveis={cancelaveis}
+              />
+            </div>
+
+            <p className="mt-4 text-xs text-muted-foreground">
+              Cada faixa equivale a {MINUTOS_POR_LINHA} minutos. Clique em um
+              bloco para ver o cliente e cancelar o horário.
+            </p>
+          </>
         )}
-
-        <CalendarioSemana calendario={calendario} cancelaveis={cancelaveis} />
-
-        <p className="mt-4 text-xs text-muted-foreground">
-          Cada faixa equivale a {MINUTOS_POR_LINHA} minutos. Horários no fuso{" "}
-          {fusoHorario}.
-        </p>
       </div>
     </>
+  );
+}
+
+/**
+ * Amostra de cor + nome do status.
+ *
+ * O nome vem junto porque cor sozinha não é informação acessível (WCAG 1.4.1),
+ * e porque a diferença entre "confirmado" e "concluído" é de matiz — a mesma
+ * família de bege e verde, difícil de separar de relance mesmo enxergando bem.
+ */
+function Legenda({
+  className,
+  children,
+}: {
+  className: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <span className="flex items-center gap-2">
+      <span aria-hidden className={`size-3 rounded-xs border ${className}`} />
+      {children}
+    </span>
   );
 }

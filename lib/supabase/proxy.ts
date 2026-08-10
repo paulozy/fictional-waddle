@@ -22,6 +22,7 @@ export const ROTAS_PROTEGIDAS = [
   "/horarios",
   "/agendamentos",
   "/fluxo-conversa",
+  "/conta",
   /**
    * Os passos 2 e 3 do cadastro escrevem em `perfis` e criam instância na
    * Evolution — os dois exigem sessão. Chegar aqui deslogado significa link de

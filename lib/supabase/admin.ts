@@ -7,9 +7,16 @@ import type { Database } from "./tipos-banco";
 /**
  * Client com service role key — **ignora RLS por completo**.
  *
- * Uso restrito a dois lugares que chegam sem sessão de usuário:
+ * Uso restrito a três lugares. Os dois primeiros chegam sem sessão de usuário:
  *   - `/api/webhook/whatsapp/[instance]` (a Evolution API não tem sessão)
  *   - `/api/cron/enviar-lembretes` (a Vercel não tem sessão)
+ *
+ * O terceiro tem sessão e ainda assim precisa da service role:
+ *   - `encerrarConta` em `app/(dashboard)/conta/actions.ts`. Só
+ *     `auth.admin.deleteUser` apaga a linha de `auth.users`, e é o
+ *     `on delete cascade` dela que leva os dados do tenant junto, como a LGPD
+ *     exige. Nenhum client autenticado alcança `auth.users`. Ali o alvo é
+ *     sempre `claims.sub` da sessão, nunca um id vindo do `FormData`.
  *
  * Consequência que vale repetir: como a RLS não se aplica aqui, o
  * `.eq("usuario_id", ...)` deixa de ser otimização e passa a ser a **única**

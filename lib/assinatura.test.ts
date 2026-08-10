@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assinaturaValida,
   motivoBloqueio,
+  resumoAssinatura,
   type PerfilAssinatura,
 } from "./assinatura";
 
@@ -187,5 +188,70 @@ describe("motivoBloqueio", () => {
         AGORA,
       ),
     ).toBe("cancelado");
+  });
+});
+
+describe("resumoAssinatura", () => {
+  const resumo = (campos: Partial<PerfilAssinatura>) =>
+    resumoAssinatura(perfil(campos), AGORA, "49,90");
+
+  it("conta os dias restantes do teste e diz quando termina", () => {
+    // 25/07 12:00Z → 05/08 00:00Z são 10,5 dias.
+    const r = resumo({});
+    expect(r.titulo).toBe("Período de teste · 11 dias restantes");
+    expect(r.detalhe).toBe(
+      "Termina em 05/08. Depois disso, R$ 49,90 por mês, sem fidelidade.",
+    );
+    expect(r.ofereceAssinar).toBe(true);
+  });
+
+  it("arredonda para cima, e nunca chega a zero enquanto vale", () => {
+    /**
+     * Faltando poucas horas, "0 dias restantes" contradiz a tela: o gate ainda
+     * libera, o bot ainda responde. Para cima também não cria surpresa — quem
+     * lê "1 dia" e assina hoje nunca é pego pelo corte.
+     */
+    expect(resumo({ trial_expira_em: "2026-07-25T20:00:00Z" }).titulo).toBe(
+      "Período de teste · 1 dia restante",
+    );
+  });
+
+  it("não oferece assinar a quem já paga nem a quem é isento", () => {
+    expect(resumo({ status_assinatura: "ativo" })).toMatchObject({
+      titulo: "Assinatura ativa",
+      ofereceAssinar: false,
+    });
+    // Nulo em `trial_expira_em` é isenção manual, gravada à mão. Cobrar de um
+    // VIP seria o pior erro possível nesta tela.
+    expect(resumo({ trial_expira_em: null })).toMatchObject({
+      titulo: "Acesso liberado",
+      ofereceAssinar: false,
+    });
+  });
+
+  it("mantém a oferta viva depois do trial vencer e no cancelamento", () => {
+    expect(resumo({ trial_expira_em: PASSADO })).toMatchObject({
+      titulo: "Período de teste encerrado",
+      ofereceAssinar: true,
+    });
+    expect(resumo({ status_assinatura: "cancelado" })).toMatchObject({
+      titulo: "Assinatura cancelada",
+      ofereceAssinar: true,
+    });
+  });
+
+  it("explica o bloqueio por número em voz alta", () => {
+    // Quem foi barrado por engano (salão vendido, número trocado) precisa
+    // entender a regra para querer nos procurar — o runbook depende disso.
+    const r = resumo({ trial_expira_em: PASSADO, trial_bloqueado_em: PASSADO });
+    expect(r.titulo).toBe("Teste indisponível para este número");
+    expect(r.detalhe).toContain("já usou o período de teste em outra conta");
+  });
+
+  it("não quebra sem perfil, e trata como bloqueado", () => {
+    // Fail-safe: perfil ausente nunca pode virar "assinatura ativa".
+    expect(resumoAssinatura(null, AGORA, "49,90")).toMatchObject({
+      ofereceAssinar: true,
+    });
   });
 });

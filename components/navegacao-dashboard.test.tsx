@@ -38,6 +38,7 @@ const ABAS: ItemNavegacao[] = [
 const EXTRAS: ItemNavegacao[] = [
   { href: "/fluxo-conversa", rotulo: "Fluxo da conversa", icone: "fluxo" },
   { href: "/conexao-whatsapp", rotulo: "WhatsApp", icone: "whatsapp" },
+  { href: "/conta", rotulo: "Conta", icone: "conta" },
 ];
 
 const caminhoAtual = vi.hoisted(() => ({ valor: "/agendamentos" }));
@@ -53,7 +54,10 @@ function montar(caminho: string) {
   );
 }
 
-/** A barra inferior; o header (`hidden md:flex`) repete os mesmos destinos. */
+/**
+ * A barra inferior — a única navegação que este componente renderiza. Acima de
+ * `md` quem navega é `components/barra-lateral.tsx`, com teste próprio.
+ */
 function barraInferior() {
   return screen.getByRole("navigation", { name: "Navegação principal" });
 }
@@ -123,17 +127,27 @@ describe("NavegacaoDashboard", () => {
     expect(
       within(painel).getByRole("link", { name: "WhatsApp" }),
     ).toHaveProperty("pathname", "/conexao-whatsapp");
+    // "Conta" é o terceiro destino de overflow, e o único caminho até ela no
+    // celular é este — se sumir daqui, a tela fica inalcançável sem digitar a
+    // URL.
+    expect(within(painel).getByRole("link", { name: "Conta" })).toHaveProperty(
+      "pathname",
+      "/conta",
+    );
     expect(within(painel).getByRole("button", { name: "Sair" })).toBeTruthy();
   });
 
-  it("mostra todos os cinco destinos na navegação de desktop", () => {
+  it("não repete os destinos numa segunda navegação", () => {
     montar("/agendamentos");
 
-    // O header não some do DOM em tela estreita — é `hidden md:flex`, decidido
-    // por CSS. Ele existe sempre, e é onde ficam os cinco rótulos completos.
-    const cabecalho = screen.getAllByRole("navigation")[0];
-    for (const { rotulo } of [...ABAS, ...EXTRAS]) {
-      expect(within(cabecalho).getByRole("link", { name: rotulo })).toBeTruthy();
-    }
+    /**
+     * Antes a barra inferior convivia com um `nav` de desktop dentro do mesmo
+     * componente, e os dois listavam os mesmos destinos. Hoje o desktop é a
+     * `BarraLateral`: se aquele `nav` voltar por engano, cada link passa a
+     * existir duas vezes na árvore e `getByRole` quebra em vez de passar em
+     * silêncio.
+     */
+    expect(screen.getAllByRole("navigation")).toHaveLength(1);
+    expect(screen.getAllByRole("link", { name: "Serviços" })).toHaveLength(1);
   });
 });

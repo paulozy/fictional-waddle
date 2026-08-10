@@ -376,15 +376,22 @@ export function PainelConexao({
 
   if (estadoInicial === "conectado" && estado.nome === "ocioso" && !trocando) {
     return (
-      <div className="mt-6 max-w-md rounded-lg border border-confirmado-borda bg-confirmado p-4">
-        <p className="font-medium text-confirmado-tinta">WhatsApp conectado</p>
-        <p className="mt-1 text-sm text-confirmado-tinta">
-          O bot já está respondendo pelo número do seu estabelecimento.
-        </p>
+      <div className="mt-6 flex max-w-2xl flex-col gap-4 rounded-xl border border-confirmado-borda bg-confirmado p-5 sm:flex-row sm:items-center">
+        {/* O ponto é decorativo: o estado já está dito por extenso ao lado. */}
+        <span
+          aria-hidden
+          className="hidden size-2.5 shrink-0 rounded-full bg-confirmado-tinta sm:block"
+        />
+        <div className="flex-1">
+          <p className="font-medium text-confirmado-tinta">WhatsApp conectado</p>
+          <p className="mt-1 text-sm leading-relaxed text-confirmado-tinta">
+            O bot já está respondendo pelo número do seu estabelecimento.
+          </p>
+        </div>
         <button
           type="button"
           onClick={() => setTrocando(true)}
-          className="mt-2 flex min-h-11 items-center text-sm text-confirmado-tinta underline underline-offset-4"
+          className="flex min-h-11 shrink-0 items-center justify-center rounded-lg border border-confirmado-borda bg-card px-4 text-sm text-confirmado-tinta transition-colors hover:bg-accent"
         >
           Conectar outro número
         </button>

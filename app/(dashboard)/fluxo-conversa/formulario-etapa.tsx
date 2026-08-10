@@ -1,11 +1,20 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
+import { PlusIcon } from "lucide-react";
+import { CartaoLateral } from "@/components/cartao-lateral";
+import { Button } from "@/components/ui/button";
 import type { EstadoFormulario } from "@/lib/validacao/agenda";
 import { adicionarEtapa } from "./actions";
 
+/**
+ * `text-base md:text-sm` não é detalhe: os rótulos são `text-sm`, e o reset do
+ * Tailwind faz o campo herdar a fonte do pai — medido em Chromium, os cinco
+ * campos saíam a 14px, e abaixo de 16px o iOS dá zoom no foco e **não desfaz**.
+ * Declarar o tamanho aqui corta a herança.
+ */
 const CAMPO =
-  "mt-1 w-full rounded-md border border-input bg-transparent px-3 py-2 outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
+  "mt-1 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30 max-md:min-h-11";
 
 export function FormularioEtapa() {
   const [estado, acao, enviando] = useActionState<EstadoFormulario, FormData>(
@@ -22,13 +31,15 @@ export function FormularioEtapa() {
   }, [estado]);
 
   return (
-    <details className="mt-6 rounded-lg border border-border bg-card">
-      <summary className="cursor-pointer px-4 py-3 font-medium">
-        Adicionar pergunta ao fluxo
-      </summary>
-
-      <form ref={form} action={acao} className="border-t border-border p-4">
-        <div className="grid gap-4 sm:grid-cols-2">
+    /**
+     * Já foi um `<details>` fechado embaixo da lista. Com o formulário virando
+     * coluna própria, a dobra deixou de fazer sentido: ela existia para o
+     * formulário não empurrar a lista para fora da tela, e agora eles nem
+     * disputam a mesma vertical.
+     */
+    <CartaoLateral titulo="Nova pergunta">
+      <form ref={form} action={acao} className="mt-4">
+        <div className="grid gap-4">
           <label className="block text-sm font-medium" htmlFor="tipo">
             Tipo de pergunta
             <select
@@ -94,8 +105,17 @@ export function FormularioEtapa() {
           </label>
         )}
 
-        <label className="mt-4 flex items-center gap-2 text-sm">
-          <input type="checkbox" name="obrigatorio" defaultChecked />
+        {/* Medido em Chromium, a caixa nativa nasce **13×13** e reprova o
+            mínimo AA de 24px da WCAG 2.2 SC 2.5.8. Quem de fato recebe o toque
+            é o `<label>`, que embrulha caixa e texto — mas a caixa também
+            precisa ser mirável sozinha, daí os 24px no celular. */}
+        <label className="mt-4 flex items-center gap-2.5 py-2.5 text-sm">
+          <input
+            type="checkbox"
+            name="obrigatorio"
+            defaultChecked
+            className="size-6 accent-primary md:size-5"
+          />
           Exigir resposta para continuar
         </label>
 
@@ -110,14 +130,16 @@ export function FormularioEtapa() {
           </p>
         )}
 
-        <button
+        <Button
           type="submit"
+          size="lg"
           disabled={enviando}
-          className="mt-4 h-10 rounded-md bg-primary px-4 font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
+          className="mt-5 w-full"
         >
+          <PlusIcon className="size-4" />
           {enviando ? "Adicionando…" : "Adicionar pergunta"}
-        </button>
+        </Button>
       </form>
-    </details>
+    </CartaoLateral>
   );
 }

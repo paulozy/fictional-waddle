@@ -214,7 +214,13 @@ O dono opera isto **entre atendimentos, no celular, com uma mão**. O dashboard 
 
 **`viewportFit: "cover"` em `app/layout.tsx` é pré-requisito, não enfeite.** Sem ele `env(safe-area-inset-*)` resolve para **zero**, e a barra de abas inferior fica embaixo da barra de gestos do iPhone.
 
-**A navegação é uma ilha de cliente dentro de um layout RSC.** `components/navegacao-dashboard.tsx` é o único `"use client"` do shell: `app/(dashboard)/layout.tsx` continua Server Component lendo sessão e perfil. Só a barra hidrata, porque marcar a página atual exige `usePathname`. São **quatro** abas e não cinco (`ABAS_PRINCIPAIS` / `ITENS_EXTRAS`): cinco destinos dariam ~65px cada em 375px, e eles não têm a mesma frequência — agenda é diária, fluxo é configuração inicial, WhatsApp só importa quando a conexão cai. O ícone vai por chave num mapa (`ICONES`), não por prop: componente React não atravessa a fronteira RSC → client.
+**A navegação são duas ilhas de cliente dentro de um layout RSC.** `components/navegacao-dashboard.tsx` (barra inferior, abaixo de `md`) e `components/barra-lateral.tsx` (menu lateral, `md`+) são os únicos `"use client"` do shell: `app/(dashboard)/layout.tsx` continua Server Component lendo sessão e perfil. Só elas hidratam, porque marcar a página atual exige `usePathname`. Os seis destinos são declarados **uma vez só** no layout e recortados de dois jeitos (`ABAS_PRINCIPAIS`/`ITENS_EXTRAS` para o celular, `GRUPOS_LATERAIS` para a lateral) — montar a lista dentro de cada componente faria um destino novo aparecer numa e não na outra. As duas importam `ICONES` e `ehAtivo` do mesmo módulo, para não haver duas noções de "página atual". O ícone vai por chave num mapa, não por prop: componente React não atravessa a fronteira RSC → client.
+
+**Continuam sendo quatro abas no celular, agora com seis destinos.** Seis dariam ~55px cada em 375px e exigiriam rótulo de 9px; o corte é por frequência — agenda é diária, fluxo é configuração inicial, WhatsApp só importa quando a conexão cai, conta é quase nunca. **A lateral não substitui a barra inferior**: uma gaveta custaria um toque a mais em toda navegação, e o dono opera isto com uma mão entre atendimentos.
+
+**A lateral não tem token de cor próprio, e não deve ganhar um.** O design pinta a sidebar em `#F8F4EC` sobre papel `#FDFBF7`, item ativo branco e divisória `#E4DCCC` — que é exatamente `bg-secondary` / `bg-card` / `border-border` do `app/globals.css`. Reusar dispensa rodar o `verificar:contraste` de novo e dá o par escuro de graça.
+
+**O estado recolhido vem de cookie, e o nome dele mora em `lib/preferencias-ui.ts` — não no componente.** As duas metades são armadilha medida em navegador. Cookie porque o layout é RSC e a primeira pintura precisa já sair na largura certa; num efeito, o menu abriria a 252px e encolheria para 64px, empurrando o conteúdo inteiro em toda navegação. E o nome sai do componente porque `barra-lateral.tsx` é `"use client"`: um Server Component que importa constante de módulo de cliente **não recebe o valor**, e sim a referência de cliente que o Next põe no lugar. O `cookies().get(...)` procurava por algo que não era a string, achava `undefined`, e o menu voltava expandido a cada recarregamento — sem erro nenhum no console, e invisível para o Vitest.
 
 **A agenda tem duas visões da mesma query, escolhidas por CSS.** `md:hidden` / `hidden md:block` na página, **nunca** `matchMedia`: a decisão fica na folha de estilo, então não há client component, não há divergência de hidratação e a primeira pintura já vem certa. A grade de 7 colunas tem `min-w-[44rem]` e é impossível em tela estreita — a 375px mostra 46% dela, com a calha de horas saindo do campo de visão no primeiro arrasto. `lib/agenda-lista.ts` deriva a lista do dia do **mesmo `Calendario`** que a grade desenha, sem segunda query e sem refazer conversão de fuso. `?dia=` implica a semana que o contém, então não há dois parâmetros para manter sincronizados.
 
@@ -327,19 +333,22 @@ O objetivo declarado era ser encontrado pesquisando o nome no Google. Isso depen
   /auth
     confirmar/route.ts                → aterrissagem dos links de e-mail: verifyOtp / exchangeCodeForSession
   /(dashboard)
-    layout.tsx                      → verifica sessão, redireciona se ausente
-    conexao-whatsapp/page.tsx        → exibe QR code, status da instância
-    servicos/page.tsx
+    layout.tsx                      → sessão, gate soft de assinatura, e a fonte única dos 6 destinos
+    conexao-whatsapp/page.tsx        → QR code, estado da instância e as 3 métricas
+    servicos/page.tsx                 → lista + cartão "novo serviço", duas colunas em `lg`
     horarios/page.tsx
     agendamentos/page.tsx             → dashboard com visão de calendário dos agendamentos
     fluxo-conversa/page.tsx           → builder: dono monta/reordena as etapas da conversa do bot
+    conta/page.tsx                    → assinatura, estabelecimento, acesso e encerrar conta
   /api
     /cron
       enviar-lembretes/route.ts      → chamado 1x/dia pelo Vercel Cron
     /webhook
       whatsapp/[instance]/route.ts   → recebe mensagens da Evolution API, processa conversas_estado
 /components
-  navegacao-dashboard.tsx             → ilha de cliente: barra de abas no celular, header no desktop
+  navegacao-dashboard.tsx             → ilha de cliente: barra de abas, só abaixo de `md`
+  barra-lateral.tsx                   → ilha de cliente: menu lateral colapsável, só a partir de `md`
+  cartao-lateral.tsx                  → moldura da coluna de "adicionar" (serviços e fluxo)
   calendario-semana.tsx               → grade de 7 colunas, só a partir de `md`
   agenda-lista.tsx                    → lista do dia com seletor de data, abaixo de `md`
 /lib
@@ -349,6 +358,8 @@ O objetivo declarado era ser encontrado pesquisando o nome no Google. Isso depen
   site.ts                             → domínio, `metadataPagina`, identificação legal, perfis externos
   json-ld.ts                          → WebSite + Organization da home
   plano.ts                            → preço, trial e o que está/não está incluído
+  preferencias-ui.ts                  → nome do cookie da lateral; puro, para o RSC poder importar
+  metricas-whatsapp.ts                → janelas de "hoje"/"ontem" no fuso do negócio, e tempo relativo
   evolution-api.ts                    → funções: criar instância, gerar QR code, enviar mensagem, checar status
   telefone.ts                         → normaliza o número do dono para o código de pareamento
   calendario.ts                       → layout da grade semanal (puro)
@@ -408,6 +419,29 @@ Estas quatro coisas foram medidas contra o servidor 2.3.7 real e contra o fonte 
 **`disconnectionReasonCode` viaja só no `STATUS_INSTANCE`**, que por isso está em `NOME_EVENTOS_WEBHOOK`. O `CONNECTION_UPDATE` de queda diz que caiu, nunca por quê — e a diferença importa: `401` (`loggedOut`) é o dono tendo desvinculado o aparelho e só re-parear resolve, o resto é transitório. Hoje o handler apenas registra; persistir para diferenciar o texto do box "WhatsApp desconectado" exigiria coluna nova. A assinatura só passa a valer depois de `configurarWebhook` rodar de novo na instância, o que `gerarQrCode` faz a cada chamada.
 
 **Ao testar contra a Evolution, nunca tocar na instância de produção.** `logout`, `delete`, `restart` e `connect` na instância do dono derrubam o WhatsApp do negócio. Criar `zz-teste-…` descartável e apagar ao final, conferindo com `fetchInstances`.
+
+### As três métricas do painel de WhatsApp
+
+Lidas no Server Component com o client que respeita RLS — o dono tem `select` em `log_conexao`, `log_envio` e `conversas_estado`, então nenhuma precisa de service role. "Conectado desde" é a última transição para `conectado` em `log_conexao`; "lembretes enviados ontem" conta `log_envio` com `tipo = 'lembrete'`; "conversas atendidas hoje" e "última mensagem recebida" saem de `conversas_estado`.
+
+**As janelas de "hoje" e "ontem" vivem em `lib/metricas-whatsapp.ts`, e não inline na página.** Elas só têm sentido no `fuso_horario` do negócio, e o runtime da Vercel roda em UTC: um lembrete enviado às 23h de ontem em São Paulo é 02h de hoje em UTC, some do número de ontem e aparece no de hoje. O erro seria **invisível em desenvolvimento** — a máquina do dono já está no fuso certo — e só apareceria em produção. O dia anterior é calculado sobre a data local e reconvertido, nunca subtraindo 24h: no dia que muda o relógio, o dia tem 23 ou 25 horas.
+
+**Duas coisas do design ficaram de fora, com motivo.** O **número conectado** não pode ser exibido: o produto guarda apenas `hmac_sha256(numero, TRIAL_HASH_PEPPER)`, e é essa pseudonimização que sustenta a minimização de dados. **"Mensagens respondidas hoje"** não tem fonte — nada conta mensagem, e o número exigiria coluna nova; no lugar dela vai "conversas atendidas hoje", que é o que os dados de fato respondem. Não reintroduzir nenhuma das duas sem mudar o schema.
+
+## A tela de Conta
+
+Antes dela, `nome_estabelecimento` e `fuso_horario` só eram graváveis no passo 2 do cadastro: quem errasse o fuso ali ficava com a agenda inteira deslocada e sem caminho na interface para corrigir. A action nova reusa o `lerEstabelecimento` de `app/(auth)/schema.ts` — mesmos dois campos, mesmas regras — e chama `revalidatePath("/", "layout")`, porque o fuso decide o que "hoje" quer dizer em três telas.
+
+**Trocar senha dispara `enviarLinkRecuperacao`, não um campo de senha nesta tela.** Um segundo caminho para definir senha significaria duas implementações da mesma regra de força — e a sessão do painel pode estar aberta há semanas num aparelho emprestado, prova de posse que o e-mail dá e ela não. Trocar de **e-mail** ficou de fora: exige reconfirmar o endereço novo, que é fluxo próprio.
+
+**`encerrarConta` é o terceiro ponto de uso da service role**, e o único com sessão. Só `auth.admin.deleteUser` apaga `auth.users`, e é o cascade dela que leva os dados do tenant (LGPD). A ordem dos passos não é intercambiável e está no JSDoc da action; o que não pode cair:
+
+- **O alvo é sempre `claims.sub`, nunca um id do `FormData`** — senão a action vira "apague a conta de qualquer um".
+- **A instância da Evolution sai antes do banco.** Depois do `deleteUser` não há mais de onde ler `evolution_instance_name`, e a instância órfã deixa o socket Baileys aberto respondendo por um número cujo dono não tem mais painel.
+- **A exclusão da instância é fail-open.** Serviço externo fora do ar não pode recusar um pedido de exclusão de dados; instância órfã é limpeza manual nossa.
+- **`trials_numero_whatsapp` não cascateia**, e é o comportamento certo: um livro-caixa antiabuso que some com a conta é um livro-caixa que o abusador apaga sozinho.
+
+O cartão de assinatura lê `resumoAssinatura` (`lib/assinatura.ts`) e o preço de `lib/plano.ts` — nunca "R$ 49,90" escrito à mão. `linkAssinatura()` saiu do layout para `lib/assinatura.ts` porque agora tem dois consumidores; **só pode ser chamada no servidor**, já que `WHATSAPP_CONTATO` não tem prefixo `NEXT_PUBLIC_` e num bundle de cliente devolveria `null` em silêncio.
 
 ---
 
