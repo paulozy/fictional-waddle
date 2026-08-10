@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { sair } from "@/app/login/actions";
+import { sair } from "@/app/(auth)/actions";
 import { AlternarTema } from "@/components/alternar-tema";
 import { BannerAssinatura } from "@/components/banner-assinatura";
 import { Marca } from "@/components/marca";

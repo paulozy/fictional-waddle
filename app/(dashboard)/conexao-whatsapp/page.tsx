@@ -2,13 +2,32 @@ import type { Metadata } from "next";
 import { UsersIcon } from "lucide-react";
 import { traduzirEstado, type EstadoConexao } from "@/lib/evolution-api";
 import { criarClienteServidor, exigirUsuario } from "@/lib/supabase/server";
+import { normalizarNumeroWhatsApp } from "@/lib/telefone";
 import { PainelConexao } from "./painel-conexao";
 
 export const metadata: Metadata = { title: "Conexão do WhatsApp" };
 
-export default async function ConexaoWhatsAppPage() {
+export default async function ConexaoWhatsAppPage({
+  searchParams,
+}: {
+  /**
+   * `?numero=&iniciar=1` é como o passo 3 do cadastro chega aqui, com o número
+   * que o dono acabou de digitar lá. Sem isso ele digitaria o mesmo número duas
+   * vezes em duas telas seguidas.
+   */
+  searchParams: Promise<{ numero?: string; iniciar?: string }>;
+}) {
   const usuarioId = await exigirUsuario();
   const supabase = await criarClienteServidor();
+
+  const { numero, iniciar } = await searchParams;
+  /**
+   * Renormalizado aqui, mesmo tendo passado por `lerTelefone` no passo 3: a URL
+   * é editável, e o valor vai direto para a Evolution como número de pareamento.
+   * Inválido vira `undefined` — o painel apenas abre com o campo vazio.
+   */
+  const normalizado = numero ? normalizarNumeroWhatsApp(numero) : null;
+  const numeroInicial = normalizado?.valido ? normalizado.numero : undefined;
 
   const { data: perfil } = await supabase
     .from("perfis")
@@ -75,7 +94,11 @@ export default async function ConexaoWhatsAppPage() {
         </div>
       )}
 
-      <PainelConexao estadoInicial={estado} />
+      <PainelConexao
+        estadoInicial={estado}
+        numeroInicial={numeroInicial}
+        iniciarAutomaticamente={iniciar === "1"}
+      />
 
       <p className="mt-8 text-xs text-muted-foreground">
         Deixe o celular do estabelecimento com bateria e conectado à internet. Se

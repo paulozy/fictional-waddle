@@ -4,6 +4,7 @@ import {
   ROTA_PADRAO_LOGADO,
   atualizarSessao,
   exigeSessao,
+  somenteAnonimo,
 } from "@/lib/supabase/proxy";
 
 /**
@@ -24,7 +25,7 @@ export async function proxy(request: NextRequest) {
     return redirecionarPreservandoCookies(request, response, ROTA_LOGIN);
   }
 
-  if (claims && pathname === ROTA_LOGIN) {
+  if (claims && somenteAnonimo(pathname)) {
     return redirecionarPreservandoCookies(
       request,
       response,

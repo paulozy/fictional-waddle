@@ -252,7 +252,7 @@ A palavra ao lado do símbolo fica em `text-foreground`, não em `text-primary` 
 
 Duas armadilhas descobertas ao construir aquela medição, que valem para qualquer nova tentativa: elemento com `overflow` diferente de `visible` **não** causa transbordo de página (o recorte da marca reportava 9px falsos em toda página), e a exceção "Inline" do SC 2.5.8 isenta link no meio de frase — exigir 24px de altura ali obrigaria a inflar a entrelinha do texto todo.
 
-**O transbordo de 375px está fechado.** As páginas públicas rolavam na horizontal (`scrollWidth` 409 contra 375) porque o cabeçalho tinha **dois rótulos do mesmo destino** — "Entrar" e "Começar grátis" apontam ambos para `/login` — e juntos não caíam na largura. "Entrar" saiu abaixo de `sm` e voltou dentro de `MenuSecoes`, com nome que quem já é cliente procura. Junto disso: 7 alvos de 20px de altura (nav do cabeçalho e do rodapé) que reprovavam o mínimo AA, e a medida de coluna, que **escala com o corpo do texto** — `36rem` dá ~75 caracteres a 16px e ~96 a 12px, daí a prosa usar `max-w-[36rem]` e a letra miúda `max-w-[28rem]`. `max-w-2xl` parecia confortável por uma conta errada de largura de caractere (a Instrument Sans a 16px mede ~7,7px, não ~8,4px).
+**O transbordo de 375px está fechado.** As páginas públicas rolavam na horizontal (`scrollWidth` 409 contra 375) porque o cabeçalho tinha **dois rótulos do mesmo destino** — "Entrar" e "Começar grátis" apontavam ambos para `/login`, na época em que havia uma tela só de autenticação — e juntos não caíam na largura. (Hoje os destinos são diferentes, `/login` e `/registro`, mas a decisão de esconder um deles abaixo de `sm` continua valendo pela largura.) "Entrar" saiu abaixo de `sm` e voltou dentro de `MenuSecoes`, com nome que quem já é cliente procura. Junto disso: 7 alvos de 20px de altura (nav do cabeçalho e do rodapé) que reprovavam o mínimo AA, e a medida de coluna, que **escala com o corpo do texto** — `36rem` dá ~75 caracteres a 16px e ~96 a 12px, daí a prosa usar `max-w-[36rem]` e a letra miúda `max-w-[28rem]`. `max-w-2xl` parecia confortável por uma conta errada de largura de caractere (a Instrument Sans a 16px mede ~7,7px, não ~8,4px).
 
 **Corpo de texto de página pública é `text-base` no celular, não `text-sm`.** O idioma é o mesmo de `components/ui/input.tsx` (`text-base md:text-sm`): maior no celular, menor no desktop. Não é deslize — é a leitura de quem chega por link de WhatsApp ou Instagram, que é a maioria. A conversa da landing tem regra própria e um **teto**: 14px, porque a 15px as linhas de menu quebram na bolha (ver o JSDoc de `components/conversa-demo.tsx`).
 
@@ -308,7 +308,7 @@ O objetivo declarado era ser encontrado pesquisando o nome no Google. Isso depen
   manifest.ts                         → PWA: ícone na tela inicial e abertura em standalone
   icon.tsx / apple-icon.tsx           → ícones gerados por ImageResponse, sem binário no repo
   opengraph-image.tsx                 → prévia de link 1200×630 (WhatsApp, redes)
-  robots.ts / sitemap.ts              → indexação; dashboard e /login ficam fora
+  robots.ts / sitemap.ts              → indexação; dashboard e as sete telas de auth ficam fora
   /(marketing)
     page.tsx                          → landing; é aqui que o JSON-LD vive
     perguntas.ts                      → dados do FAQ, módulo puro (é o texto indexável)
@@ -317,6 +317,15 @@ O objetivo declarado era ser encontrado pesquisando o nome no Google. Isso depen
     comparacao.tsx                    → peças das páginas de comparação (rascunho)
     precos/ como-funciona/ sobre/ privacidade/ termos/
     menu-secoes.tsx                   → Sheet com a navegação abaixo de `sm`
+  /(auth)
+    layout.tsx                        → moldura de duas colunas; o `aside` só existe a partir de `lg`
+    pecas.tsx                         → Cabecalho, Campo, CampoSelecao, BotaoPrincipal, Recado
+    schema.ts / actions.ts            → Zod e as Server Actions das sete telas (inclui `sair`)
+    login/                            → entrar; é a única com `current-password`
+    registro/                         → passo 1, `passos.tsx`, e confirmar-email/ estabelecimento/ whatsapp/
+    recuperar-senha/ redefinir-senha/ → pedir o link e definir a senha nova
+  /auth
+    confirmar/route.ts                → aterrissagem dos links de e-mail: verifyOtp / exchangeCodeForSession
   /(dashboard)
     layout.tsx                      → verifica sessão, redireciona se ausente
     conexao-whatsapp/page.tsx        → exibe QR code, status da instância
@@ -351,6 +360,26 @@ O objetivo declarado era ser encontrado pesquisando o nome no Google. Isso depen
 ```
 
 ---
+
+## Autenticação
+
+Sete telas em `app/(auth)/`, vindas do design `Encaixaria Painel.dc.html`. Antes era **uma** tela com dois botões de submit dividindo um campo de senha, sem nenhum caminho para senha esquecida e sem coletar nada no cadastro (`nome_estabelecimento` nascia nulo). O que não é óbvio:
+
+**O cadastro em 3 passos se parte no meio, e a emenda é obrigatória.** Passo 1 (`/registro`) cria a conta; passos 2 e 3 escrevem em `perfis` e criam instância na Evolution, e **os dois exigem sessão**. Com confirmação de e-mail ligada, `signUp` não devolve sessão — daí `/registro/confirmar-email`, que o design não previa. Sem ela, o dono confirmava o e-mail e era jogado ao login pelo proxy, sem explicação. Com `enable_confirmations = false` (é o `config.toml` local) os três passos correm seguidos e a tela nem aparece.
+
+**`/auth/confirmar` decide o destino por mapa fechado, nunca por `?next=`.** Um parâmetro de destino livre ali seria redirect aberto pendurado justamente no endereço que acabou de criar sessão. Aceita **dois** formatos de link de propósito: `?token_hash=&type=` (`verifyOtp`, dos templates personalizados, e o preferível — não depende de cookie do navegador que iniciou, então funciona quando o dono se cadastra no computador e abre o link no celular) e `?code=` (`exchangeCodeForSession`, o que os templates **padrão** produzem). Aceitar o segundo é o que faz o fluxo funcionar sem ninguém editar template no painel; a intenção viaja no `fluxo=` que nós mesmos escrevemos no `redirectTo`, porque aquele formato não carrega `type`.
+
+**`ROTAS_SOMENTE_ANONIMAS` compara caminho exato, e `ROTAS_PROTEGIDAS` compara prefixo.** `/registro` é anônima e `/registro/estabelecimento` exige sessão — um `startsWith` na primeira lista jogaria o passo 2 de volta ao painel exatamente quando ele fosse aberto, e o cadastro nunca terminaria. Há teste afirmando que as duas listas não se sobrepõem.
+
+**Campo de auth é 16px em qualquer largura**, diferente do `text-base md:text-sm` que é o idioma do resto do projeto. Aquele idioma está certo onde está, mas resolve o zoom do iOS por **largura**, e o iPad em retrato reporta exatamente 768px — o começo do `md`. Medido em Chromium: os campos caíam para 14px a partir dali. Numa coluna de 380px com dois campos não há densidade a ganhar.
+
+**O passo 3 não gera QR: redireciona para `/conexao-whatsapp?numero=&iniciar=1`.** Duplicar aquele painel custaria manter em dois lugares a expiração de 45s, a contagem de regeneração e o polling, todos medidos contra a Evolution 2.3.7. O `iniciar=1` dispara a primeira busca uma vez, com trava em `ref` — sem ela o Strict Mode do desenvolvimento abriria duas sessões Baileys. O número é **renormalizado** na página: a URL é editável e o valor vai direto para a Evolution.
+
+**O "Voltar" do passo 2 ficou de fora, contra o design.** No design a conta ainda não existe naquele ponto, então voltar é editar o e-mail; no fluxo real a conta já foi criada e confirmada, e o passo 1 é um formulário que criaria uma segunda. O botão do navegador continua funcionando.
+
+**"Começar grátis" aponta para `/registro`, "Entrar" para `/login`.** Os sete CTAs de marketing iam todos para a tela de login, que era o destino errado desde sempre — só não dava para consertar sem uma tela de cadastro.
+
+**A verificação de responsividade é em navegador, e não está versionada.** Sete telas × 320/375/390/768/1280 + paisagem 667×375, medindo transbordo, altura de alvo, fonte de campo e o `aside`. Dois defeitos saíram daí e nenhum era visível no Vitest: os campos a 14px acima de 768px e o "Esqueci a senha" com 36px de alvo. Ao mexer nessas telas, remedir — `toHaveClass("min-h-11")` afirma que a classe foi escrita, não que o pixel tem 44.
 
 ## Onboarding de nova instância (fluxo)
 

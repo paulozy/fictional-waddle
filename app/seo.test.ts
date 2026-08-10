@@ -11,6 +11,40 @@ import sitemap from "./sitemap";
  * `noindex` — o Google precisa poder buscar a página para ler a diretiva.
  */
 
+/**
+ * As telas de autenticação, cada uma com o módulo que declara a metadata dela.
+ *
+ * Sete formulários que não têm nada a oferecer a quem chega da busca, e que
+ * concorreriam com a landing pelas mesmas consultas de marca. Todas precisam de
+ * `noindex` **e** de ausência no `robots.txt`: com só metade, a página fica
+ * indexável e nada falha.
+ */
+const ROTAS_DE_AUTENTICACAO = [
+  "/login",
+  "/registro",
+  "/registro/confirmar-email",
+  "/registro/estabelecimento",
+  "/registro/whatsapp",
+  "/recuperar-senha",
+  "/redefinir-senha",
+] as const;
+
+const MODULOS_DE_AUTENTICACAO = [
+  ["/login", () => import("./(auth)/login/page")],
+  ["/registro", () => import("./(auth)/registro/page")],
+  [
+    "/registro/confirmar-email",
+    () => import("./(auth)/registro/confirmar-email/page"),
+  ],
+  [
+    "/registro/estabelecimento",
+    () => import("./(auth)/registro/estabelecimento/page"),
+  ],
+  ["/registro/whatsapp", () => import("./(auth)/registro/whatsapp/page")],
+  ["/recuperar-senha", () => import("./(auth)/recuperar-senha/page")],
+  ["/redefinir-senha", () => import("./(auth)/redefinir-senha/page")],
+] as const;
+
 beforeEach(() => {
   process.env.SITE_URL = "https://encaixaria.com.br";
 });
@@ -31,7 +65,13 @@ describe("robots.txt", () => {
     const regras = robots().rules;
     const disallow = Array.isArray(regras) ? [] : [regras.disallow].flat();
 
-    for (const rota of ["/login", "/agendamentos", "/servicos", "/horarios"]) {
+    for (const rota of [
+      "/login",
+      "/agendamentos",
+      "/servicos",
+      "/horarios",
+      ...ROTAS_DE_AUTENTICACAO,
+    ]) {
       expect(disallow).not.toContain(rota);
     }
   });
@@ -67,6 +107,20 @@ describe("noindex das páginas privadas", () => {
   it("página pública normal não ganha noindex por acidente", () => {
     expect(metadataPagina({ caminho: "/precos" }).robots).toBeUndefined();
   });
+
+  /**
+   * Asserção sobre a metadata **exportada por cada página**, não sobre a
+   * constante: o defeito que isto pega é o typo que compila e não emite tag
+   * nenhuma (`robot`, `noindex: true`), que é por que aqueles arquivos anotam
+   * `metadata: Metadata`.
+   */
+  it.each(MODULOS_DE_AUTENTICACAO)(
+    "%s se declara noindex",
+    async (_rota, importar) => {
+      const modulo = await importar();
+      expect(modulo.metadata.robots).toEqual(ROBOTS_PRIVADO);
+    },
+  );
 });
 
 describe("sitemap.xml", () => {
@@ -129,7 +183,11 @@ describe("sitemap.xml", () => {
   it("não lista rota marcada com noindex", () => {
     const urls = sitemap().map((entrada) => entrada.url);
 
-    for (const rota of ["/login", "/agendamentos", "/conexao-whatsapp"]) {
+    for (const rota of [
+      "/agendamentos",
+      "/conexao-whatsapp",
+      ...ROTAS_DE_AUTENTICACAO,
+    ]) {
       expect(urls.some((url) => url.endsWith(rota))).toBe(false);
     }
   });

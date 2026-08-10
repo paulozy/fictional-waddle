@@ -94,8 +94,22 @@ type Estado =
 
 export function PainelConexao({
   estadoInicial,
+  numeroInicial,
+  iniciarAutomaticamente = false,
 }: {
   estadoInicial: EstadoConexao;
+  /**
+   * Número já normalizado, vindo do passo 3 do cadastro por `?numero=`. Sem
+   * isto o dono digitaria o mesmo número duas vezes seguidas, em duas telas.
+   */
+  numeroInicial?: string;
+  /**
+   * Dispara a primeira busca de QR sozinho, uma vez. Só o passo 3 do cadastro
+   * liga isto (`?iniciar=1`), porque lá o dono acabou de clicar em "Gerar QR
+   * code" — chegar numa tela com um botão pedindo o mesmo clique de novo leria
+   * como se o primeiro não tivesse funcionado.
+   */
+  iniciarAutomaticamente?: boolean;
 }) {
   const router = useRouter();
   const [estado, setEstado] = useState<Estado>({ nome: "ocioso" });
@@ -198,6 +212,25 @@ export function PainelConexao({
     },
     [router],
   );
+
+  /**
+   * Arranque automático vindo do passo 3 do cadastro.
+   *
+   * `useRef` como trava, e não só o array de dependências: em desenvolvimento o
+   * Strict Mode monta o componente duas vezes, e sem a trava a segunda montagem
+   * abriria uma segunda sessão Baileys — a mais caras das chamadas da Evolution.
+   * Não dispara quando o número já está conectado: ali a tela é o box verde, e
+   * gerar QR derrubaria a sessão que está funcionando.
+   */
+  const arrancouRef = useRef(false);
+  useEffect(() => {
+    if (arrancouRef.current) return;
+    if (!iniciarAutomaticamente || !numeroInicial) return;
+    if (estadoInicial === "conectado") return;
+
+    arrancouRef.current = true;
+    void solicitar("manual", numeroInicial);
+  }, [estadoInicial, iniciarAutomaticamente, numeroInicial, solicitar]);
 
   /** Espera: conta para cima, só para a cópia mudar depois de alguns segundos. */
   useEffect(() => {
@@ -364,6 +397,7 @@ export function PainelConexao({
       {estado.nome === "ocioso" && (
         <FormularioNumero
           onEnviar={(numero) => void solicitar("manual", numero)}
+          valorInicial={numeroInicial}
         />
       )}
 
@@ -565,10 +599,12 @@ function QrComContagem({
  */
 function FormularioNumero({
   onEnviar,
+  valorInicial = "",
 }: {
   onEnviar: (numero: string) => void;
+  valorInicial?: string;
 }) {
-  const [valor, setValor] = useState("");
+  const [valor, setValor] = useState(valorInicial);
   const [erro, setErro] = useState<string | null>(null);
 
   return (

@@ -86,12 +86,15 @@ export default function MarketingLayout({
           <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
             <MenuSecoes secoes={SECOES} />
             {/*
-              Escondido abaixo de `sm`, e o custo é zero em alcance: este link e o
-              botão ao lado apontam para o **mesmo** `/login`. Eram dois rótulos
-              do mesmo destino ocupando 69px numa tela de 375, e foi o que
-              estourou o cabeçalho. Continua na folha de `MenuSecoes` porque
-              "Começar grátis" não se lê como "entrar na minha conta" para quem já
-              é cliente.
+              Escondido abaixo de `sm`: dois rótulos aqui ocupavam 69px numa tela
+              de 375 e foi o que estourou o cabeçalho. O alcance não se perde
+              porque ele continua na folha de `MenuSecoes`, nomeado do jeito que
+              quem já é cliente procura — "Começar grátis" não se lê como "entrar
+              na minha conta".
+
+              Os dois destinos eram o mesmo `/login` quando havia uma tela só de
+              autenticação. Com o cadastro em tela própria, cada rótulo aponta
+              para o que promete: quem já tem conta entra, quem não tem cadastra.
 
               `sm:min-h-10` e não `sm:min-h-8`: a 768px o alvo media 64×32.
             */}
@@ -105,7 +108,7 @@ export default function MarketingLayout({
                 o menor alvo dela. O tamanho padrão já ganha piso de toque em
                 `components/ui/button.tsx`. */}
             <Button asChild>
-              <Link href="/login">Começar grátis</Link>
+              <Link href="/registro">Começar grátis</Link>
             </Button>
           </div>
         </div>
