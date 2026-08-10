@@ -29,10 +29,13 @@ import { definirGrade } from "./actions";
  * linha por dia, chave de liga/desliga, faixas editáveis no lugar.
  *
  * A tela anterior era "formulário em cima, lista embaixo": sete submissões para
- * configurar a semana, faixa nenhuma editável (só dava para remover e recriar),
- * e o intervalo de almoço precisava de um parágrafo explicando que se modela com
- * duas faixas no mesmo dia. Aqui o botão de somar faixa ensina isso sozinho, e o
- * parágrafo saiu.
+ * configurar a semana e faixa nenhuma editável — só dava para remover e
+ * recriar.
+ *
+ * O intervalo do almoço é explicado uma vez só, no subtítulo da página. Já
+ * esteve aqui dentro, aparecendo quando o dia ganhava a segunda faixa; o
+ * problema é que essa é a hora em que o dono já descobriu sozinho. Quem precisa
+ * da dica é quem ainda está olhando a semana inteira com uma faixa por dia.
  */
 
 const FAIXA_PADRAO: Faixa = { horaInicio: "09:00", horaFim: "18:00" };
@@ -112,22 +115,55 @@ export function EditorSemana({
     });
   }
 
+  /**
+   * A semana **salva** está inteira fechada e o dono ainda não mexeu em nada.
+   *
+   * A condição olha `inicial`, e não `semana`, de propósito: quem desliga os
+   * sete dias na mão para reconfigurar não pode ver a grade sumir debaixo do
+   * cursor e ser jogado de volta ao cartão de boas-vindas.
+   */
+  const nuncaConfigurada =
+    !alterado && ORDEM_SEMANA.every((dia) => inicial[dia].length === 0);
+
   return (
     <form action={acao}>
       <input type="hidden" name="grade" value={serializar(semana)} />
 
-      <div className="overflow-hidden rounded-lg border border-border bg-card">
-        {ORDEM_SEMANA.map((dia, indice) => (
-          <LinhaDoDia
-            key={dia}
-            dia={dia}
-            faixas={semana[dia]}
-            primeira={indice === 0}
-            onChange={(faixas) => atualizarDia(dia, faixas)}
-            onCopiar={(destinos) => copiarPara(dia, destinos)}
-          />
-        ))}
-      </div>
+      {nuncaConfigurada ? (
+        <div className="rounded-xl border border-dashed border-border bg-card px-8 py-12 text-center">
+          <p className="font-heading text-lg font-semibold tracking-tight">
+            Todos os dias estão fechados
+          </p>
+          <p className="mx-auto mt-2 max-w-[44ch] text-sm leading-relaxed text-muted-foreground">
+            Sem nenhuma faixa aberta, o bot não tem horário para oferecer e
+            responde que a agenda está indisponível.
+          </p>
+          {/* Preenche o estado local e nada mais: quem salva continua sendo o
+              botão de baixo, então o dono ainda ajusta a grade antes de
+              gravar. */}
+          <Button
+            type="button"
+            size="lg"
+            className="mt-6"
+            onClick={() => setSemana(gradePadrao())}
+          >
+            Usar a grade padrão (seg a sex, 09:00–18:00)
+          </Button>
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
+          {ORDEM_SEMANA.map((dia, indice) => (
+            <LinhaDoDia
+              key={dia}
+              dia={dia}
+              faixas={semana[dia]}
+              primeira={indice === 0}
+              onChange={(faixas) => atualizarDia(dia, faixas)}
+              onCopiar={(destinos) => copiarPara(dia, destinos)}
+            />
+          ))}
+        </div>
+      )}
 
       {estado && "erro" in estado && (
         <p role="alert" className="mt-3 text-sm text-destructive">
@@ -135,16 +171,28 @@ export function EditorSemana({
         </p>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <Button type="submit" disabled={!alterado || salvando}>
-          {salvando ? "Salvando…" : "Salvar horários"}
-        </Button>
-        <p className="text-xs text-muted-foreground">
-          Horários no fuso <span className="font-mono">{fusoHorario}</span>.
-        </p>
-      </div>
+      {!nuncaConfigurada && (
+        <div className="mt-5 flex flex-wrap items-center gap-4">
+          <Button type="submit" size="lg" disabled={!alterado || salvando}>
+            {salvando ? "Salvando…" : "Salvar horários"}
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            Horários no fuso <span className="font-mono">{fusoHorario}</span>.
+          </p>
+        </div>
+      )}
     </form>
   );
+}
+
+/** Segunda a sexta na faixa padrão; fim de semana fechado. */
+function gradePadrao(): Semana {
+  return Object.fromEntries(
+    ORDEM_SEMANA.map((dia) => [
+      dia,
+      dia >= 1 && dia <= 5 ? [{ ...FAIXA_PADRAO }] : [],
+    ]),
+  ) as Semana;
 }
 
 /** O servidor espera sempre os sete dias, inclusive os fechados. */
@@ -172,11 +220,11 @@ function LinhaDoDia({
 
   return (
     <div
-      className={`flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:gap-6 ${
+      className={`flex flex-col gap-3 px-5 py-4 sm:grid sm:grid-cols-[11.25rem_minmax(0,1fr)] sm:items-start sm:gap-6 ${
         primeira ? "" : "border-t border-border"
-      }`}
+      } ${aberto ? "" : "bg-muted/40"}`}
     >
-      <div className="flex w-40 shrink-0 items-center gap-3">
+      <div className="flex items-center gap-3">
         <Switch
           id={`dia-${dia}`}
           checked={aberto}
@@ -187,16 +235,18 @@ function LinhaDoDia({
         />
         <label
           htmlFor={`dia-${dia}`}
-          className="cursor-pointer font-medium capitalize"
+          className={`cursor-pointer font-medium capitalize ${
+            aberto ? "" : "text-muted-foreground"
+          }`}
         >
           {nome}
         </label>
       </div>
 
       {!aberto ? (
-        <p className="text-sm text-muted-foreground sm:pt-1.5">Fechado</p>
+        <p className="text-sm text-muted-foreground sm:pt-2">Fechado</p>
       ) : (
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <div className="flex min-w-0 flex-col gap-2">
           {faixas.map((faixa, i) => (
             <div key={i} className="flex flex-wrap items-center gap-2">
               <CampoHora
@@ -255,12 +305,6 @@ function LinhaDoDia({
 
             <DialogCopiar origem={dia} onConfirmar={onCopiar} />
           </div>
-
-          {faixas.length > 1 && (
-            <p className="text-xs text-muted-foreground">
-              Duas faixas no mesmo dia é como se marca o intervalo do almoço.
-            </p>
-          )}
         </div>
       )}
     </div>

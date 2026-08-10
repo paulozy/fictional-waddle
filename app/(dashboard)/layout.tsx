@@ -1,17 +1,25 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { sair } from "@/app/login/actions";
+import { sair } from "@/app/(auth)/actions";
 import { AlternarTema } from "@/components/alternar-tema";
 import { BannerAssinatura } from "@/components/banner-assinatura";
+import { BarraLateral, type GrupoNavegacao } from "@/components/barra-lateral";
 import { Marca } from "@/components/marca";
 import {
   NavegacaoDashboard,
   type ItemNavegacao,
 } from "@/components/navegacao-dashboard";
-import { motivoBloqueio, type PerfilAssinatura } from "@/lib/assinatura";
+import {
+  linkAssinatura,
+  motivoBloqueio,
+  type PerfilAssinatura,
+} from "@/lib/assinatura";
+import { COOKIE_SIDEBAR_RECOLHIDA } from "@/lib/preferencias-ui";
 import { ROBOTS_PRIVADO } from "@/lib/site";
 import { criarClienteServidor, obterClaims } from "@/lib/supabase/server";
+import type { EstadoConexao } from "@/lib/tipos";
 
 /**
  * `noindex` para todo o dashboard, herdado por cada página do grupo — elas
@@ -27,48 +35,70 @@ import { criarClienteServidor, obterClaims } from "@/lib/supabase/server";
 export const metadata: Metadata = { robots: ROBOTS_PRIVADO };
 
 /**
- * A lista está partida em dois porque a barra inferior do celular comporta
- * quatro abas com folga e cinco no aperto. O critério do corte é frequência de
- * uso, não importância: a agenda é consultada todo dia, enquanto fluxo é
- * configuração inicial e WhatsApp só interessa quando a conexão cai.
+ * Os sete destinos do painel, declarados uma vez só.
  *
- * Acima de `md` os dois grupos voltam a ser uma lista só, no header —
- * `NavegacaoDashboard` faz essa recomposição.
+ * As duas navegações recortam esta lista de jeitos diferentes, e é de propósito
+ * que o recorte more aqui: se cada componente montasse a sua, um destino novo
+ * apareceria numa e não na outra.
+ *
+ * - **Celular** (`NavegacaoDashboard`): `ABAS_PRINCIPAIS` na barra inferior e
+ *   `ITENS_EXTRAS` na folha "Mais". O critério do corte é frequência de uso,
+ *   não importância — a agenda é consultada todo dia, enquanto fluxo é
+ *   configuração inicial, WhatsApp só interessa quando a conexão cai e conta é
+ *   quase nunca.
+ * - **`md`+** (`BarraLateral`): os mesmos destinos em dois grupos nomeados, com
+ *   a conta separada no rodapé.
  */
-const ABAS_PRINCIPAIS: ItemNavegacao[] = [
-  {
-    href: "/agendamentos",
-    rotulo: "Agendamentos",
-    rotuloCurto: "Agenda",
-    icone: "agenda",
-  },
-  { href: "/servicos", rotulo: "Serviços", icone: "servicos" },
-  { href: "/horarios", rotulo: "Horários", icone: "horarios" },
-];
-
-const ITENS_EXTRAS: ItemNavegacao[] = [
-  { href: "/fluxo-conversa", rotulo: "Fluxo da conversa", icone: "fluxo" },
-  { href: "/conexao-whatsapp", rotulo: "WhatsApp", icone: "whatsapp" },
-  // Em ITENS_EXTRAS, e não nas abas: as 4 abas principais são decisão registrada
-  // no CLAUDE.md (5 destinos dariam ~65px cada a 375px). Pagamento é
-  // configuração que se mexe uma vez, como fluxo e WhatsApp — não uso diário.
-  { href: "/pagamentos", rotulo: "Pagamentos", icone: "pagamentos" },
-];
-
+const AGENDAMENTOS: ItemNavegacao = {
+  href: "/agendamentos",
+  rotulo: "Agendamentos",
+  rotuloCurto: "Agenda",
+  icone: "agenda",
+};
+const SERVICOS: ItemNavegacao = {
+  href: "/servicos",
+  rotulo: "Serviços",
+  icone: "servicos",
+};
+const HORARIOS: ItemNavegacao = {
+  href: "/horarios",
+  rotulo: "Horários",
+  icone: "horarios",
+};
+const FLUXO: ItemNavegacao = {
+  href: "/fluxo-conversa",
+  rotulo: "Fluxo da conversa",
+  icone: "fluxo",
+};
+const WHATSAPP: ItemNavegacao = {
+  href: "/conexao-whatsapp",
+  rotulo: "WhatsApp",
+  icone: "whatsapp",
+};
 /**
- * Não há gateway de pagamento nesta fase: o `status_assinatura` é virado à mão
- * no banco. O CTA então leva o dono a falar com a gente pelo WhatsApp, que é
- * onde a assinatura é combinada de fato.
- *
- * Devolve `null` sem a env var, e o banner some com o botão — o aviso continua
- * aparecendo, porque a informação de que o bot parou vale por si.
+ * Em `ITENS_EXTRAS`, e **não** nas abas do celular: as 4 abas são decisão
+ * registrada no CLAUDE.md, porque 5 destinos dariam ~65px cada a 375px. Conectar
+ * o Mercado Pago é configuração que se mexe uma vez, como fluxo e WhatsApp — não
+ * é uso diário como a agenda.
  */
-function linkAssinatura(): string | null {
-  const numero = process.env.WHATSAPP_CONTATO?.replace(/\D/g, "");
-  if (!numero) return null;
-  const texto = encodeURIComponent("Olá! Quero assinar um plano da Encaixaria.");
-  return `https://wa.me/${numero}?text=${texto}`;
-}
+const PAGAMENTOS: ItemNavegacao = {
+  href: "/pagamentos",
+  rotulo: "Pagamentos",
+  icone: "pagamentos",
+};
+const CONTA: ItemNavegacao = {
+  href: "/conta",
+  rotulo: "Conta",
+  icone: "conta",
+};
+
+const ABAS_PRINCIPAIS: ItemNavegacao[] = [AGENDAMENTOS, SERVICOS, HORARIOS];
+const ITENS_EXTRAS: ItemNavegacao[] = [FLUXO, WHATSAPP, PAGAMENTOS, CONTA];
+
+const GRUPOS_LATERAIS: GrupoNavegacao[] = [
+  { titulo: "Operação", itens: [AGENDAMENTOS] },
+  { titulo: "Configuração", itens: [SERVICOS, HORARIOS, FLUXO, WHATSAPP, PAGAMENTOS] },
+];
 
 export default async function DashboardLayout({
   children,
@@ -94,60 +124,71 @@ export default async function DashboardLayout({
   const supabase = await criarClienteServidor();
   const { data: perfil } = await supabase
     .from("perfis")
-    .select("status_assinatura, trial_expira_em, trial_bloqueado_em")
+    .select(
+      "status_assinatura, trial_expira_em, trial_bloqueado_em, status_conexao_whatsapp",
+    )
     .eq("id", claims.sub)
-    .maybeSingle<PerfilAssinatura>();
+    .maybeSingle<PerfilAssinatura & { status_conexao_whatsapp: EstadoConexao }>();
   const motivo = motivoBloqueio(perfil, new Date());
 
+  /**
+   * Lido no servidor, não em `localStorage`: o menu precisa sair na largura
+   * certa já na primeira pintura. Decidido num efeito, ele abriria largo e
+   * encolheria depois, empurrando o conteúdo inteiro em toda navegação.
+   *
+   * O nome do cookie vem de `lib/preferencias-ui.ts`, e não do componente que o
+   * escreve, porque aquele é `"use client"` — ver o JSDoc de lá.
+   */
+  const recolhidaInicial =
+    (await cookies()).get(COOKIE_SIDEBAR_RECOLHIDA)?.value === "1";
+
   return (
-    <div className="flex min-h-full flex-1 flex-col">
-      <header className="border-b border-border bg-card">
-        <div className="mx-auto flex max-w-5xl items-center gap-x-6 px-4 py-3 sm:px-6 md:py-4">
-          {/* A palavra fica em `text-foreground`, não em `text-primary`: com o
-              símbolo colorido ao lado, o teal na tipografia daria três famílias
-              de cor no mesmo cabeçalho — e o teal precisa continuar
-              significando "elemento interativo" na UI. */}
-          <Link
-            href="/agendamentos"
-            className="flex min-h-11 items-center gap-2 font-heading text-lg font-semibold tracking-tight text-foreground"
-          >
-            <Marca tamanho={28} />
-            Encaixaria
-          </Link>
+    <div className="flex min-h-full flex-1 md:items-stretch">
+      <BarraLateral
+        grupos={GRUPOS_LATERAIS}
+        itemConta={CONTA}
+        estadoConexao={perfil?.status_conexao_whatsapp ?? "desconectado"}
+        recolhidaInicial={recolhidaInicial}
+        aoSair={sair}
+      />
 
-          <NavegacaoDashboard
-            abas={ABAS_PRINCIPAIS}
-            itensExtras={ITENS_EXTRAS}
-            aoSair={sair}
-          />
-
-          {/* No celular estes dois moram no "Mais" da barra inferior — repetir
-              aqui só roubaria altura do header em toda página. */}
-          <div className="ml-auto hidden items-center gap-1 md:flex">
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Abaixo de `md` a marca ainda precisa de um lugar, e o tema também —
+            no celular a navegação é a barra inferior, que não tem espaço para
+            os dois. Acima de `md` isto some: quem faz esse papel é a lateral. */}
+        <header className="border-b border-border bg-card md:hidden">
+          <div className="flex items-center justify-between px-4 py-3 sm:px-6">
+            {/* A palavra fica em `text-foreground`, não em `text-primary`: com
+                o símbolo colorido ao lado, o teal na tipografia daria três
+                famílias de cor no mesmo cabeçalho — e o teal precisa continuar
+                significando "elemento interativo" na UI. */}
+            <Link
+              href="/agendamentos"
+              className="flex min-h-11 items-center gap-2 font-heading text-lg font-semibold tracking-tight text-foreground"
+            >
+              <Marca tamanho={28} />
+              Encaixaria
+            </Link>
             <AlternarTema />
-            <form action={sair}>
-              <button
-                type="submit"
-                className="flex min-h-9 items-center rounded-md px-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Sair
-              </button>
-            </form>
           </div>
-        </div>
-      </header>
+        </header>
 
-      {motivo && (
-        <BannerAssinatura motivo={motivo} href={linkAssinatura()} />
-      )}
+        <NavegacaoDashboard
+          abas={ABAS_PRINCIPAIS}
+          itensExtras={ITENS_EXTRAS}
+          aoSair={sair}
+        />
 
-      {/**
-       * `pb-24` abre espaço para a barra inferior fixa: sem isto o último item
-       * de qualquer lista termina embaixo dela e fica inalcançável.
-       */}
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 pt-6 pb-24 sm:px-6 md:py-8">
-        {children}
-      </main>
+        {motivo && <BannerAssinatura motivo={motivo} href={linkAssinatura()} />}
+
+        {/**
+         * `pb-24` abre espaço para a barra inferior fixa: sem isto o último
+         * item de qualquer lista termina embaixo dela e fica inalcançável.
+         */}
+        <main className="mx-auto w-full max-w-5xl flex-1 px-4 pt-6 pb-24 sm:px-6 md:px-8 md:py-10">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

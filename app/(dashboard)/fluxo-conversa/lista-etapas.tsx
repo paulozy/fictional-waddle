@@ -183,10 +183,14 @@ function CartaoEtapa({
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`rounded-lg border bg-card p-3 ${
+      className={`rounded-xl border bg-card p-3 ${
         isDragging
           ? "border-primary shadow-lg"
-          : "border-border"
+          : editando
+            ? // Em edição o cartão sai do plano da lista: sem isso, num roteiro
+              // de sete etapas não fica claro qual textarea é de qual pergunta.
+              "border-primary shadow-[0_0_0_3px] shadow-ring/10"
+            : "border-border"
       }`}
     >
       <div className="flex items-start gap-2 sm:gap-3">
@@ -232,40 +236,35 @@ function CartaoEtapa({
          * forma de impedir o scroll em pointer events, e em que ele deve ficar
          * **só na alça** — no cartão inteiro, a lista pararia de rolar.
          */}
-        <button
-          type="button"
-          {...attributes}
-          {...listeners}
-          aria-label={`Arrastar para reordenar: etapa ${numero}, ${etapa.pergunta_texto}`}
-          className="mt-1 hidden size-7 shrink-0 cursor-grab touch-none items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground active:cursor-grabbing sm:flex"
-        >
-          <GripVerticalIcon className="size-4" />
-        </button>
-
-        <span className="mt-1.5 w-5 shrink-0 text-sm tabular-nums text-muted-foreground">
-          {numero}
-        </span>
+        {/* Número e alça na mesma calha estreita: numa coluna de ~420px, cada
+            uma na sua tirava largura do que importa, que é a pergunta. */}
+        <div className="flex shrink-0 flex-col items-center gap-1.5 pt-1.5">
+          <span className="font-mono text-xs text-muted-foreground">
+            {numero}
+          </span>
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            aria-label={`Arrastar para reordenar: etapa ${numero}, ${etapa.pergunta_texto}`}
+            /* `size-6` e não menos: 24px é o mínimo AA da WCAG 2.2 SC 2.5.8, e
+               medido em Chromium um `size-5` sai com 20px. */
+            className="hidden size-6 cursor-grab touch-none items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground active:cursor-grabbing sm:flex"
+          >
+            <GripVerticalIcon className="size-4" />
+          </button>
+        </div>
 
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`rounded-full px-2 py-0.5 text-xs ${
-                deSistema
-                  ? "bg-muted text-muted-foreground"
-                  : "bg-accent text-accent-foreground"
-              }`}
-            >
-              {rotuloDoTipo(etapa.tipo)}
-            </span>
-            {etapa.campo_destino && (
-              <code className="font-mono text-xs text-muted-foreground">
-                {etapa.campo_destino}
-              </code>
-            )}
-            {!etapa.obrigatorio && (
-              <span className="text-xs text-muted-foreground">opcional</span>
-            )}
-          </div>
+          <span
+            className={`inline-flex items-center rounded-md px-2 py-0.5 font-mono text-[11px] ${
+              deSistema
+                ? "bg-muted text-muted-foreground"
+                : "bg-accent text-accent-foreground"
+            }`}
+          >
+            {rotuloDoTipo(etapa.tipo)}
+          </span>
 
           {editando ? (
             <FormularioTexto
@@ -274,19 +273,31 @@ function CartaoEtapa({
               onFim={() => setEditando(false)}
             />
           ) : (
-            <p className="mt-2 whitespace-pre-wrap text-sm">
-              {etapa.pergunta_texto}
-            </p>
-          )}
+            <>
+              <p className="mt-2 text-sm leading-relaxed whitespace-pre-wrap">
+                {etapa.pergunta_texto}
+              </p>
 
-          {etapa.opcoes && etapa.opcoes.length > 0 && !editando && (
-            <ul className="mt-2 space-y-0.5 text-xs text-muted-foreground">
-              {etapa.opcoes.map((opcao, i) => (
-                <li key={opcao.valor}>
-                  {i + 1}. {opcao.label}
-                </li>
-              ))}
-            </ul>
+              {/* Campo, opções e obrigatoriedade numa linha mono só: são os
+                  metadados que o dono confere de relance, e uma lista numerada
+                  para cada etapa dobrava a altura do roteiro inteiro. O bot
+                  numera as opções sozinho — a ordem aqui é a que ele usa. */}
+              {(etapa.campo_destino ||
+                etapa.opcoes?.length ||
+                !etapa.obrigatorio) && (
+                <p className="mt-1.5 font-mono text-xs text-muted-foreground">
+                  {[
+                    etapa.campo_destino,
+                    etapa.opcoes?.length
+                      ? etapa.opcoes.map((o) => o.label).join(" / ")
+                      : null,
+                    etapa.obrigatorio ? null : "opcional",
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              )}
+            </>
           )}
 
           {erro && (

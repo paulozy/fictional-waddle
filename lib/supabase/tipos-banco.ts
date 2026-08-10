@@ -196,6 +196,7 @@ export type Database = {
           etapa_atual_id: string | null
           fluxo_snapshot: Json
           id: string
+          pausado_ate: string | null
           remote_jid: string
           telefone_cliente: string | null
           ultima_mensagem_id: string | null
@@ -208,6 +209,7 @@ export type Database = {
           etapa_atual_id?: string | null
           fluxo_snapshot?: Json
           id?: string
+          pausado_ate?: string | null
           remote_jid: string
           telefone_cliente?: string | null
           ultima_mensagem_id?: string | null
@@ -220,6 +222,7 @@ export type Database = {
           etapa_atual_id?: string | null
           fluxo_snapshot?: Json
           id?: string
+          pausado_ate?: string | null
           remote_jid?: string
           telefone_cliente?: string | null
           ultima_mensagem_id?: string | null

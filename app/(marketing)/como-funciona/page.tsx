@@ -159,7 +159,7 @@ export default function ComoFuncionaPage() {
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
             <Button asChild size="lg">
-              <Link href="/login">Começar teste grátis</Link>
+              <Link href="/registro">Começar teste grátis</Link>
             </Button>
             {/* Alvo isolado: precisa do piso de toque, como em `comparacao.tsx`. */}
             <Link

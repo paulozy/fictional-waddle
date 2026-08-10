@@ -106,6 +106,84 @@ describe("proxy", () => {
     expect(resposta.headers.get("location")).toBeNull();
   });
 
+  /**
+   * O Site URL do projeto Supabase é o destino padrão quando o `redirectTo` não
+   * vale, e foi o que aconteceu em produção: o dono confirmava o e-mail e caía em
+   * `/?code=…`, na landing, com o cadastro pela metade. A allowlist de Redirect
+   * URLs é o conserto de verdade, mas um link já enviado não se corrige.
+   */
+  describe("resgate de link de e-mail que caiu na raiz", () => {
+    it("encaminha `?code=` para /auth/confirmar preservando a query", async () => {
+      getClaims.mockResolvedValue({ data: null, error: null });
+
+      const resposta = await proxy(requisicao("/?code=abc-123"));
+      const destino = new URL(resposta.headers.get("location")!);
+
+      expect(destino.pathname).toBe("/auth/confirmar");
+      expect(destino.searchParams.get("code")).toBe("abc-123");
+    });
+
+    it("encaminha `token_hash` + `type` do mesmo jeito", async () => {
+      getClaims.mockResolvedValue({ data: null, error: null });
+
+      const resposta = await proxy(requisicao("/?token_hash=abc&type=recovery"));
+      const destino = new URL(resposta.headers.get("location")!);
+
+      expect(destino.pathname).toBe("/auth/confirmar");
+      expect(destino.searchParams.get("type")).toBe("recovery");
+    });
+
+    it("`token_hash` sem `type` não é resgate: não há o que verificar", async () => {
+      getClaims.mockResolvedValue({ data: null, error: null });
+
+      const resposta = await proxy(requisicao("/?token_hash=abc"));
+
+      expect(resposta.headers.get("location")).toBeNull();
+    });
+
+    /**
+     * `?code=` é parâmetro de OAuth em geral — um callback de gateway de pagamento
+     * usa o mesmo nome. Capturar fora da raiz sequestraria aquele fluxo, e a raiz
+     * é o único destino que o fallback do Supabase usa.
+     */
+    it("não captura `?code=` fora da raiz", async () => {
+      getClaims.mockResolvedValue({ data: null, error: null });
+
+      const resposta = await proxy(
+        requisicao("/api/pagamentos/callback?code=abc-123"),
+      );
+
+      expect(resposta.headers.get("location")).toBeNull();
+    });
+
+    it("a raiz sem credencial nenhuma continua sendo a landing", async () => {
+      getClaims.mockResolvedValue({ data: null, error: null });
+
+      const resposta = await proxy(requisicao("/?utm_source=instagram"));
+
+      expect(resposta.headers.get("location")).toBeNull();
+    });
+
+    /**
+     * O link é clicado no e-mail, então costuma chegar numa aba onde o dono já
+     * está logado (o `signUp` deixa sessão quando a confirmação está desligada, e
+     * um link antigo é clicado depois). O resgate tem de vir **antes** do redirect
+     * de "já tem sessão", senão o `code` é descartado e o cadastro não avança.
+     */
+    it("resgata mesmo com sessão ativa", async () => {
+      getClaims.mockResolvedValue({
+        data: { claims: { sub: "11111111-1111-1111-1111-111111111111" } },
+        error: null,
+      });
+
+      const resposta = await proxy(requisicao("/?code=abc-123"));
+      const destino = new URL(resposta.headers.get("location")!);
+
+      expect(destino.pathname).toBe("/auth/confirmar");
+      expect(destino.searchParams.get("code")).toBe("abc-123");
+    });
+  });
+
   it("trata erro de getClaims como ausência de sessão", async () => {
     // Um JWT inválido não pode virar acesso liberado.
     getClaims.mockResolvedValue({

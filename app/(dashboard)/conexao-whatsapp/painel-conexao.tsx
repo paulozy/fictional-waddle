@@ -94,8 +94,22 @@ type Estado =
 
 export function PainelConexao({
   estadoInicial,
+  numeroInicial,
+  iniciarAutomaticamente = false,
 }: {
   estadoInicial: EstadoConexao;
+  /**
+   * Número já normalizado, vindo do passo 3 do cadastro por `?numero=`. Sem
+   * isto o dono digitaria o mesmo número duas vezes seguidas, em duas telas.
+   */
+  numeroInicial?: string;
+  /**
+   * Dispara a primeira busca de QR sozinho, uma vez. Só o passo 3 do cadastro
+   * liga isto (`?iniciar=1`), porque lá o dono acabou de clicar em "Gerar QR
+   * code" — chegar numa tela com um botão pedindo o mesmo clique de novo leria
+   * como se o primeiro não tivesse funcionado.
+   */
+  iniciarAutomaticamente?: boolean;
 }) {
   const router = useRouter();
   const [estado, setEstado] = useState<Estado>({ nome: "ocioso" });
@@ -154,7 +168,20 @@ export function PainelConexao({
          * viraria um piscar a cada dois segundos.
          */
 
-        const resultado = await gerarQrCode(numeroRef.current);
+        /**
+         * Pedido manual derruba a sessão antes de pedir o código; renovação
+         * não. A assimetria é o conserto de "Conectar outro número": com a
+         * instância em `open` (ou presa em `connecting`), a Evolution devolve
+         * o código **em cache do número anterior**, ou nada — e a tela lia o
+         * nada como "já pareado" e voltava ao cartão verde sem dizer nada.
+         *
+         * Do outro lado, reiniciar numa renovação derrubaria a sessão que o
+         * dono está pareando naquele exato instante, de dois em dois segundos.
+         */
+        const resultado = await gerarQrCode(
+          numeroRef.current,
+          motivo === "manual",
+        );
 
         if (resultado.erro) {
           setEstado({ nome: "erro", mensagem: resultado.erro });
@@ -198,6 +225,25 @@ export function PainelConexao({
     },
     [router],
   );
+
+  /**
+   * Arranque automático vindo do passo 3 do cadastro.
+   *
+   * `useRef` como trava, e não só o array de dependências: em desenvolvimento o
+   * Strict Mode monta o componente duas vezes, e sem a trava a segunda montagem
+   * abriria uma segunda sessão Baileys — a mais caras das chamadas da Evolution.
+   * Não dispara quando o número já está conectado: ali a tela é o box verde, e
+   * gerar QR derrubaria a sessão que está funcionando.
+   */
+  const arrancouRef = useRef(false);
+  useEffect(() => {
+    if (arrancouRef.current) return;
+    if (!iniciarAutomaticamente || !numeroInicial) return;
+    if (estadoInicial === "conectado") return;
+
+    arrancouRef.current = true;
+    void solicitar("manual", numeroInicial);
+  }, [estadoInicial, iniciarAutomaticamente, numeroInicial, solicitar]);
 
   /** Espera: conta para cima, só para a cópia mudar depois de alguns segundos. */
   useEffect(() => {
@@ -343,15 +389,22 @@ export function PainelConexao({
 
   if (estadoInicial === "conectado" && estado.nome === "ocioso" && !trocando) {
     return (
-      <div className="mt-6 max-w-md rounded-lg border border-confirmado-borda bg-confirmado p-4">
-        <p className="font-medium text-confirmado-tinta">WhatsApp conectado</p>
-        <p className="mt-1 text-sm text-confirmado-tinta">
-          O bot já está respondendo pelo número do seu estabelecimento.
-        </p>
+      <div className="mt-6 flex max-w-2xl flex-col gap-4 rounded-xl border border-confirmado-borda bg-confirmado p-5 sm:flex-row sm:items-center">
+        {/* O ponto é decorativo: o estado já está dito por extenso ao lado. */}
+        <span
+          aria-hidden
+          className="hidden size-2.5 shrink-0 rounded-full bg-confirmado-tinta sm:block"
+        />
+        <div className="flex-1">
+          <p className="font-medium text-confirmado-tinta">WhatsApp conectado</p>
+          <p className="mt-1 text-sm leading-relaxed text-confirmado-tinta">
+            O bot já está respondendo pelo número do seu estabelecimento.
+          </p>
+        </div>
         <button
           type="button"
           onClick={() => setTrocando(true)}
-          className="mt-2 flex min-h-11 items-center text-sm text-confirmado-tinta underline underline-offset-4"
+          className="flex min-h-11 shrink-0 items-center justify-center rounded-lg border border-confirmado-borda bg-card px-4 text-sm text-confirmado-tinta transition-colors hover:bg-accent"
         >
           Conectar outro número
         </button>
@@ -364,6 +417,16 @@ export function PainelConexao({
       {estado.nome === "ocioso" && (
         <FormularioNumero
           onEnviar={(numero) => void solicitar("manual", numero)}
+          valorInicial={numeroInicial}
+          /**
+           * Só quem veio do cartão verde tem uma conexão a perder — e agora
+           * perde de verdade: gerar o código novo encerra a sessão atual,
+           * porque a Evolution só honra um número diferente com a instância em
+           * `close`. Dizer isso antes é o mínimo; o dono pode estar em horário
+           * de atendimento, com o bot respondendo cliente.
+           */
+          trocandoConexaoAtiva={trocando}
+          aoDesistir={trocando ? () => setTrocando(false) : undefined}
         />
       )}
 
@@ -565,10 +628,18 @@ function QrComContagem({
  */
 function FormularioNumero({
   onEnviar,
+  valorInicial = "",
+  trocandoConexaoAtiva = false,
+  aoDesistir,
 }: {
   onEnviar: (numero: string) => void;
+  valorInicial?: string;
+  /** Há uma sessão funcionando que este formulário vai encerrar. */
+  trocandoConexaoAtiva?: boolean;
+  /** Volta ao cartão de conectado sem tocar na sessão. */
+  aoDesistir?: () => void;
 }) {
-  const [valor, setValor] = useState("");
+  const [valor, setValor] = useState(valorInicial);
   const [erro, setErro] = useState<string | null>(null);
 
   return (
@@ -587,6 +658,14 @@ function FormularioNumero({
         onEnviar(resultado.numero);
       }}
     >
+      {trocandoConexaoAtiva && (
+        <p className="mb-4 rounded-lg border border-aviso/40 bg-aviso-suave p-3 text-sm leading-relaxed text-aviso">
+          Ao gerar o código, a conexão atual é encerrada e o bot para de
+          responder até o novo número ser pareado. Se estiver em horário de
+          atendimento, faça a troca com o celular em mãos.
+        </p>
+      )}
+
       <label htmlFor="numero-whatsapp" className="block text-sm font-medium">
         Qual o número deste WhatsApp?
       </label>
@@ -617,6 +696,13 @@ function FormularioNumero({
           <QrCodeIcon className="size-4" />
           Conectar
         </Button>
+        {/* Sem isto, quem clicou em "Conectar outro número" por engano só
+            voltava recarregando a página. */}
+        {aoDesistir && (
+          <Button type="button" variant="ghost" onClick={aoDesistir}>
+            Cancelar
+          </Button>
+        )}
       </div>
 
       {erro && (

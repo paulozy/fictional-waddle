@@ -1,7 +1,7 @@
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { describe, expect, it } from "vitest";
-import { nomeDoDia, rotuloCurtoDoDia } from "./datas";
+import { nomeDoDia, rotuloCurtoDoDia, rotuloDoPeriodo } from "./datas";
 
 /** 2026-08-09 é um domingo, então +i dias cobre a semana inteira. */
 const DOMINGO = new Date(2026, 7, 9, 12);
@@ -75,5 +75,25 @@ describe("acordo com o locale do date-fns", () => {
   it("diverge de propósito em sábado: date-fns diz 'sab', usamos 'sáb'", () => {
     expect(format(diaDaSemana(6), "EEEEEE", { locale: ptBR })).toBe("sab");
     expect(rotuloCurtoDoDia(6)).toBe("sáb");
+  });
+});
+
+describe("rotuloDoPeriodo", () => {
+  it("diz o mês uma vez só quando a semana não o atravessa", () => {
+    expect(rotuloDoPeriodo("2026-08-03", "2026-08-09")).toBe("3 a 9 de agosto");
+  });
+
+  it("nomeia os dois meses quando a semana atravessa a virada", () => {
+    expect(rotuloDoPeriodo("2026-08-31", "2026-09-06")).toBe(
+      "31 de agosto a 6 de setembro",
+    );
+  });
+
+  it("acrescenta o ano quando a semana atravessa o réveillon", () => {
+    // Sem o ano, "29 de dezembro a 4 de janeiro" some com a informação que
+    // mais importa justamente na semana em que ela muda.
+    expect(rotuloDoPeriodo("2025-12-29", "2026-01-04")).toBe(
+      "29 de dezembro de 2025 a 4 de janeiro de 2026",
+    );
   });
 });

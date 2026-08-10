@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef } from "react";
 import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
+import { CartaoLateral } from "@/components/cartao-lateral";
 import { Button } from "@/components/ui/button";
 import type { EstadoFormulario } from "@/lib/validacao/agenda";
 import { criarServico } from "./actions";
@@ -31,23 +32,31 @@ export function FormularioServico({
   const erros = estado && "erro" in estado ? estado.campos : undefined;
 
   return (
-    <form
-      ref={form}
-      action={acao}
-      className="rounded-lg border border-border bg-card p-4"
-    >
-      <CamposServico erros={erros} cobraSinal={cobraSinal} />
+    <CartaoLateral titulo="Novo serviço">
+      <form ref={form} action={acao} className="mt-4">
+        {/* `cobraSinal` habilita os campos de sinal só para quem conectou o
+            Mercado Pago — a decisão vem do Server Component, ver
+            `lib/pagamentos/capacidade.ts`. */}
+        <CamposServico erros={erros} cobraSinal={cobraSinal} />
 
-      {estado && "erro" in estado && !estado.campos && (
-        <p role="alert" className="mt-3 text-sm text-destructive">
-          {estado.erro}
-        </p>
-      )}
+        {estado && "erro" in estado && !estado.campos && (
+          <p role="alert" className="mt-3 text-sm text-destructive">
+            {estado.erro}
+          </p>
+        )}
 
-      <Button type="submit" disabled={enviando} className="mt-4">
-        <PlusIcon className="size-4" />
-        {enviando ? "Salvando…" : "Adicionar serviço"}
-      </Button>
-    </form>
+        {/* Largura cheia: numa coluna estreita, um botão do tamanho do texto
+            deixa a âncora da ação flutuando no meio do cartão. */}
+        <Button
+          type="submit"
+          size="lg"
+          disabled={enviando}
+          className="mt-5 w-full"
+        >
+          <PlusIcon className="size-4" />
+          {enviando ? "Salvando…" : "Adicionar serviço"}
+        </Button>
+      </form>
+    </CartaoLateral>
   );
 }

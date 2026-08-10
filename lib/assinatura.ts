@@ -96,3 +96,114 @@ export function motivoBloqueio(
   // o dono, a ação é a mesma (assinar), e os dois últimos não deveriam existir.
   return "trial_expirado";
 }
+
+/**
+ * Link para combinar a assinatura pelo WhatsApp.
+ *
+ * Não há gateway de pagamento nesta fase: o `status_assinatura` é virado à mão
+ * no banco. O CTA então leva o dono a falar com a gente, que é onde a
+ * assinatura é combinada de fato.
+ *
+ * Devolve `null` sem a env var, e quem chama some com o botão — o aviso
+ * continua aparecendo, porque a informação de que o bot parou vale por si.
+ *
+ * **Só pode ser chamada no servidor.** `WHATSAPP_CONTATO` não tem prefixo
+ * `NEXT_PUBLIC_`, então num bundle de cliente ela devolveria `null` em
+ * silêncio, e o botão sumiria sem ninguém entender por quê.
+ */
+export function linkAssinatura(): string | null {
+  const numero = process.env.WHATSAPP_CONTATO?.replace(/\D/g, "");
+  if (!numero) return null;
+  const texto = encodeURIComponent("Olá! Quero assinar um plano da Encaixaria.");
+  return `https://wa.me/${numero}?text=${texto}`;
+}
+
+export type ResumoAssinatura = {
+  /** Linha principal do cartão de conta. */
+  titulo: string;
+  /** Linha de apoio: prazo e preço, ou o que fazer para voltar. */
+  detalhe: string;
+  /** Falso quando não há o que assinar (já ativo, ou isento). */
+  ofereceAssinar: boolean;
+};
+
+/**
+ * Descreve a assinatura para a tela de Conta.
+ *
+ * Separada de `motivoBloqueio` porque as duas respondem perguntas diferentes: o
+ * banner do layout só aparece quando há problema, e este cartão precisa dizer
+ * algo mesmo quando está tudo certo — inclusive quantos dias de teste restam,
+ * que é a informação que o dono procura quando abre esta tela.
+ *
+ * `diasRestantes` arredonda para cima: faltando 30 horas, "1 dia restante"
+ * subestima e "2 dias" superestima; para quem precisa decidir se assina hoje, o
+ * arredondamento para cima é o que não cria surpresa.
+ */
+export function resumoAssinatura(
+  perfil: PerfilAssinatura | null | undefined,
+  agora: Date,
+  precoMensal: string,
+): ResumoAssinatura {
+  const mensal = `R$ ${precoMensal} por mês, sem fidelidade.`;
+
+  if (perfil?.status_assinatura === "ativo") {
+    return {
+      titulo: "Assinatura ativa",
+      detalhe: mensal,
+      ofereceAssinar: false,
+    };
+  }
+
+  if (perfil?.status_assinatura === "trial" && perfil.trial_expira_em === null) {
+    return {
+      titulo: "Acesso liberado",
+      detalhe: "Esta conta está isenta de cobrança.",
+      ofereceAssinar: false,
+    };
+  }
+
+  switch (motivoBloqueio(perfil, agora)) {
+    case null: {
+      const expira = new Date(perfil!.trial_expira_em!);
+      const dias = Math.max(
+        1,
+        Math.ceil((expira.getTime() - agora.getTime()) / 86_400_000),
+      );
+      return {
+        titulo: `Período de teste · ${dias === 1 ? "1 dia restante" : `${dias} dias restantes`}`,
+        detalhe: `Termina em ${formatarDiaMes(expira)}. Depois disso, ${mensal}`,
+        ofereceAssinar: true,
+      };
+    }
+    case "cancelado":
+      return {
+        titulo: "Assinatura cancelada",
+        detalhe: `O bot não está respondendo. Para reativar: ${mensal}`,
+        ofereceAssinar: true,
+      };
+    case "numero_ja_usou_trial":
+      return {
+        titulo: "Teste indisponível para este número",
+        detalhe: `Este número de WhatsApp já usou o período de teste em outra conta. Se houve engano, fale com a gente. Assinatura: ${mensal}`,
+        ofereceAssinar: true,
+      };
+    default:
+      return {
+        titulo: "Período de teste encerrado",
+        detalhe: `O bot parou de responder. Para voltar: ${mensal}`,
+        ofereceAssinar: true,
+      };
+  }
+}
+
+/**
+ * `"15/08"`. Sem fuso de propósito: `trial_expira_em` é um instante, e a
+ * diferença de três horas só muda o dia exibido em quem expira de madrugada —
+ * caso em que "termina em 15/08" e "em 14/08" são igualmente aproximados. Quem
+ * decide de fato é `assinaturaValida`, que compara o instante.
+ */
+function formatarDiaMes(data: Date): string {
+  const dia = String(data.getUTCDate()).padStart(2, "0");
+  const mes = String(data.getUTCMonth() + 1).padStart(2, "0");
+  return `${dia}/${mes}`;
+}

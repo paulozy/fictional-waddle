@@ -6,10 +6,10 @@ import {
   ehBroadcast,
   ehGrupo,
   extrairEstadoConexao,
-  extrairMensagem,
   extrairNumeroDono,
   jidPermitido,
   lerListaPermitidos,
+  lerMensagem,
   normalizarIdentificadorJid,
   telefoneDoJid,
 } from "./webhook-payload";
@@ -117,9 +117,19 @@ describe("ehGrupo / ehBroadcast", () => {
   });
 });
 
-describe("extrairMensagem", () => {
+/**
+ * Mensagem do cliente: o caminho que a engine consome. `extrairMensagem` foi
+ * substituído por `lerMensagem`, que também reconhece o dono — este helper
+ * mantém as asserções focadas no ramo do cliente.
+ */
+function cliente(payload: unknown) {
+  const leitura = lerMensagem(payload);
+  return leitura?.origem === "cliente" ? leitura.mensagem : null;
+}
+
+describe("lerMensagem — mensagem do cliente", () => {
   it("extrai mensagem simples", () => {
-    expect(extrairMensagem(payloadMensagem())).toEqual({
+    expect(cliente(payloadMensagem())).toEqual({
       id: "3EB0A1B2C3D4E5F6",
       remoteJid: "5511999998888@s.whatsapp.net",
       texto: "1",
@@ -129,7 +139,7 @@ describe("extrairMensagem", () => {
   });
 
   it("lê texto de extendedTextMessage — resposta com citação ou link", () => {
-    const mensagem = extrairMensagem(
+    const mensagem = cliente(
       payloadMensagem({
         message: {
           extendedTextMessage: {
@@ -144,7 +154,7 @@ describe("extrairMensagem", () => {
   });
 
   it("prefere conversation quando os dois campos existem", () => {
-    const mensagem = extrairMensagem(
+    const mensagem = cliente(
       payloadMensagem({
         message: {
           conversation: "principal",
@@ -156,21 +166,21 @@ describe("extrairMensagem", () => {
     expect(mensagem?.texto).toBe("principal");
   });
 
-  it("ignora mensagem do próprio bot — senão vira loop infinito", () => {
-    expect(extrairMensagem(payloadMensagem({ fromMe: true }))).toBeNull();
+  it("mensagem com fromMe não é do cliente", () => {
+    expect(cliente(payloadMensagem({ fromMe: true }))).toBeNull();
   });
 
   it("ignora grupo e broadcast", () => {
     expect(
-      extrairMensagem(payloadMensagem({ remoteJid: "1203630000@g.us" })),
+      cliente(payloadMensagem({ remoteJid: "1203630000@g.us" })),
     ).toBeNull();
     expect(
-      extrairMensagem(payloadMensagem({ remoteJid: "status@broadcast" })),
+      cliente(payloadMensagem({ remoteJid: "status@broadcast" })),
     ).toBeNull();
   });
 
   it("aceita JID @lid, com telefone nulo", () => {
-    const mensagem = extrairMensagem(
+    const mensagem = cliente(
       payloadMensagem({ remoteJid: "154417159582282@lid" }),
     );
 
@@ -188,26 +198,108 @@ describe("extrairMensagem", () => {
       { conversation: "   " },
       {},
     ]) {
-      expect(extrairMensagem(payloadMensagem({ message })), JSON.stringify(message))
+      expect(cliente(payloadMensagem({ message })), JSON.stringify(message))
         .toBeNull();
     }
   });
 
   it("ignora payload sem key, sem id ou sem remoteJid", () => {
-    expect(extrairMensagem({ event: "messages.upsert", data: {} })).toBeNull();
-    expect(extrairMensagem(payloadMensagem({ id: "" }))).toBeNull();
-    expect(extrairMensagem(payloadMensagem({ remoteJid: "" }))).toBeNull();
+    expect(cliente({ event: "messages.upsert", data: {} })).toBeNull();
+    expect(cliente(payloadMensagem({ id: "" }))).toBeNull();
+    expect(cliente(payloadMensagem({ remoteJid: "" }))).toBeNull();
   });
 
   it("aceita pushName ausente sem quebrar", () => {
-    expect(extrairMensagem(payloadMensagem({ pushName: null }))?.pushName)
+    expect(cliente(payloadMensagem({ pushName: null }))?.pushName)
       .toBeNull();
   });
 
   it("não quebra com corpo malformado", () => {
     for (const corpo of [null, undefined, [], "texto", 42, {}, { data: 1 }]) {
-      expect(extrairMensagem(corpo)).toBeNull();
+      expect(cliente(corpo)).toBeNull();
     }
+  });
+});
+
+/**
+ * O sinal de atendimento humano. Medido na Evolution 2.3.7: o que nós enviamos
+ * chega como `send.message` (evento não assinado), então dentro de
+ * `messages.upsert` o `fromMe` é sempre o dono digitando — pelo celular ou pelo
+ * WhatsApp Web.
+ */
+describe("lerMensagem — mensagem do dono", () => {
+  it("reconhece o dono e devolve a conversa em que ele digitou", () => {
+    expect(lerMensagem(payloadMensagem({ fromMe: true }))).toEqual({
+      origem: "dono",
+      remoteJid: "5511999998888@s.whatsapp.net",
+      id: "3EB0A1B2C3D4E5F6",
+    });
+  });
+
+  /**
+   * Áudio e foto contam como intervenção. Exigir texto deixaria o bot
+   * atropelando o dono justamente quando ele responde por áudio, que é o mais
+   * comum no WhatsApp brasileiro. Não há o que interpretar: o efeito é pausar.
+   */
+  it("conta como intervenção mesmo sem texto — áudio, foto, sticker", () => {
+    for (const message of [
+      { audioMessage: { seconds: 12 } },
+      { imageMessage: { url: "x" } },
+      { stickerMessage: { url: "x" } },
+      {},
+    ]) {
+      expect(
+        lerMensagem(payloadMensagem({ fromMe: true, message })),
+        JSON.stringify(message),
+      ).toMatchObject({ origem: "dono" });
+    }
+  });
+
+  /** O dono conversando em grupo não é atendimento a cliente. */
+  it("ignora grupo e broadcast mesmo vindo do dono", () => {
+    expect(
+      lerMensagem(payloadMensagem({ fromMe: true, remoteJid: "1203630000@g.us" })),
+    ).toBeNull();
+    expect(
+      lerMensagem(
+        payloadMensagem({ fromMe: true, remoteJid: "status@broadcast" }),
+      ),
+    ).toBeNull();
+  });
+
+  it("ignora quando a key está incompleta", () => {
+    expect(lerMensagem(payloadMensagem({ fromMe: true, id: "" }))).toBeNull();
+    expect(
+      lerMensagem(payloadMensagem({ fromMe: true, remoteJid: "" })),
+    ).toBeNull();
+  });
+
+  /**
+   * `fromMe` só é verdade quando é literalmente `true`. A Evolution manda
+   * booleano, mas payload de versão diferente (ou forjado) com `"true"` ou `1`
+   * não pode virar "o dono digitou": isso pausaria o bot a partir de mensagem de
+   * cliente, e o silêncio não teria explicação nenhuma no painel.
+   */
+  it("não aceita fromMe que não seja o booleano true", () => {
+    for (const valor of ["true", 1, {}, []]) {
+      const leitura = lerMensagem({
+        event: "messages.upsert",
+        data: {
+          key: { remoteJid: "5511999998888@s.whatsapp.net", id: "X", fromMe: valor },
+          message: { conversation: "1" },
+        },
+      });
+
+      expect(leitura?.origem, JSON.stringify(valor)).toBe("cliente");
+    }
+  });
+
+  it("o JID @lid do dono é preservado como veio", () => {
+    expect(
+      lerMensagem(
+        payloadMensagem({ fromMe: true, remoteJid: "154417159582282@lid" }),
+      ),
+    ).toMatchObject({ remoteJid: "154417159582282@lid" });
   });
 });
 

@@ -25,20 +25,27 @@ export default async function FluxoConversaPage() {
       <h1 className="text-2xl font-semibold tracking-tight">
         Fluxo da conversa
       </h1>
-      <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-        Este é o roteiro que o bot segue com seu cliente. As três etapas cinzas
-        são obrigatórias — o texto pode ser editado, mas elas não podem ser
-        removidas. Entre elas você adiciona as perguntas que quiser.
+      <p className="mt-2 max-w-[60ch] text-base leading-relaxed text-muted-foreground md:text-sm">
+        Este é o roteiro que o bot segue com seu cliente. As três etapas de
+        sistema podem ser reescritas, mas não removidas. Entre elas, você
+        acrescenta as perguntas que quiser.
       </p>
 
-      <ListaEtapas etapas={(etapas ?? []) as EtapaDaLista[]} />
+      {/* Duas colunas só em `lg`, pelo mesmo motivo da tela de Serviços: a
+          `minmax(340px)` do design abriria a segunda coluna perto de 740px e
+          espremeria as duas no iPad em retrato. */}
+      <div className="mt-8 grid grid-cols-1 items-start gap-8 lg:grid-cols-2 lg:gap-10">
+        <div>
+          <ListaEtapas etapas={(etapas ?? []) as EtapaDaLista[]} />
 
-      <FormularioEtapa />
+          <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
+            Conversas já em andamento continuam no roteiro em que começaram —
+            mudar o fluxo aqui não confunde quem está no meio do atendimento.
+          </p>
+        </div>
 
-      <p className="mt-6 text-xs text-muted-foreground">
-        Conversas já em andamento continuam no roteiro em que começaram — mudar o
-        fluxo aqui não confunde quem está no meio do atendimento.
-      </p>
+        <FormularioEtapa />
+      </div>
     </>
   );
 }

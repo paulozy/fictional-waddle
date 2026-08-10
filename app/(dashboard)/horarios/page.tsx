@@ -28,12 +28,12 @@ export default async function HorariosPage() {
       <h1 className="text-2xl font-semibold tracking-tight">
         Horário de funcionamento
       </h1>
-      <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-        O bot só oferece horários dentro dessas faixas. Desligue o dia para
-        marcar que está fechado.
+      <p className="mt-2 max-w-[56ch] text-base leading-relaxed text-muted-foreground md:text-sm">
+        O bot só oferece horários dentro dessas faixas. Duas faixas no mesmo dia
+        é como se marca o intervalo do almoço.
       </p>
 
-      <div className="mt-6">
+      <div className="mt-8">
         <EditorSemana
           inicial={normalizarSemana(horarios ?? [])}
           fusoHorario={perfil?.fuso_horario ?? "America/Sao_Paulo"}

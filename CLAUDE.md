@@ -98,6 +98,8 @@ Essa diferença afeta o desenho de dados, onboarding e o roteamento de webhooks 
 | `credenciais_pagamento` | Tokens OAuth do PSP do dono, **cifrados**. RLS com zero policies |
 | `cobrancas_sinal` | Rastro de cada Pix de sinal: id no provedor, valor, prazo, desfecho |
 
+`conversas_estado` também guarda `pausado_ate` — ver "Pausa para atendimento humano".
+
 ### Decisões de schema que não são óbvias
 
 Estas existem por um motivo concreto. Mexer nelas sem entender o motivo reintroduz o bug que elas resolvem.
@@ -403,7 +405,13 @@ O dono opera isto **entre atendimentos, no celular, com uma mão**. O dashboard 
 
 **`viewportFit: "cover"` em `app/layout.tsx` é pré-requisito, não enfeite.** Sem ele `env(safe-area-inset-*)` resolve para **zero**, e a barra de abas inferior fica embaixo da barra de gestos do iPhone.
 
-**A navegação é uma ilha de cliente dentro de um layout RSC.** `components/navegacao-dashboard.tsx` é o único `"use client"` do shell: `app/(dashboard)/layout.tsx` continua Server Component lendo sessão e perfil. Só a barra hidrata, porque marcar a página atual exige `usePathname`. São **quatro** abas e não cinco (`ABAS_PRINCIPAIS` / `ITENS_EXTRAS`): cinco destinos dariam ~65px cada em 375px, e eles não têm a mesma frequência — agenda é diária, fluxo é configuração inicial, WhatsApp só importa quando a conexão cai. O ícone vai por chave num mapa (`ICONES`), não por prop: componente React não atravessa a fronteira RSC → client.
+**A navegação são duas ilhas de cliente dentro de um layout RSC.** `components/navegacao-dashboard.tsx` (barra inferior, abaixo de `md`) e `components/barra-lateral.tsx` (menu lateral, `md`+) são os únicos `"use client"` do shell: `app/(dashboard)/layout.tsx` continua Server Component lendo sessão e perfil. Só elas hidratam, porque marcar a página atual exige `usePathname`. Os sete destinos são declarados **uma vez só** no layout e recortados de dois jeitos (`ABAS_PRINCIPAIS`/`ITENS_EXTRAS` para o celular, `GRUPOS_LATERAIS` para a lateral) — montar a lista dentro de cada componente faria um destino novo aparecer numa e não na outra. As duas importam `ICONES` e `ehAtivo` do mesmo módulo, para não haver duas noções de "página atual". O ícone vai por chave num mapa, não por prop: componente React não atravessa a fronteira RSC → client.
+
+**Continuam sendo quatro abas no celular, agora com sete destinos.** Cinco abas dariam ~65px cada em 375px, e seis ~55px com rótulo de 9px; o corte é por frequência — agenda é diária, fluxo é configuração inicial, WhatsApp só importa quando a conexão cai, pagamentos é a conexão do Mercado Pago que se faz uma vez, conta é quase nunca. **A lateral não substitui a barra inferior**: uma gaveta custaria um toque a mais em toda navegação, e o dono opera isto com uma mão entre atendimentos.
+
+**A lateral não tem token de cor próprio, e não deve ganhar um.** O design pinta a sidebar em `#F8F4EC` sobre papel `#FDFBF7`, item ativo branco e divisória `#E4DCCC` — que é exatamente `bg-secondary` / `bg-card` / `border-border` do `app/globals.css`. Reusar dispensa rodar o `verificar:contraste` de novo e dá o par escuro de graça.
+
+**O estado recolhido vem de cookie, e o nome dele mora em `lib/preferencias-ui.ts` — não no componente.** As duas metades são armadilha medida em navegador. Cookie porque o layout é RSC e a primeira pintura precisa já sair na largura certa; num efeito, o menu abriria a 252px e encolheria para 64px, empurrando o conteúdo inteiro em toda navegação. E o nome sai do componente porque `barra-lateral.tsx` é `"use client"`: um Server Component que importa constante de módulo de cliente **não recebe o valor**, e sim a referência de cliente que o Next põe no lugar. O `cookies().get(...)` procurava por algo que não era a string, achava `undefined`, e o menu voltava expandido a cada recarregamento — sem erro nenhum no console, e invisível para o Vitest.
 
 **A agenda tem duas visões da mesma query, escolhidas por CSS.** `md:hidden` / `hidden md:block` na página, **nunca** `matchMedia`: a decisão fica na folha de estilo, então não há client component, não há divergência de hidratação e a primeira pintura já vem certa. A grade de 7 colunas tem `min-w-[44rem]` e é impossível em tela estreita — a 375px mostra 46% dela, com a calha de horas saindo do campo de visão no primeiro arrasto. `lib/agenda-lista.ts` deriva a lista do dia do **mesmo `Calendario`** que a grade desenha, sem segunda query e sem refazer conversão de fuso. `?dia=` implica a semana que o contém, então não há dois parâmetros para manter sincronizados.
 
@@ -441,7 +449,7 @@ A palavra ao lado do símbolo fica em `text-foreground`, não em `text-primary` 
 
 Duas armadilhas descobertas ao construir aquela medição, que valem para qualquer nova tentativa: elemento com `overflow` diferente de `visible` **não** causa transbordo de página (o recorte da marca reportava 9px falsos em toda página), e a exceção "Inline" do SC 2.5.8 isenta link no meio de frase — exigir 24px de altura ali obrigaria a inflar a entrelinha do texto todo.
 
-**O transbordo de 375px está fechado.** As páginas públicas rolavam na horizontal (`scrollWidth` 409 contra 375) porque o cabeçalho tinha **dois rótulos do mesmo destino** — "Entrar" e "Começar grátis" apontam ambos para `/login` — e juntos não caíam na largura. "Entrar" saiu abaixo de `sm` e voltou dentro de `MenuSecoes`, com nome que quem já é cliente procura. Junto disso: 7 alvos de 20px de altura (nav do cabeçalho e do rodapé) que reprovavam o mínimo AA, e a medida de coluna, que **escala com o corpo do texto** — `36rem` dá ~75 caracteres a 16px e ~96 a 12px, daí a prosa usar `max-w-[36rem]` e a letra miúda `max-w-[28rem]`. `max-w-2xl` parecia confortável por uma conta errada de largura de caractere (a Instrument Sans a 16px mede ~7,7px, não ~8,4px).
+**O transbordo de 375px está fechado.** As páginas públicas rolavam na horizontal (`scrollWidth` 409 contra 375) porque o cabeçalho tinha **dois rótulos do mesmo destino** — "Entrar" e "Começar grátis" apontavam ambos para `/login`, na época em que havia uma tela só de autenticação — e juntos não caíam na largura. (Hoje os destinos são diferentes, `/login` e `/registro`, mas a decisão de esconder um deles abaixo de `sm` continua valendo pela largura.) "Entrar" saiu abaixo de `sm` e voltou dentro de `MenuSecoes`, com nome que quem já é cliente procura. Junto disso: 7 alvos de 20px de altura (nav do cabeçalho e do rodapé) que reprovavam o mínimo AA, e a medida de coluna, que **escala com o corpo do texto** — `36rem` dá ~75 caracteres a 16px e ~96 a 12px, daí a prosa usar `max-w-[36rem]` e a letra miúda `max-w-[28rem]`. `max-w-2xl` parecia confortável por uma conta errada de largura de caractere (a Instrument Sans a 16px mede ~7,7px, não ~8,4px).
 
 **Corpo de texto de página pública é `text-base` no celular, não `text-sm`.** O idioma é o mesmo de `components/ui/input.tsx` (`text-base md:text-sm`): maior no celular, menor no desktop. Não é deslize — é a leitura de quem chega por link de WhatsApp ou Instagram, que é a maioria. A conversa da landing tem regra própria e um **teto**: 14px, porque a 15px as linhas de menu quebram na bolha (ver o JSDoc de `components/conversa-demo.tsx`).
 
@@ -497,7 +505,7 @@ O objetivo declarado era ser encontrado pesquisando o nome no Google. Isso depen
   manifest.ts                         → PWA: ícone na tela inicial e abertura em standalone
   icon.tsx / apple-icon.tsx           → ícones gerados por ImageResponse, sem binário no repo
   opengraph-image.tsx                 → prévia de link 1200×630 (WhatsApp, redes)
-  robots.ts / sitemap.ts              → indexação; dashboard e /login ficam fora
+  robots.ts / sitemap.ts              → indexação; dashboard e as sete telas de auth ficam fora
   /(marketing)
     page.tsx                          → landing; é aqui que o JSON-LD vive
     perguntas.ts                      → dados do FAQ, módulo puro (é o texto indexável)
@@ -506,14 +514,24 @@ O objetivo declarado era ser encontrado pesquisando o nome no Google. Isso depen
     comparacao.tsx                    → peças das páginas de comparação (rascunho)
     precos/ como-funciona/ sobre/ privacidade/ termos/
     menu-secoes.tsx                   → Sheet com a navegação abaixo de `sm`
+  /(auth)
+    layout.tsx                        → moldura de duas colunas; o `aside` só existe a partir de `lg`
+    pecas.tsx                         → Cabecalho, Campo, CampoSelecao, BotaoPrincipal, Recado
+    schema.ts / actions.ts            → Zod e as Server Actions das sete telas (inclui `sair`)
+    login/                            → entrar; é a única com `current-password`
+    registro/                         → passo 1, `passos.tsx`, e confirmar-email/ estabelecimento/ whatsapp/
+    recuperar-senha/ redefinir-senha/ → pedir o link e definir a senha nova
+  /auth
+    confirmar/route.ts                → aterrissagem dos links de e-mail: verifyOtp / exchangeCodeForSession
   /(dashboard)
-    layout.tsx                      → verifica sessão, redireciona se ausente
-    conexao-whatsapp/page.tsx        → exibe QR code, status da instância
+    layout.tsx                      → sessão, gate soft de assinatura, e a fonte única dos 7 destinos
+    conexao-whatsapp/page.tsx        → QR code, estado da instância, as 3 métricas e o atendimento por conversa
     pagamentos/page.tsx               → conectar conta do PSP, prazo do sinal, devoluções pendentes
-    servicos/page.tsx
+    servicos/page.tsx                 → lista + cartão "novo serviço", duas colunas em `lg`
     horarios/page.tsx
     agendamentos/page.tsx             → dashboard com visão de calendário dos agendamentos
     fluxo-conversa/page.tsx           → builder: dono monta/reordena as etapas da conversa do bot
+    conta/page.tsx                    → assinatura, estabelecimento, acesso e encerrar conta
   /api
     /cron
       enviar-lembretes/route.ts      → chamado 1x/dia pelo Vercel Cron
@@ -523,7 +541,9 @@ O objetivo declarado era ser encontrado pesquisando o nome no Google. Isso depen
     /pagamentos
       mercadopago/callback/route.ts  → volta do OAuth, valida `state`, cifra e grava o token
 /components
-  navegacao-dashboard.tsx             → ilha de cliente: barra de abas no celular, header no desktop
+  navegacao-dashboard.tsx             → ilha de cliente: barra de abas, só abaixo de `md`
+  barra-lateral.tsx                   → ilha de cliente: menu lateral colapsável, só a partir de `md`
+  cartao-lateral.tsx                  → moldura da coluna de "adicionar" (serviços e fluxo)
   calendario-semana.tsx               → grade de 7 colunas, só a partir de `md`
   agenda-lista.tsx                    → lista do dia com seletor de data, abaixo de `md`
 /lib
@@ -533,6 +553,8 @@ O objetivo declarado era ser encontrado pesquisando o nome no Google. Isso depen
   site.ts                             → domínio, `metadataPagina`, identificação legal, perfis externos
   json-ld.ts                          → WebSite + Organization da home
   plano.ts                            → preço, trial e o que está/não está incluído
+  preferencias-ui.ts                  → nome do cookie da lateral; puro, para o RSC poder importar
+  metricas-whatsapp.ts                → janelas de "hoje"/"ontem" no fuso do negócio, e tempo relativo
   evolution-api.ts                    → funções: criar instância, gerar QR code, enviar mensagem, checar status
   cripto.ts                           → AES-256-GCM, chave por parâmetro (único uso: token do PSP)
   pagamentos/
@@ -546,12 +568,35 @@ O objetivo declarado era ser encontrado pesquisando o nome no Google. Isso depen
   calendario.ts                       → layout da grade semanal (puro)
   agenda-lista.ts                     → deriva a lista de um dia do mesmo Calendario (puro)
   bot/
+    pausa.ts                          → janela de atendimento humano (puro): `pausaAtiva`, `fimDaPausa`
     engine-fluxo.ts                   → lê `fluxo_etapas` ordenadas e avança a conversa etapa a etapa (genérico, dirigido por configuração, não hardcoded)
     disponibilidade.ts                → calcula horários livres (horarios_disponiveis - agendamentos existentes)
 /vercel.json
 ```
 
 ---
+
+## Autenticação
+
+Sete telas em `app/(auth)/`, vindas do design `Encaixaria Painel.dc.html`. Antes era **uma** tela com dois botões de submit dividindo um campo de senha, sem nenhum caminho para senha esquecida e sem coletar nada no cadastro (`nome_estabelecimento` nascia nulo). O que não é óbvio:
+
+**O cadastro em 3 passos se parte no meio, e a emenda é obrigatória.** Passo 1 (`/registro`) cria a conta; passos 2 e 3 escrevem em `perfis` e criam instância na Evolution, e **os dois exigem sessão**. Com confirmação de e-mail ligada, `signUp` não devolve sessão — daí `/registro/confirmar-email`, que o design não previa. Sem ela, o dono confirmava o e-mail e era jogado ao login pelo proxy, sem explicação. Com `enable_confirmations = false` (é o `config.toml` local) os três passos correm seguidos e a tela nem aparece.
+
+**`/auth/confirmar` decide o destino por mapa fechado, nunca por `?next=`.** Um parâmetro de destino livre ali seria redirect aberto pendurado justamente no endereço que acabou de criar sessão. Aceita **dois** formatos de link de propósito: `?token_hash=&type=` (`verifyOtp`, dos templates personalizados, e o preferível — não depende de cookie do navegador que iniciou, então funciona quando o dono se cadastra no computador e abre o link no celular) e `?code=` (`exchangeCodeForSession`, o que os templates **padrão** produzem). Aceitar o segundo é o que faz o fluxo funcionar sem ninguém editar template no painel; a intenção viaja no `fluxo=` que nós mesmos escrevemos no `redirectTo`, porque aquele formato não carrega `type`.
+
+**O `proxy.ts` resgata link de e-mail que caiu na raiz, e isso não é caso hipotético.** Quando o `redirectTo` não está na allowlist de Redirect URLs, o Supabase manda o link para o **Site URL** (a doc diz que ele é o destino padrão), e o dono aterrissa em `/?code=…` — na landing, com o cadastro pela metade e nenhuma pista do que fazer. O proxy encaminha `?code=` (ou `token_hash` + `type`) **só na raiz** para `/auth/confirmar`, com a query intacta: `?code=` é parâmetro de OAuth em geral, e capturar em qualquer caminho sequestraria um callback de gateway de pagamento. Nesse caminho degradado o `fluxo=` não sobrevive, então o destino sai do estado do perfil — sem `nome_estabelecimento`, volta para o passo 2; com ele, vai para o painel. Configurar a allowlist e o `SITE_URL` continua sendo o conserto de verdade; o resgate existe porque link já enviado não se corrige.
+
+**`ROTAS_SOMENTE_ANONIMAS` compara caminho exato, e `ROTAS_PROTEGIDAS` compara prefixo.** `/registro` é anônima e `/registro/estabelecimento` exige sessão — um `startsWith` na primeira lista jogaria o passo 2 de volta ao painel exatamente quando ele fosse aberto, e o cadastro nunca terminaria. Há teste afirmando que as duas listas não se sobrepõem.
+
+**Campo de auth é 16px em qualquer largura**, diferente do `text-base md:text-sm` que é o idioma do resto do projeto. Aquele idioma está certo onde está, mas resolve o zoom do iOS por **largura**, e o iPad em retrato reporta exatamente 768px — o começo do `md`. Medido em Chromium: os campos caíam para 14px a partir dali. Numa coluna de 380px com dois campos não há densidade a ganhar.
+
+**O passo 3 não gera QR: redireciona para `/conexao-whatsapp?numero=&iniciar=1`.** Duplicar aquele painel custaria manter em dois lugares a expiração de 45s, a contagem de regeneração e o polling, todos medidos contra a Evolution 2.3.7. O `iniciar=1` dispara a primeira busca uma vez, com trava em `ref` — sem ela o Strict Mode do desenvolvimento abriria duas sessões Baileys. O número é **renormalizado** na página: a URL é editável e o valor vai direto para a Evolution.
+
+**O "Voltar" do passo 2 ficou de fora, contra o design.** No design a conta ainda não existe naquele ponto, então voltar é editar o e-mail; no fluxo real a conta já foi criada e confirmada, e o passo 1 é um formulário que criaria uma segunda. O botão do navegador continua funcionando.
+
+**"Começar grátis" aponta para `/registro`, "Entrar" para `/login`.** Os sete CTAs de marketing iam todos para a tela de login, que era o destino errado desde sempre — só não dava para consertar sem uma tela de cadastro.
+
+**A verificação de responsividade é em navegador, e não está versionada.** Sete telas × 320/375/390/768/1280 + paisagem 667×375, medindo transbordo, altura de alvo, fonte de campo e o `aside`. Dois defeitos saíram daí e nenhum era visível no Vitest: os campos a 14px acima de 768px e o "Esqueci a senha" com 36px de alvo. Ao mexer nessas telas, remedir — `toHaveClass("min-h-11")` afirma que a classe foi escrita, não que o pixel tem 44.
 
 ## Onboarding de nova instância (fluxo)
 
@@ -571,6 +616,20 @@ Estas quatro coisas foram medidas contra o servidor 2.3.7 real e contra o fonte 
 
 **Detectar a leitura não é possível nesta versão.** O Baileys emite `connection.update { isNewLogin: true }` no `pair-success` e `receivedPendingNotifications` no fim da sincronização, mas a Evolution desestrutura só `{ qr, connection, lastDisconnect }` e descarta os dois — nenhum endpoint, nenhum webhook. Entre a leitura e o `open` ela é literalmente muda: o WhatsApp força `restartRequired` (515) e o ramo de close reconecta sozinho sem emitir evento. **Não reintroduzir estado intermediário de "sincronizando" sem um sinal real.** Também não adianta inferir por `count` congelado (latência de ~50s, dispara quando já está `open` há um minuto) nem por `ownerJid`/`profileName` (gravados no mesmo update que `connectionStatus: 'open'`).
 
+**Trocar de número exige `logout` antes — e o motivo não é liberar o aparelho.** O controller da 2.3.7 **só honra o `number` do `/instance/connect` quando o estado é `close`**. Medido contra o servidor real, com instância descartável:
+
+| estado antes | `connect?number=NOVO` devolve |
+|---|---|
+| `connecting` | o pairing code **antigo, em cache** (mesmo com número diferente) |
+| `open` | nada — e a tela concluía "já pareado" e voltava ao cartão verde |
+| `close` | código novo |
+
+Era o bug de "Conectar outro número não gera QR": sem erro, sem código, sem pista. `desconectarInstancia` (`DELETE /instance/logout`) resolve, e é **logout e não delete** — preserva nome, token e config de webhook, e não abre a janela em que a instância não existe (se o create seguinte falhasse, o tenant ficaria sem instância nenhuma). Medido: idempotente (200 mesmo já em `close`) e 404 quando a instância não existe, que é o caminho do primeiro acesso.
+
+**O `close` é assíncrono ao 200 do logout** (~2s), então `gerarQrCode` espera o estado sair de `conectado` antes de pedir o código. Pedir antes devolve o cache, que é o bug de volta.
+
+**Só o pedido manual reinicia a sessão; a renovação automática nunca.** A renovação roda de dois em dois segundos com o QR na cara do dono — reiniciar ali derrubaria a sessão que ele está pareando naquele instante. Como efeito colateral desejado, o manual também é a saída da instância presa em `connecting` depois de estourar o `QRCODE_LIMIT`, de onde o connect nunca mais produz código novo.
+
 **`GET /instance/connect` não regenera QR e não consome o `QRCODE_LIMIT`.** Numa instância em `connecting` ele devolve o código **em cache** — três chamadas em 9s deixaram `count` em 4. Quem roda o relógio é o servidor, a cada `qrTimeout` de 45s, com ou sem aba aberta. Consequência: uma contagem regressiva local que reinicia a cada busca acumula erro de fase e exibe código morto dizendo que vale. Por isso `lib/qr-pareamento.ts` decide pelo `count` do servidor, e não pelo relógio do cliente; a validade de 45s é só display.
 
 **Estado transitório não se persiste.** `perfis.status_conexao_whatsapp` só tem `conectado`/`desconectado`, então gravar `conectando` virava `desconectado` — a cada 2-5s durante todo o pareamento, com corrida contra o `CONNECTION_UPDATE open` do webhook. `verificarConexao` agora só grava conclusão.
@@ -578,6 +637,29 @@ Estas quatro coisas foram medidas contra o servidor 2.3.7 real e contra o fonte 
 **`disconnectionReasonCode` viaja só no `STATUS_INSTANCE`**, que por isso está em `NOME_EVENTOS_WEBHOOK`. O `CONNECTION_UPDATE` de queda diz que caiu, nunca por quê — e a diferença importa: `401` (`loggedOut`) é o dono tendo desvinculado o aparelho e só re-parear resolve, o resto é transitório. Hoje o handler apenas registra; persistir para diferenciar o texto do box "WhatsApp desconectado" exigiria coluna nova. A assinatura só passa a valer depois de `configurarWebhook` rodar de novo na instância, o que `gerarQrCode` faz a cada chamada.
 
 **Ao testar contra a Evolution, nunca tocar na instância de produção.** `logout`, `delete`, `restart` e `connect` na instância do dono derrubam o WhatsApp do negócio. Criar `zz-teste-…` descartável e apagar ao final, conferindo com `fetchInstances`.
+
+### As três métricas do painel de WhatsApp
+
+Lidas no Server Component com o client que respeita RLS — o dono tem `select` em `log_conexao`, `log_envio` e `conversas_estado`, então nenhuma precisa de service role. "Conectado desde" é a última transição para `conectado` em `log_conexao`; "lembretes enviados ontem" conta `log_envio` com `tipo = 'lembrete'`; "conversas atendidas hoje" e "última mensagem recebida" saem de `conversas_estado`.
+
+**As janelas de "hoje" e "ontem" vivem em `lib/metricas-whatsapp.ts`, e não inline na página.** Elas só têm sentido no `fuso_horario` do negócio, e o runtime da Vercel roda em UTC: um lembrete enviado às 23h de ontem em São Paulo é 02h de hoje em UTC, some do número de ontem e aparece no de hoje. O erro seria **invisível em desenvolvimento** — a máquina do dono já está no fuso certo — e só apareceria em produção. O dia anterior é calculado sobre a data local e reconvertido, nunca subtraindo 24h: no dia que muda o relógio, o dia tem 23 ou 25 horas.
+
+**Duas coisas do design ficaram de fora, com motivo.** O **número conectado** não pode ser exibido: o produto guarda apenas `hmac_sha256(numero, TRIAL_HASH_PEPPER)`, e é essa pseudonimização que sustenta a minimização de dados. **"Mensagens respondidas hoje"** não tem fonte — nada conta mensagem, e o número exigiria coluna nova; no lugar dela vai "conversas atendidas hoje", que é o que os dados de fato respondem. Não reintroduzir nenhuma das duas sem mudar o schema.
+
+## A tela de Conta
+
+Antes dela, `nome_estabelecimento` e `fuso_horario` só eram graváveis no passo 2 do cadastro: quem errasse o fuso ali ficava com a agenda inteira deslocada e sem caminho na interface para corrigir. A action nova reusa o `lerEstabelecimento` de `app/(auth)/schema.ts` — mesmos dois campos, mesmas regras — e chama `revalidatePath("/", "layout")`, porque o fuso decide o que "hoje" quer dizer em três telas.
+
+**Trocar senha dispara `enviarLinkRecuperacao`, não um campo de senha nesta tela.** Um segundo caminho para definir senha significaria duas implementações da mesma regra de força — e a sessão do painel pode estar aberta há semanas num aparelho emprestado, prova de posse que o e-mail dá e ela não. Trocar de **e-mail** ficou de fora: exige reconfirmar o endereço novo, que é fluxo próprio.
+
+**`encerrarConta` é o terceiro ponto de uso da service role**, e o único com sessão. Só `auth.admin.deleteUser` apaga `auth.users`, e é o cascade dela que leva os dados do tenant (LGPD). A ordem dos passos não é intercambiável e está no JSDoc da action; o que não pode cair:
+
+- **O alvo é sempre `claims.sub`, nunca um id do `FormData`** — senão a action vira "apague a conta de qualquer um".
+- **A instância da Evolution sai antes do banco.** Depois do `deleteUser` não há mais de onde ler `evolution_instance_name`, e a instância órfã deixa o socket Baileys aberto respondendo por um número cujo dono não tem mais painel.
+- **A exclusão da instância é fail-open.** Serviço externo fora do ar não pode recusar um pedido de exclusão de dados; instância órfã é limpeza manual nossa.
+- **`trials_numero_whatsapp` não cascateia**, e é o comportamento certo: um livro-caixa antiabuso que some com a conta é um livro-caixa que o abusador apaga sozinho.
+
+O cartão de assinatura lê `resumoAssinatura` (`lib/assinatura.ts`) e o preço de `lib/plano.ts` — nunca "R$ 49,90" escrito à mão. `linkAssinatura()` saiu do layout para `lib/assinatura.ts` porque agora tem dois consumidores; **só pode ser chamada no servidor**, já que `WHATSAPP_CONTATO` não tem prefixo `NEXT_PUBLIC_` e num bundle de cliente devolveria `null` em silêncio.
 
 ---
 
@@ -664,6 +746,38 @@ Sobre o tamanho dos menus: **o 7±2 de Miller não se aplica** — ele é sobre 
 **Parse de data em texto ("20/08", "sexta") não entra.** A linha do projeto é léxico fechado de literais fixos (`AFIRMATIVAS`/`NEGATIVAS`), que não é NLP. Parse de data é generativo e ambíguo, e o modo de falha muda de "não entendi, aqui está o menu" para "entendi algo que você não quis dizer" — que é literalmente o que `/como-funciona` vende contra e afirma em público não existir. Com as três fases, o caminho numerado já alcança todo o horizonte, então um parser deixaria de resolver um problema.
 
 ---
+
+## Pausa para atendimento humano
+
+Com o bot ligado, o dono não tinha **nenhuma** forma de assumir a conversa: ele digitava no celular e o bot respondia por cima na mensagem seguinte do cliente, os dois falando ao mesmo tempo. A granularidade da pausa é **por conversa**, não por tenant — o dono atendendo um cliente à mão não é motivo para o bot parar de atender os outros seis —, e a chave dessa granularidade já existia: o unique `(usuario_id, remote_jid)` de `conversas_estado`. Por isso é **uma coluna** (`pausado_ate timestamptz`, nulo = ativo), não tabela nova. `lib/bot/pausa.ts` é a fonte única de "está pausada?", pura e sem Supabase, porque os consumidores leem a linha por caminhos diferentes (webhook com admin, painel com RLS).
+
+**O sinal de que o dono assumiu já chegava no webhook e era descartado.** Medido contra a Evolution 2.3.7 em 2026-08-10, com instância descartável e número real:
+
+| origem | evento | `key.fromMe` | `data.source` | `key.id` |
+|---|---|---|---|---|
+| cliente, celular dele | `messages.upsert` | `false` | `android` | `ACBBDAED…` |
+| **dono, digitando no celular** | `messages.upsert` | **`true`** | `android` | `AC95918F…` |
+| **dono, pelo WhatsApp Web** | `messages.upsert` | **`true`** | `web` | `3EB03BFB…` |
+| **nós, por `sendText`** | **`send.message`** | `true` | `web` | `3EB02FBC…` |
+
+A última linha é o que sustenta tudo: **envio por API nunca chega como `messages.upsert`**, só como `send.message` — evento que `NOME_EVENTOS_WEBHOOK` não assina (verificado buscando os ids enviados em todo o tráfego capturado: zero ocorrências). Logo, dentro daquele evento, `fromMe: true` é sempre o dono, e **não é preciso registrar os ids que enviamos** para se distinguir deles. **Assinar `SEND_MESSAGE` quebra isso em silêncio** — toda mensagem do bot pareceria o dono e pausaria o bot na própria conversa que ele atende, sem erro em lugar nenhum; há teste afirmando a *ausência* do evento na lista, no idioma dos testes de SEO. E **`data.source` não serve**: o dono pelo WhatsApp Web e o nosso envio dão os dois `web`, com id no mesmo formato `3EB0…` (é o `getDevice` do Baileys derivando dispositivo do formato do id).
+
+Decisões que não são óbvias:
+
+- **A mensagem do dono não precisa ter texto.** Áudio, foto e sticker contam como intervenção — exigir texto deixaria o bot atropelando o dono justamente quando ele responde por áudio, que é o mais comum aqui.
+- **O gate não escreve nada.** Não zera `dados_temporarios` (o cliente pode estar no meio da etapa de horário), não grava `ultima_mensagem_id` (a mensagem não foi processada) e não avisa o cliente — anunciar "o atendimento automático está pausado" seria o bot se intrometendo na conversa que ele saiu da frente para permitir. `pausado_ate` entra no `select` que já existia, então o gate custa **zero query**.
+- **`pausarPorAtendimentoHumano` é `upsert`, não `update`.** O dono abrir a conversa de um cliente que nunca falou com o bot e mandar a primeira mensagem é caso comum, não de borda. Não toca `atualizado_em`, que governa a expiração de 6h: rejuvenescer a conversa faria o cliente voltar semanas depois para uma etapa abandonada.
+- **O fail-safe é o INVERSO do de assinatura, de propósito.** Data inválida em `pausado_ate` **libera** o bot. Lá o risco de errar é receita, então bloqueia; aqui é o cliente do dono esperando resposta para sempre, então solta.
+- **A retomada não interpreta a mensagem que chegou.** `retomarConversa` reapresenta a etapa com um aviso. Durante a pausa o cliente conversou com uma pessoa, então a última lista que o bot apresentou pode estar dez mensagens atrás — ler um "1" daquele diálogo humano como opção de menu faria o bot avançar etapa por engano.
+- **A janela é renovada, não somada** (`fimDaPausa` a cada mensagem do dono), e o TTL de 60 min é constante de módulo: configurável por tenant é mais um campo digitado à mão onde typo vira bot mudo.
+- **O cron de lembrete ignora `pausado_ate`, e o webhook de pagamento também.** Os dois são sobre um agendamento que já existe, não sobre a conversa: o lembrete é o que reduz no-show (o ROI que paga o mês) e o "sinal recebido" é confirmação de dinheiro que entrou. Pausa é do fluxo de agendamento, e só dele.
+- **O gate de pausa fica antes de `montarContexto`, que é onde a cobrança de sinal varre os holds vencidos — e isso parece bug até se ler a invariante do outro lado.** A varredura preguiçosa existe para rodar imediatamente antes de calcular disponibilidade, que é o único instante em que um slot indevidamente bloqueado causa dano. O caminho de pausa **nunca calcula disponibilidade**, então a garantia continua de pé: qualquer outra conversa do tenant varre antes do próprio cálculo, e um tenant cuja única mensagem caiu numa conversa pausada não tem ninguém agendando para prejudicar. Mover a varredura para antes do gate só compraria escrita no caminho quente de uma mensagem que o bot não vai responder.
+
+**A saída pelo lado do cliente (`0` / "atendente") é léxico fechado com comparação exata, nunca `includes`.** Substring transformaria "vou levar uma pessoa comigo" numa etapa `texto_livre` em silêncio do bot, e o modo de falha mudaria de "não entendi, aqui está o menu" para "entendi algo que você não quis dizer" — que é o que `/como-funciona` afirma em público que este produto não faz. O `0` só vale em etapa de menu (nos menus é livre porque `lerIndice` é 1-based; numa `texto_livre` é resposta legítima), e o intercepto fica **antes de tudo** em `decidir`, para funcionar na primeira mensagem, no meio do fluxo e dentro do cancelamento. A linha que anuncia a opção é colada no fim da mensagem da etapa, e só no primeiro contato e nas reapresentações de erro — anunciar em toda etapa inflaria cada pergunta, e mensagem separada seria duas notificações no celular do cliente.
+
+**O aviso ao dono usa o self-chat, e é o que impede a feature de ser pior que não existir** — sem ele, o cliente ouviria "avisei o pessoal", o bot silenciaria por uma hora e ninguém ficaria sabendo. Medido: `sendText` para o próprio número da instância entrega (`send.message` + `SERVER_ACK`, confirmado no aparelho). O número vem do `sender` do payload, **em memória**: `perfis` continua guardando só o HMAC, e é isso que sustenta a minimização de dados. O aviso identifica quem pediu (`pushName` → telefone → identificador do JID), senão o dono teria de abrir todas as conversas. Fail-open: falha de envio só vira log, porque a pausa já está gravada e um 500 faria a Evolution reentregar o webhook e o cliente receber a mesma mensagem várias vezes.
+
+**No painel, o privilégio de escrita é de COLUNA.** `grant update (pausado_ate)` mais policy de update: RLS decide quais linhas, o grant decide quais colunas. Um `grant update` de tabela abriria `dados_temporarios`, `etapa_atual_id` e `fluxo_snapshot` para o cliente autenticado — ou seja, reescrever à mão o estado de uma conversa em voo. As duas metades são necessárias: sem o grant a policy não basta, sem a policy o grant não basta. A seção em `/conexao-whatsapp` existe porque **pausar já tinha caminho natural** (digitar no WhatsApp) e **retomar não tinha nenhum**: quem pausou por engano esperava a hora vencer sozinha. Os rótulos e horários chegam **já formatados no fuso do negócio** pelo Server Component — o runtime da Vercel é UTC e o navegador do dono pode estar em qualquer fuso.
 
 ## Fluxo do cron de lembretes (`/api/cron/enviar-lembretes`)
 

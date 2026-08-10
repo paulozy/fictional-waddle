@@ -6,6 +6,7 @@ import {
   decidir,
   mensagemAgendamentoConfirmado,
   mensagemSlotIndisponivel,
+  retomarConversa,
   type ContextoConversa,
   type Decisao,
   type Efeito,
@@ -14,15 +15,17 @@ import {
 } from "@/lib/bot/engine-fluxo";
 import {
   classificarEvento,
+  jidDoDono,
   extrairContagemQrCode,
   extrairEstadoConexao,
-  extrairMensagem,
   extrairMotivoDesconexao,
   extrairNumeroDono,
   jidPermitido,
   lerListaPermitidos,
+  lerMensagem,
   type MensagemWebhook,
 } from "@/lib/bot/webhook-payload";
+import { fimDaPausa, pausaAtiva } from "@/lib/bot/pausa";
 import { hashNumeroWhatsapp } from "@/lib/trial-numero";
 import { cobrancaSinalHabilitada } from "@/lib/pagamentos/capacidade";
 import { cobrarSinal } from "@/lib/pagamentos/cobranca-sinal";
@@ -190,16 +193,27 @@ export async function POST(
     return ok(`conexão: ${estado}`);
   }
 
-  const mensagem = extrairMensagem(payload);
-  if (!mensagem) return ok("mensagem ignorada");
+  const leitura = lerMensagem(payload);
+  if (!leitura) return ok("mensagem ignorada");
 
   /**
    * Guarda de teste. Com `BOT_JIDS_PERMITIDOS` preenchida, o bot só atende
    * aqueles remetentes — permite parear um número pessoal sem despachar
    * "Qual serviço você gostaria de agendar?" para um contato de verdade.
    * Vazia (o default) atende todos, que é o comportamento de produção.
+   *
+   * Vale também para a mensagem do dono: numa conversa que o bot não atende, não
+   * há o que pausar, e gravar pausa ali seria escrita sem efeito nenhum.
    */
-  if (!jidPermitido(mensagem.remoteJid, lerListaPermitidos(process.env.BOT_JIDS_PERMITIDOS))) {
+  const remoteJid =
+    leitura.origem === "dono" ? leitura.remoteJid : leitura.mensagem.remoteJid;
+
+  if (
+    !jidPermitido(
+      remoteJid,
+      lerListaPermitidos(process.env.BOT_JIDS_PERMITIDOS),
+    )
+  ) {
     return ok("remetente fora da lista de permissão");
   }
 
@@ -256,7 +270,79 @@ export async function POST(
     return ok("assinatura inválida");
   }
 
-  return processarMensagem(admin, perfil, instance, mensagem);
+  /**
+   * O dono assumiu a conversa: pausa o bot ali e não responde nada.
+   *
+   * Depois do gate de assinatura de propósito — num tenant bloqueado o bot já
+   * está silencioso, então gravar pausa seria escrita sem efeito. E depois da
+   * correção de `status_conexao_whatsapp`, que a mensagem do dono comprova tão
+   * bem quanto a do cliente.
+   */
+  if (leitura.origem === "dono") {
+    await pausarPorAtendimentoHumano(admin, perfil.id, remoteJid);
+    return ok("pausado por atendimento humano");
+  }
+
+  return processarMensagem(
+    admin,
+    perfil,
+    instance,
+    leitura.mensagem,
+    jidDoDono(payload),
+  );
+}
+
+/**
+ * Abre (ou renova) a janela de atendimento humano nesta conversa.
+ *
+ * `upsert` e não `update`: a linha de `conversas_estado` pode **não existir**. O
+ * caso é comum e não é de borda — o dono abre a conversa de um cliente que nunca
+ * falou com o bot e manda a primeira mensagem. Sem o insert, essa conversa não
+ * teria pausa nenhuma, e o bot responderia por cima na resposta do cliente, que é
+ * exatamente o problema que isto existe para resolver.
+ *
+ * Grava **só** as três colunas: `etapa_atual_id`, `fluxo_snapshot` e
+ * `dados_temporarios` ficam de fora, então numa conversa em voo o cliente
+ * continua exatamente na etapa em que estava. Na inserção, os defaults do banco
+ * cuidam do resto.
+ *
+ * `atualizado_em` também fica de fora, e isso é decisão: ele governa a expiração
+ * de 6h da conversa. Tocá-lo aqui faria uma conversa velha "rejuvenescer" porque
+ * o dono mandou uma mensagem, e o cliente voltaria semanas depois para uma etapa
+ * abandonada em vez de um começo limpo.
+ *
+ * Fail-open: erro só vira log. A falha aqui é nossa, e o custo de errar para o
+ * lado permissivo é o bot continuar respondendo — que é o comportamento de antes
+ * desta feature. Errar para o outro lado (derrubar a requisição) faria a Evolution
+ * reentregar o mesmo webhook indefinidamente.
+ */
+async function pausarPorAtendimentoHumano(
+  admin: ClienteAdmin,
+  usuarioId: string,
+  remoteJid: string,
+) {
+  const { error } = await admin.from("conversas_estado").upsert(
+    {
+      usuario_id: usuarioId,
+      remote_jid: remoteJid,
+      pausado_ate: fimDaPausa(new Date()),
+    },
+    { onConflict: "usuario_id,remote_jid" },
+  );
+
+  if (error) {
+    console.error("falha ao pausar conversa para atendimento humano", {
+      usuario_id: usuarioId,
+      codigo: error.code,
+    });
+    return;
+  }
+
+  // Sem o JID: identifica a conversa para o dono no log e é dado pessoal do
+  // cliente dele. O tenant já basta para depurar.
+  console.info("conversa pausada por atendimento humano", {
+    usuario_id: usuarioId,
+  });
 }
 
 /**
@@ -389,15 +475,56 @@ async function processarMensagem(
   perfil: Perfil,
   instancia: string,
   mensagem: MensagemWebhook,
+  /**
+   * Para onde avisar o dono quando o cliente pede uma pessoa. Vem do payload e
+   * vive só o tempo desta requisição — não é lido do banco nem persistido.
+   */
+  jidDono: string | null,
 ) {
   const { data: linha } = await admin
     .from("conversas_estado")
     .select(
-      "id, etapa_atual_id, fluxo_snapshot, dados_temporarios, ultima_mensagem_id, versao, atualizado_em",
+      "id, etapa_atual_id, fluxo_snapshot, dados_temporarios, ultima_mensagem_id, versao, atualizado_em, pausado_ate",
     )
     .eq("usuario_id", perfil.id)
     .eq("remote_jid", mensagem.remoteJid)
     .maybeSingle();
+
+  /**
+   * Atendimento humano em curso: o bot silencia nesta conversa.
+   *
+   * `pausado_ate` entra no `select` acima em vez de virar uma leitura própria —
+   * a linha já é carregada em toda mensagem, então o gate custa **zero query**.
+   *
+   * Três coisas que este caminho deliberadamente NÃO faz:
+   *  - não zera `dados_temporarios` nem `etapa_atual_id`: o cliente pode estar no
+   *    meio de escolher horário, e quem retoma tem de encontrar a conversa onde
+   *    ela parou;
+   *  - não grava `ultima_mensagem_id`: a mensagem não foi processada, então usar
+   *    a chave de idempotência aqui seria afirmar que foi;
+   *  - não avisa o cliente. Quem está do outro lado está falando com o dono
+   *    naquele instante — anunciar "o atendimento automático está pausado" seria
+   *    o bot se intrometendo justamente na conversa que ele saiu da frente para
+   *    permitir.
+   *
+   * O gate fica depois do de assinatura porque o de assinatura também silencia:
+   * a ordem entre os dois não muda o efeito, e manter o comercial antes deixa a
+   * razão do silêncio na ordem em que se lê o arquivo.
+   *
+   * **E fica ANTES de `montarContexto`, que é onde a cobrança de sinal varre os
+   * holds vencidos — de propósito, e isso parece bug até se ler a invariante do
+   * outro lado.** A varredura preguiçosa existe para rodar "imediatamente antes
+   * de calcular disponibilidade" (o único instante em que um slot indevidamente
+   * bloqueado causa dano). O caminho de pausa **nunca calcula disponibilidade**,
+   * então a garantia continua valendo: qualquer outra conversa do mesmo tenant
+   * varre antes do próprio cálculo, e um tenant cuja única mensagem do dia caiu
+   * numa conversa pausada não tem ninguém agendando para prejudicar. O resto é do
+   * cron diário. Mover a varredura para antes deste gate só compraria escrita no
+   * caminho quente de uma mensagem que o bot não vai nem responder.
+   */
+  if (pausaAtiva(linha?.pausado_ate, new Date())) {
+    return ok("conversa pausada para atendimento humano");
+  }
 
   // Idempotência: retry da Evolution ou reemissão do Baileys trazem o mesmo
   // `data.key.id`. Processar de novo repetiria a pergunta ou avançaria em falso.
@@ -419,11 +546,21 @@ async function processarMensagem(
       }
     : null;
 
-  const decisao = decidir(contexto, estado, {
-    id: mensagem.id,
-    texto: mensagem.texto,
-    pushName: mensagem.pushName,
-  });
+  /**
+   * A janela de atendimento humano existiu e venceu — o gate acima já provou que
+   * não está mais ativa. Este é o momento em que o bot volta, e ele volta
+   * avisando e reapresentando a etapa, sem interpretar a mensagem que chegou como
+   * resposta (o motivo está no JSDoc de `retomarConversa`).
+   */
+  const pausaVencida = Boolean(linha?.pausado_ate);
+
+  const decisao = pausaVencida
+    ? retomarConversa(contexto, estado)
+    : decidir(contexto, estado, {
+        id: mensagem.id,
+        texto: mensagem.texto,
+        pushName: mensagem.pushName,
+      });
 
   /**
    * O compare-and-set vem ANTES de qualquer efeito.
@@ -435,13 +572,23 @@ async function processarMensagem(
    * levou 23P01, o cliente ouviria "esse horário acabou de ser reservado"
    * enquanto o agendamento dele existe confirmado na agenda do dono.
    */
-  const persistiu = await persistir(admin, perfil.id, mensagem, linha, decisao);
+  const persistiu = await persistir(
+    admin,
+    perfil.id,
+    mensagem,
+    linha,
+    decisao,
+    pausaVencida,
+  );
   if (!persistiu) return ok("corrida perdida");
 
   const mensagens = [...decisao.mensagens];
 
   for (const efeito of decisao.efeitos) {
-    const textos = await executarEfeito(admin, perfil, contexto, mensagem, efeito);
+    const textos = await executarEfeito(admin, perfil, contexto, mensagem, efeito, {
+      instancia,
+      jidDono,
+    });
 
     /**
      * Lista vazia = o efeito deu certo e a mensagem já veio da engine, que é o caso
@@ -611,9 +758,18 @@ async function executarEfeito(
   contexto: ContextoConversa,
   mensagem: MensagemWebhook,
   efeito: Efeito,
+  entrega: { instancia: string; jidDono: string | null },
 ): Promise<string[]> {
   if (efeito.tipo === "cancelar_agendamento") {
     return [await cancelarPeloCliente(admin, perfil, efeito.agendamentoId)];
+  }
+
+  if (efeito.tipo === "pausar_bot") {
+    await pausarPorAtendimentoHumano(admin, perfil.id, mensagem.remoteJid);
+    await avisarDonoQueChamaram(entrega.instancia, entrega.jidDono, mensagem);
+
+    // A mensagem ao cliente já veio da engine (`AVISO_CHAMANDO_PESSOA`).
+    return [];
   }
 
   const servico = contexto.servicos.find((s) => s.id === efeito.servicoId);
@@ -762,6 +918,58 @@ async function cancelarPeloCliente(
   return "";
 }
 
+/**
+ * Avisa o dono, no self-chat dele, que um cliente pediu para falar com uma pessoa.
+ *
+ * Sem esse aviso a feature seria pior que não existir: o cliente ouviria "avisei o
+ * pessoal", o bot silenciaria por uma hora, e **ninguém** ficaria sabendo — o
+ * cliente esperando uma resposta que não vem é exatamente o problema que o produto
+ * existe para eliminar.
+ *
+ * O canal é o `sendText` para o próprio número da instância, medido na 2.3.7 e
+ * confirmado no aparelho. O número vem do `sender` do payload, em memória: não há
+ * coluna para ele, e não deve haver — `perfis` guarda só o HMAC, e é isso que
+ * sustenta a minimização de dados.
+ *
+ * Identifica a conversa pelo `pushName`, com queda para telefone e para o
+ * identificador do JID. Sem isso o dono receberia "alguém quer falar com você" e
+ * teria de adivinhar quem, o que na prática significa abrir todas as conversas.
+ *
+ * Fail-open: erro só vira log. A pausa já está gravada, e derrubar a requisição
+ * faria a Evolution reentregar o webhook — o cliente receberia a mesma mensagem
+ * várias vezes.
+ */
+async function avisarDonoQueChamaram(
+  instancia: string,
+  jidDono: string | null,
+  mensagem: MensagemWebhook,
+) {
+  if (!jidDono) {
+    console.warn("pedido de atendimento humano sem JID do dono no payload", {
+      instancia,
+    });
+    return;
+  }
+
+  const quem =
+    mensagem.pushName ?? mensagem.telefone ?? mensagem.remoteJid.split("@")[0];
+
+  try {
+    await enviarTexto(
+      instancia,
+      jidDono,
+      `${quem} pediu para falar com uma pessoa no WhatsApp. ` +
+        "Parei as respostas automáticas nessa conversa por 1 hora. " +
+        "Se quiser devolver ao bot antes disso, é na tela de Conexão do WhatsApp.",
+    );
+  } catch (erro) {
+    console.error("falha ao avisar o dono do pedido de atendimento humano", {
+      instancia,
+      status: erro instanceof ErroEvolutionApi ? erro.status : null,
+    });
+  }
+}
+
 type LinhaConversa = {
   id: string;
   versao: number;
@@ -788,6 +996,12 @@ async function persistir(
   mensagem: MensagemWebhook,
   linha: LinhaConversa,
   decisao: Decisao,
+  /**
+   * Limpa `pausado_ate` junto. Só é verdade quando a janela venceu e o bot acabou
+   * de retomar — escrever `null` em toda mensagem apagaria uma pausa que o dono
+   * tivesse aberto entre a leitura da linha e este update.
+   */
+  limparPausa = false,
 ): Promise<boolean> {
   const alvo = decisao.estado;
 
@@ -818,6 +1032,7 @@ async function persistir(
       telefone_cliente: mensagem.telefone,
       versao: linha.versao + 1,
       atualizado_em: new Date().toISOString(),
+      ...(limparPausa ? { pausado_ate: null } : {}),
     })
     .eq("id", linha.id)
     .eq("usuario_id", usuarioId)

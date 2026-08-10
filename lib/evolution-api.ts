@@ -339,6 +339,38 @@ export async function enviarTexto(
 }
 
 /**
+ * Encerra a sessão do WhatsApp **sem apagar a instância**, deixando-a em
+ * `close`.
+ *
+ * É a peça que faltava para trocar de número, e o motivo não é liberar o
+ * aparelho: é que o controller da 2.3.7 **só honra o `number` do
+ * `/instance/connect` quando o estado é `close`**. Medido contra o servidor
+ * real, numa instância em `connecting`, pedir `connect?number=OUTRO` devolve o
+ * pairing code **em cache do número anterior** — a tela mostrava um código que
+ * nunca ia parear, ou nem isso.
+ *
+ * | estado antes | `connect?number=NOVO` devolve |
+ * |---|---|
+ * | `connecting` | o código antigo, em cache |
+ * | `open`       | nada (e a tela conclui "já pareado") |
+ * | `close`      | código novo |
+ *
+ * Também é a saída da instância presa em `connecting` depois de estourar o
+ * `QRCODE_LIMIT`: dali o connect nunca mais produz código novo.
+ *
+ * Logout e não `excluirInstancia` de propósito: preserva nome, token e config
+ * de webhook, e não abre a janela em que a instância não existe — se o create
+ * seguinte falhasse, o tenant ficaria sem instância nenhuma. Medido: é
+ * idempotente (200 mesmo já em `close`) e responde 404 quando a instância não
+ * existe, que é o caminho do primeiro acesso.
+ */
+export async function desconectarInstancia(instancia: string) {
+  await chamar(`/instance/logout/${encodeURIComponent(instancia)}`, {
+    metodo: "DELETE",
+  });
+}
+
+/**
  * Exclui a instância. O verbo é DELETE — com POST a Evolution v2 responde
  * `404 Cannot POST /instance/delete/...`, que é fácil de confundir com
  * "instância não existe".

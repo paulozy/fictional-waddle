@@ -57,7 +57,7 @@ export default function PrecoPage() {
                 Um estabelecimento, um número de WhatsApp.
               </p>
               <Button asChild size="lg" className="mt-6 w-full sm:w-auto">
-                <Link href="/login">Começar teste grátis</Link>
+                <Link href="/registro">Começar teste grátis</Link>
               </Button>
               <p className="mt-3 text-sm leading-6 text-muted-foreground sm:text-xs sm:leading-5">
                 {DIAS_TRIAL} dias grátis, sem cartão — o dobro do que a maioria
@@ -180,7 +180,7 @@ export default function PrecoPage() {
             painel conforme o bot fecha cada um.
           </p>
           <Button asChild size="lg" className="mt-8">
-            <Link href="/login">Começar teste grátis</Link>
+            <Link href="/registro">Começar teste grátis</Link>
           </Button>
         </div>
       </section>

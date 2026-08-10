@@ -125,7 +125,7 @@ export default function LandingPage() {
 
             <div className="mt-8 flex flex-wrap items-center gap-4">
               <Button asChild size="lg">
-                <Link href="/login">Começar teste grátis</Link>
+                <Link href="/registro">Começar teste grátis</Link>
               </Button>
               <p className="text-sm text-muted-foreground">
                 {DIAS_TRIAL} dias grátis, sem cartão.
@@ -282,7 +282,7 @@ export default function LandingPage() {
                 Um estabelecimento, um número de WhatsApp.
               </p>
               <Button asChild size="lg" className="mt-6 w-full sm:w-auto">
-                <Link href="/login">Começar teste grátis</Link>
+                <Link href="/registro">Começar teste grátis</Link>
               </Button>
               <p className="mt-3 text-sm leading-6 text-muted-foreground sm:text-xs sm:leading-5">
                 {DIAS_TRIAL} dias grátis, sem cartão. Cancele quando quiser.{" "}
@@ -327,7 +327,7 @@ export default function LandingPage() {
             inclusive quando você está com as mãos ocupadas.
           </p>
           <Button asChild size="lg" className="mt-8">
-            <Link href="/login">Começar teste grátis</Link>
+            <Link href="/registro">Começar teste grátis</Link>
           </Button>
         </div>
       </section>

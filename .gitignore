@@ -66,4 +66,5 @@ next-env.d.ts
 # com `/graphify`. Fica fora do repositório pelo mesmo motivo que `.next/`.
 graphify-out/
 
+# Certificados do túnel HTTPS local (`scripts/dev/tunel.mjs`).
 certificates

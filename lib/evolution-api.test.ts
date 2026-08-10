@@ -11,6 +11,7 @@ import {
 } from "vitest";
 import {
   ErroEvolutionApi,
+  NOME_EVENTOS_WEBHOOK,
   configurarWebhook,
   criarInstancia,
   enviarTexto,
@@ -288,6 +289,36 @@ describe("configurarWebhook", () => {
     expect(capturada?.corpo).toMatchObject({
       webhook: { enabled: true, byEvents: false },
     });
+  });
+});
+
+/**
+ * A lista de eventos assinados é premissa de segurança da pausa por atendimento
+ * humano, não só configuração.
+ *
+ * Medido na Evolution 2.3.7: o que **nós** enviamos por `sendText` chega como
+ * `SEND_MESSAGE`, e o que o **dono** digita chega como `MESSAGES_UPSERT` com
+ * `fromMe: true`. `lib/bot/webhook-payload.ts` usa exatamente essa separação para
+ * saber que o dono assumiu a conversa.
+ *
+ * Assinar `SEND_MESSAGE` faria toda mensagem do bot parecer o dono: o bot pausaria
+ * a si mesmo em toda conversa que atendesse, em silêncio e sem erro em lugar
+ * nenhum. Este teste afirma a **ausência** — no idioma dos testes de SEO que
+ * afirmam ausência de markup obsoleto — porque evento a mais não quebra nada de
+ * forma visível.
+ */
+describe("eventos assinados no webhook", () => {
+  it("NÃO assina SEND_MESSAGE: quebraria a detecção de atendimento humano", () => {
+    expect(NOME_EVENTOS_WEBHOOK).not.toContain("SEND_MESSAGE");
+  });
+
+  it("assina os quatro eventos que a aplicação trata", () => {
+    expect([...NOME_EVENTOS_WEBHOOK]).toEqual([
+      "MESSAGES_UPSERT",
+      "CONNECTION_UPDATE",
+      "QRCODE_UPDATED",
+      "STATUS_INSTANCE",
+    ]);
   });
 });
 

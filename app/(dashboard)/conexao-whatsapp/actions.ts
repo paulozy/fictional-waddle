@@ -5,10 +5,12 @@ import {
   ErroEvolutionApi,
   configurarWebhook,
   criarInstancia,
+  desconectarInstancia,
   obterEstadoConexao,
   obterQrCode,
   type EstadoConexao,
 } from "@/lib/evolution-api";
+import { fimDaPausa } from "@/lib/bot/pausa";
 import { criarClienteServidor, exigirUsuario } from "@/lib/supabase/server";
 
 export type ResultadoQrCode = {
@@ -51,6 +53,38 @@ function mensagemDeErro(erro: unknown): string {
   return `Erro inesperado ao preparar a conexão — ${detalhe}`;
 }
 
+/** Espera bruta pelo `close` depois do logout. Medido: chega em ~2s. */
+const TENTATIVAS_ESPERAR_CLOSE = 8;
+const INTERVALO_ESPERAR_CLOSE_MS = 500;
+
+/**
+ * Derruba a sessão atual e espera a instância chegar em `close`.
+ *
+ * A espera não é paranoia: o `close` é **assíncrono** ao 200 do logout, e pedir
+ * o QR antes dele devolve o código em cache — que é o bug que este caminho
+ * existe para consertar. Sai calada em qualquer falha (404 é primeiro acesso;
+ * o resto quem trata é o `obterQrCode` logo em seguida, com mensagem própria).
+ */
+async function reiniciarSessao(instancia: string): Promise<void> {
+  try {
+    await desconectarInstancia(instancia);
+  } catch (erro) {
+    if (!(erro instanceof ErroEvolutionApi && erro.status === 404)) {
+      console.error("conexao-whatsapp: logout falhou", erro);
+    }
+    return;
+  }
+
+  for (let i = 0; i < TENTATIVAS_ESPERAR_CLOSE; i += 1) {
+    await new Promise((r) => setTimeout(r, INTERVALO_ESPERAR_CLOSE_MS));
+    try {
+      if ((await obterEstadoConexao(instancia)) !== "conectado") return;
+    } catch {
+      return;
+    }
+  }
+}
+
 /**
  * Devolve um QR code para pareamento, criando a instância se ela ainda não
  * existir.
@@ -66,8 +100,25 @@ export async function gerarQrCode(
    * precisaria lê-lo.
    */
   numero?: string,
+  /**
+   * Encerra a sessão atual antes de pedir o código.
+   *
+   * Ligado nos pedidos **manuais** do dono ("Conectar outro número", "Gerar
+   * novo QR code", "Tentar de novo") e desligado nas renovações automáticas.
+   * Sem isto, "Conectar outro número" não funcionava de jeito nenhum: com a
+   * instância em `open` o connect não devolve QR, a tela lia isso como "já
+   * pareado" e voltava ao cartão verde — sem erro, sem QR, sem pista. Ver
+   * `desconectarInstancia` para a tabela de estado × resposta.
+   *
+   * A renovação **não** pode reiniciar: ela roda de dois em dois segundos com
+   * o QR na cara do dono, e derrubaria a sessão que ele está pareando naquele
+   * instante.
+   */
+  reiniciar = false,
 ): Promise<ResultadoQrCode> {
   const instancia = await nomeDaInstancia();
+
+  if (reiniciar) await reiniciarSessao(instancia);
 
   try {
     const qr = await obterQrCode(instancia, numero);
@@ -96,6 +147,22 @@ export async function gerarQrCode(
     // Instância existe mas não devolveu QR: pode já estar conectada.
     const estado = await obterEstadoConexao(instancia);
     if (estado === "conectado") {
+      /**
+       * Ainda conectada **depois** de um logout pedido: o logout não pegou.
+       * Devolver "sem QR e sem erro" aqui é o que fazia a tela voltar ao cartão
+       * verde em silêncio, como se o clique não existisse — o dono repetia o
+       * gesto e nada acontecia. Erro explícito, então, mesmo sendo raro.
+       */
+      if (reiniciar) {
+        return {
+          qrCodeBase64: null,
+          codigoPareamento: null,
+          erro: "Não foi possível encerrar a conexão atual para trocar de número. Tente de novo em instantes.",
+          regeracoes: null,
+          instanciaCriada: false,
+        };
+      }
+
       await registrarEstado(instancia, "conectado");
       revalidatePath("/conexao-whatsapp");
       return {
@@ -119,6 +186,7 @@ export async function gerarQrCode(
     if (erro instanceof ErroEvolutionApi && erro.status === 404) {
       return criarEConectar(instancia, numero);
     }
+
     return {
       qrCodeBase64: null,
       codigoPareamento: null,
@@ -246,4 +314,44 @@ export async function verificarConexao(): Promise<{
     }
     return { estado: "desconectado", erro: mensagemDeErro(erro) };
   }
+}
+
+/**
+ * Retoma o atendimento automático numa conversa, ou pausa por mais uma janela.
+ *
+ * Escreve com o client que **respeita RLS**, e não com o admin: aqui existe
+ * sessão de dono, então a policy `dono pausa e retoma suas conversas` é a
+ * barreira correta. O `.eq("usuario_id")` fica de todo jeito — o dia em que esta
+ * escrita migrar para o admin, ele é a única coisa entre dois tenants.
+ *
+ * O privilégio no banco é de **coluna** (`grant update (pausado_ate)`), então
+ * mesmo que esta action passasse a mandar `dados_temporarios` por engano, o
+ * Postgres recusaria. Ver `supabase/migrations/20260810210000_*`.
+ *
+ * `remoteJid` vem da própria listagem da tela, e não é segredo: a policy garante
+ * que só linhas do dono são alcançáveis, então um JID de outro tenant não afeta
+ * linha nenhuma em vez de vazar dado.
+ */
+export async function definirPausaConversa(
+  remoteJid: string,
+  pausar: boolean,
+): Promise<{ erro: string | null }> {
+  const usuarioId = await exigirUsuario();
+  const supabase = await criarClienteServidor();
+
+  const { error } = await supabase
+    .from("conversas_estado")
+    .update({ pausado_ate: pausar ? fimDaPausa(new Date()) : null })
+    .eq("usuario_id", usuarioId)
+    .eq("remote_jid", remoteJid);
+
+  if (error) {
+    console.error("conexao-whatsapp: falha ao definir pausa da conversa", {
+      codigo: error.code,
+    });
+    return { erro: "Não foi possível alterar o atendimento desta conversa." };
+  }
+
+  revalidatePath("/conexao-whatsapp");
+  return { erro: null };
 }

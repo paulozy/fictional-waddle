@@ -113,7 +113,7 @@ describe("PainelConexao", () => {
     await gerarCodigo();
 
     expect(qrNaTela()).not.toBeNull();
-    expect(gerarQrCode).toHaveBeenCalledWith("5511993235002");
+    expect(gerarQrCode).toHaveBeenCalledWith("5511993235002", true);
   });
 
   it("NÃO anuncia leitura enquanto o servidor responde 'conectando'", async () => {
@@ -191,5 +191,52 @@ describe("PainelConexao", () => {
     for (const chamada of gerarQrCode.mock.calls) {
       expect(chamada[0]).toBe("5511993235002");
     }
+  });
+  it("reinicia a sessão no pedido manual, e nunca na renovação", async () => {
+    /**
+     * O conserto de "Conectar outro número". Medido contra a Evolution 2.3.7:
+     * com a instância em `connecting` ou `open`, `connect?number=OUTRO`
+     * devolve o pairing code **em cache do número anterior**, ou nada — e só
+     * o logout, que leva a instância a `close`, faz sair código novo.
+     *
+     * A outra metade importa igual: reiniciar numa renovação derrubaria a
+     * sessão que o dono está pareando naquele instante, de dois em dois
+     * segundos.
+     */
+    render(<PainelConexao estadoInicial="desconectado" />);
+    await gerarCodigo();
+
+    expect(gerarQrCode.mock.calls[0][1]).toBe(true);
+
+    gerarQrCode.mockResolvedValue(respostaComQr({ regeracoes: 2 }));
+    await avancar(60_000);
+
+    for (const chamada of gerarQrCode.mock.calls.slice(1)) {
+      expect(chamada[1]).toBe(false);
+    }
+  });
+
+  it("avisa antes de derrubar uma conexão que está funcionando, e deixa desistir", async () => {
+    // O dono pode estar em horário de atendimento com o bot respondendo
+    // cliente: a troca não pode ser um clique sem aviso nem volta.
+    render(<PainelConexao estadoInicial="conectado" />);
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: /Conectar outro número/i }),
+      );
+    });
+
+    expect(screen.getByText(/a conexão atual é encerrada/i)).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Cancelar$/ }));
+    });
+
+    // Voltou ao cartão verde sem ter chamado a Evolution.
+    expect(
+      screen.getByRole("button", { name: /Conectar outro número/i }),
+    ).toBeTruthy();
+    expect(gerarQrCode).not.toHaveBeenCalled();
   });
 });

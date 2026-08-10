@@ -104,11 +104,56 @@ supabase/migrations/     schema versionado — fonte de verdade
 proxy.ts                 refresh de sessão (no Next 16 substitui middleware.ts)
 ```
 
+## Autenticação
+
+Sete telas em `app/(auth)/`, todas `noindex`:
+
+| Rota | Papel |
+| --- | --- |
+| `/login` | Entrar |
+| `/registro` | Cadastro, passo 1 — e-mail e senha |
+| `/registro/confirmar-email` | Aviso enquanto o e-mail não é confirmado |
+| `/registro/estabelecimento` | Passo 2 — nome e fuso horário (exige sessão) |
+| `/registro/whatsapp` | Passo 3 — número, que leva ao painel de pareamento (exige sessão) |
+| `/recuperar-senha` | Pede o link de redefinição |
+| `/redefinir-senha` | Define a senha nova (exige a sessão criada pelo link) |
+
+Os links de e-mail aterrissam em **`/auth/confirmar`**, que troca o token por sessão
+(`verifyOtp` para `?token_hash=`, `exchangeCodeForSession` para `?code=`) e só então
+redireciona. Duas consequências para configuração:
+
+- **A URL `/auth/confirmar` precisa estar na allowlist de Redirect URLs** do projeto
+  Supabase (Authentication → URL Configuration), com o domínio de produção e o de
+  desenvolvimento, e o **Site URL** precisa ser o domínio em uso. Quando o
+  `redirectTo` não vale, o Supabase manda o link para o Site URL — a doc é explícita
+  que ele é o destino padrão ([Redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls)) —
+  e o dono cai na landing com `?code=` na URL. Aconteceu em produção.
+
+  O `proxy.ts` resgata esse caso: `?code=` (ou `token_hash` + `type`) **na raiz** é
+  encaminhado para `/auth/confirmar` com a query intacta, e lá o destino sai do
+  estado do perfil, já que o `fluxo=` não sobrevive ao fallback. É rede de
+  segurança para links já enviados, não substituto da configuração.
+
+- Se o app roda em domínio próprio, defina **`SITE_URL`** na Vercel. Sem ela
+  `urlSite()` cai em `VERCEL_PROJECT_PRODUCTION_URL`, e o `redirectTo` sai apontando
+  para o endereço `*.vercel.app` — que precisaria estar na allowlist também.
+- **Com a confirmação de e-mail ligada, o cadastro se parte entre o passo 1 e o
+  passo 2**, por necessidade: `signUp` não devolve sessão, e os passos 2 e 3 escrevem
+  em `perfis` e criam instância na Evolution. O `supabase/config.toml` local tem
+  `enable_confirmations = false`, então em desenvolvimento os três passos correm
+  seguidos; para exercitar a emenda, ligue a opção e leia o e-mail no Inbucket
+  (<http://127.0.0.1:54324>).
+
+Templates de e-mail personalizados (com `{{ .TokenHash }}` apontando para
+`/auth/confirmar`) são **opcionais** e preferíveis: o formato `token_hash` não depende
+de cookie do navegador que iniciou, então funciona quando o dono se cadastra no
+computador e abre o link no celular.
+
 ## Onboarding de um estabelecimento
 
-1. Criar conta em `/login`. Um trigger no banco cria o perfil e semeia as três etapas de sistema do fluxo.
+1. Criar conta em `/registro`. Um trigger no banco cria o perfil e semeia as três etapas de sistema do fluxo; os passos 2 e 3 do cadastro já preenchem nome, fuso e número.
 2. Cadastrar serviços em `/servicos` e a grade semanal em `/horarios`.
-3. Em `/conexao-whatsapp`, gerar o QR code e ler com o WhatsApp do estabelecimento. A instância na Evolution API é criada na primeira solicitação de QR, nomeada com o `usuario_id`.
+3. Em `/conexao-whatsapp`, gerar o QR code e ler com o WhatsApp do estabelecimento. A instância na Evolution API é criada na primeira solicitação de QR, nomeada com o `usuario_id`. O passo 3 do cadastro chega aqui com `?numero=&iniciar=1`, já disparando a geração.
 4. Opcionalmente montar perguntas extras em `/fluxo-conversa`.
 
 ## Deploy
