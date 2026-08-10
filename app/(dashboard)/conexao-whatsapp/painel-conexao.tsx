@@ -168,7 +168,20 @@ export function PainelConexao({
          * viraria um piscar a cada dois segundos.
          */
 
-        const resultado = await gerarQrCode(numeroRef.current);
+        /**
+         * Pedido manual derruba a sessão antes de pedir o código; renovação
+         * não. A assimetria é o conserto de "Conectar outro número": com a
+         * instância em `open` (ou presa em `connecting`), a Evolution devolve
+         * o código **em cache do número anterior**, ou nada — e a tela lia o
+         * nada como "já pareado" e voltava ao cartão verde sem dizer nada.
+         *
+         * Do outro lado, reiniciar numa renovação derrubaria a sessão que o
+         * dono está pareando naquele exato instante, de dois em dois segundos.
+         */
+        const resultado = await gerarQrCode(
+          numeroRef.current,
+          motivo === "manual",
+        );
 
         if (resultado.erro) {
           setEstado({ nome: "erro", mensagem: resultado.erro });
@@ -405,6 +418,15 @@ export function PainelConexao({
         <FormularioNumero
           onEnviar={(numero) => void solicitar("manual", numero)}
           valorInicial={numeroInicial}
+          /**
+           * Só quem veio do cartão verde tem uma conexão a perder — e agora
+           * perde de verdade: gerar o código novo encerra a sessão atual,
+           * porque a Evolution só honra um número diferente com a instância em
+           * `close`. Dizer isso antes é o mínimo; o dono pode estar em horário
+           * de atendimento, com o bot respondendo cliente.
+           */
+          trocandoConexaoAtiva={trocando}
+          aoDesistir={trocando ? () => setTrocando(false) : undefined}
         />
       )}
 
@@ -607,9 +629,15 @@ function QrComContagem({
 function FormularioNumero({
   onEnviar,
   valorInicial = "",
+  trocandoConexaoAtiva = false,
+  aoDesistir,
 }: {
   onEnviar: (numero: string) => void;
   valorInicial?: string;
+  /** Há uma sessão funcionando que este formulário vai encerrar. */
+  trocandoConexaoAtiva?: boolean;
+  /** Volta ao cartão de conectado sem tocar na sessão. */
+  aoDesistir?: () => void;
 }) {
   const [valor, setValor] = useState(valorInicial);
   const [erro, setErro] = useState<string | null>(null);
@@ -630,6 +658,14 @@ function FormularioNumero({
         onEnviar(resultado.numero);
       }}
     >
+      {trocandoConexaoAtiva && (
+        <p className="mb-4 rounded-lg border border-aviso/40 bg-aviso-suave p-3 text-sm leading-relaxed text-aviso">
+          Ao gerar o código, a conexão atual é encerrada e o bot para de
+          responder até o novo número ser pareado. Se estiver em horário de
+          atendimento, faça a troca com o celular em mãos.
+        </p>
+      )}
+
       <label htmlFor="numero-whatsapp" className="block text-sm font-medium">
         Qual o número deste WhatsApp?
       </label>
@@ -660,6 +696,13 @@ function FormularioNumero({
           <QrCodeIcon className="size-4" />
           Conectar
         </Button>
+        {/* Sem isto, quem clicou em "Conectar outro número" por engano só
+            voltava recarregando a página. */}
+        {aoDesistir && (
+          <Button type="button" variant="ghost" onClick={aoDesistir}>
+            Cancelar
+          </Button>
+        )}
       </div>
 
       {erro && (

@@ -412,6 +412,20 @@ Estas quatro coisas foram medidas contra o servidor 2.3.7 real e contra o fonte 
 
 **Detectar a leitura não é possível nesta versão.** O Baileys emite `connection.update { isNewLogin: true }` no `pair-success` e `receivedPendingNotifications` no fim da sincronização, mas a Evolution desestrutura só `{ qr, connection, lastDisconnect }` e descarta os dois — nenhum endpoint, nenhum webhook. Entre a leitura e o `open` ela é literalmente muda: o WhatsApp força `restartRequired` (515) e o ramo de close reconecta sozinho sem emitir evento. **Não reintroduzir estado intermediário de "sincronizando" sem um sinal real.** Também não adianta inferir por `count` congelado (latência de ~50s, dispara quando já está `open` há um minuto) nem por `ownerJid`/`profileName` (gravados no mesmo update que `connectionStatus: 'open'`).
 
+**Trocar de número exige `logout` antes — e o motivo não é liberar o aparelho.** O controller da 2.3.7 **só honra o `number` do `/instance/connect` quando o estado é `close`**. Medido contra o servidor real, com instância descartável:
+
+| estado antes | `connect?number=NOVO` devolve |
+|---|---|
+| `connecting` | o pairing code **antigo, em cache** (mesmo com número diferente) |
+| `open` | nada — e a tela concluía "já pareado" e voltava ao cartão verde |
+| `close` | código novo |
+
+Era o bug de "Conectar outro número não gera QR": sem erro, sem código, sem pista. `desconectarInstancia` (`DELETE /instance/logout`) resolve, e é **logout e não delete** — preserva nome, token e config de webhook, e não abre a janela em que a instância não existe (se o create seguinte falhasse, o tenant ficaria sem instância nenhuma). Medido: idempotente (200 mesmo já em `close`) e 404 quando a instância não existe, que é o caminho do primeiro acesso.
+
+**O `close` é assíncrono ao 200 do logout** (~2s), então `gerarQrCode` espera o estado sair de `conectado` antes de pedir o código. Pedir antes devolve o cache, que é o bug de volta.
+
+**Só o pedido manual reinicia a sessão; a renovação automática nunca.** A renovação roda de dois em dois segundos com o QR na cara do dono — reiniciar ali derrubaria a sessão que ele está pareando naquele instante. Como efeito colateral desejado, o manual também é a saída da instância presa em `connecting` depois de estourar o `QRCODE_LIMIT`, de onde o connect nunca mais produz código novo.
+
 **`GET /instance/connect` não regenera QR e não consome o `QRCODE_LIMIT`.** Numa instância em `connecting` ele devolve o código **em cache** — três chamadas em 9s deixaram `count` em 4. Quem roda o relógio é o servidor, a cada `qrTimeout` de 45s, com ou sem aba aberta. Consequência: uma contagem regressiva local que reinicia a cada busca acumula erro de fase e exibe código morto dizendo que vale. Por isso `lib/qr-pareamento.ts` decide pelo `count` do servidor, e não pelo relógio do cliente; a validade de 45s é só display.
 
 **Estado transitório não se persiste.** `perfis.status_conexao_whatsapp` só tem `conectado`/`desconectado`, então gravar `conectando` virava `desconectado` — a cada 2-5s durante todo o pareamento, com corrida contra o `CONNECTION_UPDATE open` do webhook. `verificarConexao` agora só grava conclusão.
