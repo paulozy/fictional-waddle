@@ -17,14 +17,32 @@ import { criarClienteServidor } from "@/lib/supabase/server";
  * está sendo conectada — nunca um parâmetro da URL, que o atacante controla.
  */
 
+/**
+ * Redirect com `Location` **relativo**, sem inferir origem nenhuma.
+ *
+ * A versão anterior montava o destino a partir de `url.origin`, e isso quebrava
+ * atrás de proxy: com o app exposto por túnel, o `Host` chega como
+ * `localhost:3000` e o `x-forwarded-proto` como `https`, então a origem
+ * reconstruída virava `https://localhost:3000` — e o navegador tentava TLS
+ * contra um servidor de desenvolvimento em HTTP puro, resultando em
+ * `ERR_SSL_PROTOCOL_ERROR`.
+ *
+ * `Response.redirect()` exige URL absoluta, então a resposta é montada à mão:
+ * `Location` relativo é válido (RFC 7231 §7.1.2) e o navegador resolve contra a
+ * URL da requisição, que é sempre a origem certa — seja localhost, túnel ou
+ * produção. Nenhuma configuração nova, nenhuma adivinhação.
+ */
+function redirecionar(caminho: string) {
+  return new Response(null, { status: 303, headers: { Location: caminho } });
+}
+
 /** Volta para o painel com um código de resultado legível pela página. */
-function voltar(base: string, resultado: string) {
-  return Response.redirect(`${base}/pagamentos?conexao=${resultado}`, 303);
+function voltar(resultado: string) {
+  return redirecionar(`/pagamentos?conexao=${resultado}`);
 }
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const base = url.origin;
 
   /**
    * A sessão é a primeira coisa, e é o que amarra o token a um dono.
@@ -38,7 +56,20 @@ export async function GET(request: Request) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) return Response.redirect(`${base}/login`, 303);
+  /**
+   * Sem sessão, o mais provável não é "deslogou": é o app ter sido navegado
+   * numa origem e o provedor ter devolvido em outra (localhost vs. túnel).
+   * Cookie não atravessa origem, então o callback chega anônimo. O aviso na
+   * página de login dá o nome disso — sem ele, o sintoma é um logout
+   * inexplicável no meio da conexão.
+   */
+  if (!user) {
+    console.warn("callback do Mercado Pago sem sessão", {
+      host: url.host,
+      dica: "o app precisa ser navegado na MESMA origem do redirect_uri",
+    });
+    return redirecionar("/login?motivo=sessao_perdida_no_oauth");
+  }
 
   const erroDoProvedor = url.searchParams.get("error");
   if (erroDoProvedor) {
@@ -47,7 +78,7 @@ export async function GET(request: Request) {
       usuario_id: user.id,
       erro: erroDoProvedor,
     });
-    return voltar(base, "recusada");
+    return voltar("recusada");
   }
 
   const codigo = url.searchParams.get("code");
@@ -64,7 +95,7 @@ export async function GET(request: Request) {
     console.warn("callback do Mercado Pago com state inválido", {
       usuario_id: user.id,
     });
-    return voltar(base, "state_invalido");
+    return voltar("state_invalido");
   }
 
   try {
@@ -80,13 +111,13 @@ export async function GET(request: Request) {
      */
     await salvarCredenciais(criarClienteAdmin(), user.id, tokens);
 
-    return voltar(base, "ok");
+    return voltar("ok");
   } catch (erro) {
     console.error("falha ao concluir OAuth do Mercado Pago", {
       usuario_id: user.id,
       erro: erro instanceof Error ? erro.message : String(erro),
     });
-    return voltar(base, "falhou");
+    return voltar("falhou");
   }
 }
 

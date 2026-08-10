@@ -4,11 +4,7 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import {
-  desconectarMercadoPago,
-  estornarSinal,
-  iniciarConexaoMercadoPago,
-} from "./actions";
+import { desconectarMercadoPago, estornarSinal } from "./actions";
 
 /**
  * Ilha de cliente da tela de pagamentos.
@@ -16,34 +12,6 @@ import {
  * A página em volta segue Server Component: só os botões precisam de estado de
  * envio. Mesmo recorte de `navegacao-dashboard.tsx` — hidratar o mínimo.
  */
-
-export function BotaoConectar() {
-  const [enviando, iniciar] = useTransition();
-
-  function conectar() {
-    iniciar(async () => {
-      const resultado = await iniciarConexaoMercadoPago();
-
-      if (!resultado.url) {
-        toast.error(resultado.erro);
-        return;
-      }
-
-      /**
-       * Navegação de página inteira, não `router.push`: o destino é o domínio do
-       * Mercado Pago. Um push do Next tentaria resolver a rota internamente e
-       * não sairia do lugar.
-       */
-      window.location.href = resultado.url;
-    });
-  }
-
-  return (
-    <Button onClick={conectar} disabled={enviando}>
-      {enviando ? "Abrindo o Mercado Pago…" : "Conectar conta do Mercado Pago"}
-    </Button>
-  );
-}
 
 export function BotaoDesconectar() {
   const [enviando, iniciar] = useTransition();

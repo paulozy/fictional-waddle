@@ -10,6 +10,7 @@ export const ROTAS_PROTEGIDAS = [
   "/horarios",
   "/agendamentos",
   "/fluxo-conversa",
+  "/pagamentos",
 ] as const;
 
 export const ROTA_LOGIN = "/login";

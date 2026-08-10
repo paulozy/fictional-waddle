@@ -2,8 +2,9 @@
 
 import { randomBytes } from "node:crypto";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 import { envObrigatoria } from "@/lib/config";
 import {
@@ -24,8 +25,6 @@ import { criarClienteServidor, exigirUsuario } from "@/lib/supabase/server";
  * — um `ErroMercadoPago` cru chegando à UI vira "erro inesperado", sem nada que
  * indique a causa nem o que fazer.
  */
-
-export type ResultadoConexao = { url: string; erro: null } | { url: null; erro: string };
 
 function redirectUri(): string {
   return envObrigatoria("MERCADO_PAGO_REDIRECT_URI");
@@ -65,24 +64,46 @@ function mensagemDeErro(erro: unknown): string {
  * OUTRA conta Mercado Pago — e nós gravaríamos aquela conta como destino dos
  * sinais dele. É CSRF com dinheiro na ponta.
  */
-export async function iniciarConexaoMercadoPago(): Promise<ResultadoConexao> {
+export async function conectarMercadoPago(): Promise<void> {
   await exigirUsuario();
 
+  let destino: string;
+
+  /**
+   * Nenhum `redirect()` dentro do `try`.
+   *
+   * `redirect()` sinaliza por exceção (`NEXT_REDIRECT`), então chamá-lo aqui
+   * dentro faria o próprio `catch` engolir a navegação e transformá-la num erro
+   * genérico. Montar o destino primeiro e navegar uma única vez no fim remove
+   * essa classe inteira de problema.
+   */
   try {
-    const state = randomBytes(32).toString("base64url");
+    const origemDoRedirect = new URL(redirectUri()).origin;
+    const origemAtual = (await headers()).get("origin");
 
-    (await cookies()).set(COOKIE_STATE, state, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 600,
-    });
+    if (origemAtual && origemAtual !== origemDoRedirect) {
+      destino = "/pagamentos?conexao=origem_divergente";
+    } else {
+      const state = randomBytes(32).toString("base64url");
 
-    return { url: urlDeAutorizacao({ redirectUri: redirectUri(), state }), erro: null };
+      (await cookies()).set(COOKIE_STATE, state, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 600,
+      });
+
+      destino = urlDeAutorizacao({ redirectUri: redirectUri(), state });
+    }
   } catch (erro) {
-    return { url: null, erro: mensagemDeErro(erro) };
+    console.error("falha ao iniciar conexão com o Mercado Pago", {
+      erro: erro instanceof Error ? erro.message : String(erro),
+    });
+    destino = "/pagamentos?conexao=erro_ao_iniciar";
   }
+
+  redirect(destino);
 }
 
 export async function desconectarMercadoPago(): Promise<{ erro: string | null }> {

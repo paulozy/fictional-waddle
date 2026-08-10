@@ -65,3 +65,5 @@ next-env.d.ts
 # Saída do graphify: artefato gerado (~2,4 MB entre HTML e JSON) e regenerável
 # com `/graphify`. Fica fora do repositório pelo mesmo motivo que `.next/`.
 graphify-out/
+
+certificates

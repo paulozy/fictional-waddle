@@ -3,12 +3,8 @@ import type { Metadata } from "next";
 import { formatarValor } from "@/lib/bot/mensagens-pagamento";
 import { motivoSemCobranca } from "@/lib/pagamentos/capacidade";
 import { criarClienteServidor, exigirUsuario } from "@/lib/supabase/server";
-import { salvarPrazoSinal } from "./actions";
-import {
-  BotaoConectar,
-  BotaoDesconectar,
-  BotaoEstornar,
-} from "./painel-pagamentos";
+import { conectarMercadoPago, salvarPrazoSinal } from "./actions";
+import { BotaoDesconectar, BotaoEstornar } from "./painel-pagamentos";
 
 export const metadata: Metadata = { title: "Pagamentos" };
 
@@ -16,13 +12,35 @@ export const metadata: Metadata = { title: "Pagamentos" };
 const AVISOS: Record<string, { texto: string; tom: "ok" | "erro" }> = {
   ok: { texto: "Conta conectada. O bot já pode cobrar sinal.", tom: "ok" },
   recusada: { texto: "Você cancelou a autorização no Mercado Pago.", tom: "erro" },
+  /**
+   * Na prática, a causa quase nunca é "expirou".
+   *
+   * O `state` vive num cookie gravado na origem em que a conexão começou, e o
+   * callback chega na origem do `redirect_uri`. Origens diferentes — abrir o
+   * painel por um endereço e ter o redirect apontando para outro — e o cookie
+   * não acompanha. Dizer só "expirou" mandava o dono repetir o mesmo caminho
+   * errado indefinidamente.
+   */
   state_invalido: {
     texto:
-      "O link de retorno expirou ou não confere. Comece a conexão de novo por aqui.",
+      "A conexão começou em um endereço e voltou em outro, então o link de retorno não confere. " +
+      "Abra o painel pelo mesmo endereço cadastrado no Mercado Pago e comece de novo por lá. " +
+      "(Se o endereço estiver certo, o link pode ter expirado — são 10 minutos.)",
     tom: "erro",
   },
   falhou: {
     texto: "Não foi possível concluir a conexão. Tente de novo em instantes.",
+    tom: "erro",
+  },
+  origem_divergente: {
+    texto:
+      "Você está acessando o painel por um endereço diferente do que está cadastrado no Mercado Pago. " +
+      "A conexão precisa começar e terminar no mesmo endereço — abra o painel pelo endereço cadastrado e tente de novo.",
+    tom: "erro",
+  },
+  erro_ao_iniciar: {
+    texto:
+      "Não foi possível montar o link de autorização. Isso é configuração deste ambiente, não da sua conta — o log do servidor tem o motivo.",
     tom: "erro",
   },
 };
@@ -132,9 +150,29 @@ export default async function PagamentosPage({
                   painel do Mercado Pago. Não pedimos sua senha nem acesso ao seu
                   saldo — só a permissão de gerar cobranças em seu nome.
                 </p>
-                <div className="mt-4">
-                  <BotaoConectar />
-                </div>
+                {/**
+                  * `<form action>` e não ilha de cliente.
+                  *
+                  * A versão anterior era um botão com `onClick` que chamava a
+                  * Server Action e navegava com `window.location`. Dois modos de
+                  * falha, os dois silenciosos: se a hidratação não acontecesse, o
+                  * clique não fazia NADA; e se a ação rejeitasse, o erro morria
+                  * dentro do `startTransition`, sem `catch`. "Não acontece nada"
+                  * é o pior desfecho possível — não dá nem para começar a
+                  * diagnosticar.
+                  *
+                  * Com formulário, o navegador envia mesmo sem JavaScript, e a
+                  * própria ação decide o destino: ou o Mercado Pago, ou de volta
+                  * para cá com um código de erro que a página sabe explicar.
+                  */}
+                <form action={conectarMercadoPago} className="mt-4">
+                  <button
+                    type="submit"
+                    className="inline-flex h-10 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground max-md:h-11"
+                  >
+                    Conectar conta do Mercado Pago
+                  </button>
+                </form>
               </>
             )}
           </section>

@@ -69,8 +69,38 @@ function notificar(pagamentoId, segredo) {
   );
 }
 
+/**
+ * A porta precisa estar LIVRE antes de subir. Isto não é higiene: é correção.
+ *
+ * `esperarSubir` só pergunta "alguém responde nesta porta?", e um `next start`
+ * órfão de uma execução anterior responde na hora — servindo código velho. As
+ * verificações passam a medir o processo errado, e o modo de falha é o pior
+ * possível: verde quando deveria ser vermelho, ou vermelho apontando para um
+ * bug que já foi corrigido. Aconteceu, e custou uma rodada inteira de
+ * diagnóstico atrás de um redirect que o código atual já não produzia.
+ */
+async function exigirPortaLivre() {
+  try {
+    await fetch(`${BASE}/login`, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(2000),
+    });
+  } catch {
+    return; // ninguém atendeu: é o que queremos
+  }
+
+  throw new Error(
+    `já existe algo escutando em ${BASE} — provavelmente um servidor órfão de ` +
+      "uma execução anterior. Encerre-o antes de rodar: " +
+      `\`ss -lptn 'sport = :${PORTA}'\` mostra o PID.`,
+  );
+}
+
 async function esperarSubir(tentativas = 60) {
   for (let i = 0; i < tentativas; i += 1) {
+    if (servidor.exitCode !== null) {
+      throw new Error(`o servidor morreu ao subir (código ${servidor.exitCode})`);
+    }
     try {
       const r = await fetch(`${BASE}/login`, { redirect: "manual" });
       if (r.status < 500) return;
@@ -86,6 +116,8 @@ const casos = [];
 function verificar(nome, condicao, detalhe) {
   casos.push({ nome, ok: Boolean(condicao), detalhe });
 }
+
+await exigirPortaLivre();
 
 const servidor = spawn("npx", ["next", "start", "--port", String(PORTA)], {
   env: AMBIENTE,
@@ -141,11 +173,26 @@ try {
     `${BASE}/api/pagamentos/mercadopago/callback?code=x&state=y`,
     { redirect: "manual" },
   );
+  const destino = callback.headers.get("location") ?? "";
   verificar(
     "callback do OAuth existe e exige sessão",
-    callback.status === 303 &&
-      (callback.headers.get("location") ?? "").endsWith("/login"),
-    `status ${callback.status}, location ${callback.headers.get("location")}`,
+    callback.status === 303 && destino.startsWith("/login"),
+    `status ${callback.status}, location ${destino}`,
+  );
+
+  /**
+   * O `Location` tem de ser RELATIVO. É regressão travada, não capricho.
+   *
+   * A versão anterior montava o destino a partir de `url.origin`, e atrás de
+   * túnel o `Host` chega como `localhost:3000` com `x-forwarded-proto: https` —
+   * o redirect virava `https://localhost:3000/...` e o navegador morria em
+   * `ERR_SSL_PROTOCOL_ERROR` contra um dev server em HTTP puro. Um destino
+   * relativo é resolvido pelo navegador contra a origem real, sempre.
+   */
+  verificar(
+    "redirect do callback é relativo (não infere origem)",
+    destino.startsWith("/") && !destino.includes("://"),
+    `location ${destino}`,
   );
 } finally {
   servidor.kill("SIGTERM");
