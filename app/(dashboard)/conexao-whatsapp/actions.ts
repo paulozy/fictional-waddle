@@ -10,6 +10,7 @@ import {
   obterQrCode,
   type EstadoConexao,
 } from "@/lib/evolution-api";
+import { fimDaPausa } from "@/lib/bot/pausa";
 import { criarClienteServidor, exigirUsuario } from "@/lib/supabase/server";
 
 export type ResultadoQrCode = {
@@ -313,4 +314,44 @@ export async function verificarConexao(): Promise<{
     }
     return { estado: "desconectado", erro: mensagemDeErro(erro) };
   }
+}
+
+/**
+ * Retoma o atendimento automático numa conversa, ou pausa por mais uma janela.
+ *
+ * Escreve com o client que **respeita RLS**, e não com o admin: aqui existe
+ * sessão de dono, então a policy `dono pausa e retoma suas conversas` é a
+ * barreira correta. O `.eq("usuario_id")` fica de todo jeito — o dia em que esta
+ * escrita migrar para o admin, ele é a única coisa entre dois tenants.
+ *
+ * O privilégio no banco é de **coluna** (`grant update (pausado_ate)`), então
+ * mesmo que esta action passasse a mandar `dados_temporarios` por engano, o
+ * Postgres recusaria. Ver `supabase/migrations/20260810210000_*`.
+ *
+ * `remoteJid` vem da própria listagem da tela, e não é segredo: a policy garante
+ * que só linhas do dono são alcançáveis, então um JID de outro tenant não afeta
+ * linha nenhuma em vez de vazar dado.
+ */
+export async function definirPausaConversa(
+  remoteJid: string,
+  pausar: boolean,
+): Promise<{ erro: string | null }> {
+  const usuarioId = await exigirUsuario();
+  const supabase = await criarClienteServidor();
+
+  const { error } = await supabase
+    .from("conversas_estado")
+    .update({ pausado_ate: pausar ? fimDaPausa(new Date()) : null })
+    .eq("usuario_id", usuarioId)
+    .eq("remote_jid", remoteJid);
+
+  if (error) {
+    console.error("conexao-whatsapp: falha ao definir pausa da conversa", {
+      codigo: error.code,
+    });
+    return { erro: "Não foi possível alterar o atendimento desta conversa." };
+  }
+
+  revalidatePath("/conexao-whatsapp");
+  return { erro: null };
 }

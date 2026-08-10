@@ -117,22 +117,35 @@ export function ehBroadcast(remoteJid: string): boolean {
 }
 
 /**
- * Extrai a mensagem de um `MESSAGES_UPSERT`, ou `null` quando deve ser ignorada.
+ * Quem mandou a mensagem que chegou no `MESSAGES_UPSERT`.
  *
- * Motivos de ignorar, todos observados em produção:
- *  - `fromMe: true` — é a própria resposta do bot voltando; processar cria loop
- *  - grupo (`@g.us`) — o bot não atende grupo
- *  - `status@broadcast` — status do WhatsApp, não é conversa
- *  - mídia sem legenda (áudio, sticker, imagem) — a V0 é menu numerado
+ * `"dono"` é o próprio estabelecimento digitando na conversa do cliente, pelo
+ * celular ou pelo WhatsApp Web — o sinal de que ele assumiu o atendimento à mão.
+ * Não carrega texto porque a engine não vai interpretar nada: o único efeito é
+ * pausar o bot naquela conversa.
  */
-export function extrairMensagem(payload: unknown): MensagemWebhook | null {
+export type LeituraMensagem =
+  | { origem: "cliente"; mensagem: MensagemWebhook }
+  | { origem: "dono"; remoteJid: string; id: string }
+  | null;
+
+/**
+ * Cabeçalho comum a qualquer mensagem que valha a pena olhar.
+ *
+ * Devolve `null` no que se ignora **independente de quem mandou**:
+ *  - grupo (`@g.us`) — o bot não atende grupo, e o dono conversando em grupo
+ *    também não é atendimento a cliente
+ *  - `status@broadcast` — status do WhatsApp, não é conversa
+ *  - `key` incompleta (sem JID ou sem id)
+ */
+function lerCabecalho(
+  payload: unknown,
+): { dados: Registro; remoteJid: string; id: string; fromMe: boolean } | null {
   const dados = objeto(objeto(payload)?.data);
   if (!dados) return null;
 
   const chave = objeto(dados.key);
   if (!chave) return null;
-
-  if (chave.fromMe === true) return null;
 
   const remoteJid = texto(chave.remoteJid);
   const id = texto(chave.id);
@@ -140,23 +153,92 @@ export function extrairMensagem(payload: unknown): MensagemWebhook | null {
 
   if (ehGrupo(remoteJid) || ehBroadcast(remoteJid)) return null;
 
+  return { dados, remoteJid, id, fromMe: chave.fromMe === true };
+}
+
+/**
+ * Texto da mensagem, quando existe.
+ *
+ * Vem em `conversation` na mensagem simples e em `extendedTextMessage.text`
+ * quando há citação, link ou formatação. Mídia sem legenda (áudio, sticker,
+ * imagem) não tem texto nenhum — e a V0 é menu numerado.
+ */
+function textoDaMensagem(dados: Registro): string | null {
   const mensagem = objeto(dados.message);
   if (!mensagem) return null;
 
-  // O texto vem em `conversation` na mensagem simples e em
-  // `extendedTextMessage.text` quando há citação, link ou formatação.
   const conteudo =
     texto(mensagem.conversation) ??
     texto(objeto(mensagem.extendedTextMessage)?.text);
 
-  if (!conteudo || conteudo.trim().length === 0) return null;
+  return conteudo && conteudo.trim().length > 0 ? conteudo : null;
+}
+
+/**
+ * Lê um `MESSAGES_UPSERT` e diz de quem é a mensagem.
+ *
+ * **Porta única de propósito.** Antes existia um `extrairMensagem` que devolvia
+ * `null` para `fromMe: true`, e aquele `null` misturava três coisas diferentes:
+ * "não é conversa", "não tem texto" e "foi o dono que digitou". A terceira é
+ * informação valiosa — é o único sinal que o produto tem de que o dono assumiu o
+ * atendimento — e estava sendo jogada fora.
+ *
+ * ## Por que `fromMe` pode ser lido como "o dono digitou"
+ *
+ * Medido contra a Evolution 2.3.7 em 2026-08-10, instância descartável:
+ *
+ * | origem | evento | `fromMe` | `data.source` | `key.id` |
+ * |---|---|---|---|---|
+ * | cliente, celular dele | `messages.upsert` | `false` | `android` | `ACBBDAED…` |
+ * | dono, digitando no celular | `messages.upsert` | **`true`** | `android` | `AC95918F…` |
+ * | dono, pelo WhatsApp Web | `messages.upsert` | **`true`** | `web` | `3EB03BFB…` |
+ * | nós, por `sendText` | **`send.message`** | `true` | `web` | `3EB02FBC…` |
+ *
+ * A última linha é a que sustenta tudo: **o que nós enviamos nunca chega como
+ * `messages.upsert`**, só como `send.message` — evento que
+ * `NOME_EVENTOS_WEBHOOK` não assina. Verificado buscando os ids enviados em todo
+ * o tráfego capturado: zero ocorrências em `messages.upsert`. Logo, dentro deste
+ * evento, `fromMe: true` é sempre o dono, e não há necessidade de registrar os
+ * ids que enviamos para se distinguir deles.
+ *
+ * **`data.source` NÃO serve para isso**, e a medição confirmou o furo: o dono
+ * pelo WhatsApp Web e o nosso próprio envio dão os dois `web`, com id no mesmo
+ * formato `3EB0…` (é o `getDevice` do Baileys derivando o dispositivo do formato
+ * do id). Quem dependesse de `source` deixaria de detectar o dono no computador.
+ *
+ * **Cuidado ao mexer em `NOME_EVENTOS_WEBHOOK`:** assinar `SEND_MESSAGE`
+ * quebraria esta leitura em silêncio — toda mensagem do bot passaria a parecer o
+ * dono e pausaria o bot para aquele cliente, sem erro em lugar nenhum. Há teste
+ * afirmando a ausência do evento na lista.
+ */
+export function lerMensagem(payload: unknown): LeituraMensagem {
+  const cabecalho = lerCabecalho(payload);
+  if (!cabecalho) return null;
+
+  const { dados, remoteJid, id, fromMe } = cabecalho;
+
+  /**
+   * O dono não precisa ter mandado texto.
+   *
+   * Mandar uma foto do resultado, um áudio explicando o preço ou um sticker é
+   * intervenção humana igual — e exigir texto aqui deixaria o bot atropelando o
+   * dono justamente nos casos em que ele responde por áudio, que é o mais comum
+   * no WhatsApp brasileiro. Não há o que interpretar: o efeito é pausar.
+   */
+  if (fromMe) return { origem: "dono", remoteJid, id };
+
+  const conteudo = textoDaMensagem(dados);
+  if (!conteudo) return null;
 
   return {
-    id,
-    remoteJid,
-    texto: conteudo,
-    pushName: texto(dados.pushName),
-    telefone: telefoneDoJid(remoteJid),
+    origem: "cliente",
+    mensagem: {
+      id,
+      remoteJid,
+      texto: conteudo,
+      pushName: texto(dados.pushName),
+      telefone: telefoneDoJid(remoteJid),
+    },
   };
 }
 
@@ -243,6 +325,29 @@ export type NumeroDono = {
  * WhatsApp logada num aparelho, então é o que sustenta "um trial por número"
  * (ver `supabase/migrations/20260725121600_trial_por_numero.sql`).
  */
+/**
+ * JID do dono, pronto para receber mensagem — o canal de aviso do produto.
+ *
+ * Medido na Evolution 2.3.7 em 2026-08-10: `sendText` para o próprio número da
+ * instância entrega no self-chat (`send.message` + `SERVER_ACK`, e confirmado
+ * visualmente no aparelho). É o que permite avisar o dono sem coluna nova e sem
+ * mexer na decisão de privacidade — `perfis` guarda só
+ * `hmac_sha256(numero, TRIAL_HASH_PEPPER)`, e o número em claro nunca é
+ * persistido: vive o tempo de uma requisição, vindo do payload que já chegou.
+ *
+ * O domínio é preservado quando veio no payload. Quando não veio, assume
+ * `s.whatsapp.net`, que é de onde a Evolution tira o `wuid` (`client.user.id`).
+ * Isso **não** é reconstruir número de telefone (o que o CLAUDE.md proíbe para
+ * cliente final): não há DDI nem nono dígito inferido aqui, só o mesmo
+ * identificador que chegou, sem o sufixo de dispositivo.
+ */
+export function jidDoDono(payload: unknown): string | null {
+  const dono = extrairNumeroDono(payload);
+  if (!dono) return null;
+
+  return `${dono.numero}@${dono.dominio ?? "s.whatsapp.net"}`;
+}
+
 export function extrairNumeroDono(payload: unknown): NumeroDono | null {
   const corpo = objeto(payload);
   const bruto = texto(objeto(corpo?.data)?.wuid) ?? texto(corpo?.sender);

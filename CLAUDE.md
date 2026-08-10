@@ -95,6 +95,8 @@ Essa diferença afeta o desenho de dados, onboarding e o roteamento de webhooks 
 | `log_envio` | Registro de lembretes enviados. O CHECK aceita `tipo = 'confirmacao'`, mas **nada escreve esse valor**: o único escritor é o cron, sempre com `'lembrete'`. A confirmação sai pelo webhook e não é registrada |
 | `log_conexao` | Histórico append-only de transições de conexão e de motivo de queda. Único escritor é o webhook |
 
+`conversas_estado` também guarda `pausado_ate` — ver "Pausa para atendimento humano".
+
 ### Decisões de schema que não são óbvias
 
 Estas existem por um motivo concreto. Mexer nelas sem entender o motivo reintroduz o bug que elas resolvem.
@@ -334,7 +336,7 @@ O objetivo declarado era ser encontrado pesquisando o nome no Google. Isso depen
     confirmar/route.ts                → aterrissagem dos links de e-mail: verifyOtp / exchangeCodeForSession
   /(dashboard)
     layout.tsx                      → sessão, gate soft de assinatura, e a fonte única dos 6 destinos
-    conexao-whatsapp/page.tsx        → QR code, estado da instância e as 3 métricas
+    conexao-whatsapp/page.tsx        → QR code, estado da instância, as 3 métricas e o atendimento por conversa
     servicos/page.tsx                 → lista + cartão "novo serviço", duas colunas em `lg`
     horarios/page.tsx
     agendamentos/page.tsx             → dashboard com visão de calendário dos agendamentos
@@ -365,6 +367,7 @@ O objetivo declarado era ser encontrado pesquisando o nome no Google. Isso depen
   calendario.ts                       → layout da grade semanal (puro)
   agenda-lista.ts                     → deriva a lista de um dia do mesmo Calendario (puro)
   bot/
+    pausa.ts                          → janela de atendimento humano (puro): `pausaAtiva`, `fimDaPausa`
     engine-fluxo.ts                   → lê `fluxo_etapas` ordenadas e avança a conversa etapa a etapa (genérico, dirigido por configuração, não hardcoded)
     disponibilidade.ts                → calcula horários livres (horarios_disponiveis - agendamentos existentes)
 /vercel.json
@@ -542,6 +545,37 @@ Sobre o tamanho dos menus: **o 7±2 de Miller não se aplica** — ele é sobre 
 **Parse de data em texto ("20/08", "sexta") não entra.** A linha do projeto é léxico fechado de literais fixos (`AFIRMATIVAS`/`NEGATIVAS`), que não é NLP. Parse de data é generativo e ambíguo, e o modo de falha muda de "não entendi, aqui está o menu" para "entendi algo que você não quis dizer" — que é literalmente o que `/como-funciona` vende contra e afirma em público não existir. Com as três fases, o caminho numerado já alcança todo o horizonte, então um parser deixaria de resolver um problema.
 
 ---
+
+## Pausa para atendimento humano
+
+Com o bot ligado, o dono não tinha **nenhuma** forma de assumir a conversa: ele digitava no celular e o bot respondia por cima na mensagem seguinte do cliente, os dois falando ao mesmo tempo. A granularidade da pausa é **por conversa**, não por tenant — o dono atendendo um cliente à mão não é motivo para o bot parar de atender os outros seis —, e a chave dessa granularidade já existia: o unique `(usuario_id, remote_jid)` de `conversas_estado`. Por isso é **uma coluna** (`pausado_ate timestamptz`, nulo = ativo), não tabela nova. `lib/bot/pausa.ts` é a fonte única de "está pausada?", pura e sem Supabase, porque os consumidores leem a linha por caminhos diferentes (webhook com admin, painel com RLS).
+
+**O sinal de que o dono assumiu já chegava no webhook e era descartado.** Medido contra a Evolution 2.3.7 em 2026-08-10, com instância descartável e número real:
+
+| origem | evento | `key.fromMe` | `data.source` | `key.id` |
+|---|---|---|---|---|
+| cliente, celular dele | `messages.upsert` | `false` | `android` | `ACBBDAED…` |
+| **dono, digitando no celular** | `messages.upsert` | **`true`** | `android` | `AC95918F…` |
+| **dono, pelo WhatsApp Web** | `messages.upsert` | **`true`** | `web` | `3EB03BFB…` |
+| **nós, por `sendText`** | **`send.message`** | `true` | `web` | `3EB02FBC…` |
+
+A última linha é o que sustenta tudo: **envio por API nunca chega como `messages.upsert`**, só como `send.message` — evento que `NOME_EVENTOS_WEBHOOK` não assina (verificado buscando os ids enviados em todo o tráfego capturado: zero ocorrências). Logo, dentro daquele evento, `fromMe: true` é sempre o dono, e **não é preciso registrar os ids que enviamos** para se distinguir deles. **Assinar `SEND_MESSAGE` quebra isso em silêncio** — toda mensagem do bot pareceria o dono e pausaria o bot na própria conversa que ele atende, sem erro em lugar nenhum; há teste afirmando a *ausência* do evento na lista, no idioma dos testes de SEO. E **`data.source` não serve**: o dono pelo WhatsApp Web e o nosso envio dão os dois `web`, com id no mesmo formato `3EB0…` (é o `getDevice` do Baileys derivando dispositivo do formato do id).
+
+Decisões que não são óbvias:
+
+- **A mensagem do dono não precisa ter texto.** Áudio, foto e sticker contam como intervenção — exigir texto deixaria o bot atropelando o dono justamente quando ele responde por áudio, que é o mais comum aqui.
+- **O gate não escreve nada.** Não zera `dados_temporarios` (o cliente pode estar no meio da etapa de horário), não grava `ultima_mensagem_id` (a mensagem não foi processada) e não avisa o cliente — anunciar "o atendimento automático está pausado" seria o bot se intrometendo na conversa que ele saiu da frente para permitir. `pausado_ate` entra no `select` que já existia, então o gate custa **zero query**.
+- **`pausarPorAtendimentoHumano` é `upsert`, não `update`.** O dono abrir a conversa de um cliente que nunca falou com o bot e mandar a primeira mensagem é caso comum, não de borda. Não toca `atualizado_em`, que governa a expiração de 6h: rejuvenescer a conversa faria o cliente voltar semanas depois para uma etapa abandonada.
+- **O fail-safe é o INVERSO do de assinatura, de propósito.** Data inválida em `pausado_ate` **libera** o bot. Lá o risco de errar é receita, então bloqueia; aqui é o cliente do dono esperando resposta para sempre, então solta.
+- **A retomada não interpreta a mensagem que chegou.** `retomarConversa` reapresenta a etapa com um aviso. Durante a pausa o cliente conversou com uma pessoa, então a última lista que o bot apresentou pode estar dez mensagens atrás — ler um "1" daquele diálogo humano como opção de menu faria o bot avançar etapa por engano.
+- **A janela é renovada, não somada** (`fimDaPausa` a cada mensagem do dono), e o TTL de 60 min é constante de módulo: configurável por tenant é mais um campo digitado à mão onde typo vira bot mudo.
+- **O cron de lembrete ignora `pausado_ate`.** Lembrete é sobre agendamento confirmado, não sobre a conversa — e é ele que reduz no-show, que é o ROI que paga o mês.
+
+**A saída pelo lado do cliente (`0` / "atendente") é léxico fechado com comparação exata, nunca `includes`.** Substring transformaria "vou levar uma pessoa comigo" numa etapa `texto_livre` em silêncio do bot, e o modo de falha mudaria de "não entendi, aqui está o menu" para "entendi algo que você não quis dizer" — que é o que `/como-funciona` afirma em público que este produto não faz. O `0` só vale em etapa de menu (nos menus é livre porque `lerIndice` é 1-based; numa `texto_livre` é resposta legítima), e o intercepto fica **antes de tudo** em `decidir`, para funcionar na primeira mensagem, no meio do fluxo e dentro do cancelamento. A linha que anuncia a opção é colada no fim da mensagem da etapa, e só no primeiro contato e nas reapresentações de erro — anunciar em toda etapa inflaria cada pergunta, e mensagem separada seria duas notificações no celular do cliente.
+
+**O aviso ao dono usa o self-chat, e é o que impede a feature de ser pior que não existir** — sem ele, o cliente ouviria "avisei o pessoal", o bot silenciaria por uma hora e ninguém ficaria sabendo. Medido: `sendText` para o próprio número da instância entrega (`send.message` + `SERVER_ACK`, confirmado no aparelho). O número vem do `sender` do payload, **em memória**: `perfis` continua guardando só o HMAC, e é isso que sustenta a minimização de dados. O aviso identifica quem pediu (`pushName` → telefone → identificador do JID), senão o dono teria de abrir todas as conversas. Fail-open: falha de envio só vira log, porque a pausa já está gravada e um 500 faria a Evolution reentregar o webhook e o cliente receber a mesma mensagem várias vezes.
+
+**No painel, o privilégio de escrita é de COLUNA.** `grant update (pausado_ate)` mais policy de update: RLS decide quais linhas, o grant decide quais colunas. Um `grant update` de tabela abriria `dados_temporarios`, `etapa_atual_id` e `fluxo_snapshot` para o cliente autenticado — ou seja, reescrever à mão o estado de uma conversa em voo. As duas metades são necessárias: sem o grant a policy não basta, sem a policy o grant não basta. A seção em `/conexao-whatsapp` existe porque **pausar já tinha caminho natural** (digitar no WhatsApp) e **retomar não tinha nenhum**: quem pausou por engano esperava a hora vencer sozinha. Os rótulos e horários chegam **já formatados no fuso do negócio** pelo Server Component — o runtime da Vercel é UTC e o navegador do dono pode estar em qualquer fuso.
 
 ## Fluxo do cron de lembretes (`/api/cron/enviar-lembretes`)
 

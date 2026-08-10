@@ -191,8 +191,16 @@ export type EfeitoCriarAgendamento = {
   respostasExtras: Record<string, unknown>;
 };
 
+/**
+ * O cliente pediu para falar com uma pessoa.
+ *
+ * Não carrega dado nenhum: quem sabe qual conversa é, e para quem avisar, é o
+ * adaptador — a engine é pura e não conhece JID de dono nem coluna de banco.
+ */
+export type EfeitoPausarBot = { tipo: "pausar_bot" };
+
 /** União discriminada por `tipo`: o adaptador estreita antes de executar. */
-export type Efeito = EfeitoCriarAgendamento | EfeitoCancelar;
+export type Efeito = EfeitoCriarAgendamento | EfeitoCancelar | EfeitoPausarBot;
 
 export type Decisao = {
   /** Mensagens a enviar, na ordem. */
@@ -224,6 +232,63 @@ export const MAX_OPCOES_HORARIO_DO_DIA = 10;
 
 const AFIRMATIVAS = ["1", "sim", "s", "confirmar", "confirmo", "ok", "isso"];
 const NEGATIVAS = ["2", "nao", "não", "n", "cancelar", "cancela"];
+
+/**
+ * Léxico fechado de "quero falar com uma pessoa".
+ *
+ * **Comparação exata sobre o texto normalizado, nunca `includes`.** Substring
+ * pareceria mais generoso e é a armadilha: "vou levar uma pessoa comigo" numa
+ * etapa `texto_livre` silenciaria o bot, e o modo de falha mudaria de "não
+ * entendi, aqui está o menu" para "entendi algo que você não quis dizer" — que é
+ * exatamente o que `/como-funciona` afirma em público que este produto não faz.
+ * Quem escrever uma frase fora da lista cai no "Não entendi", que já vem com a
+ * linha dizendo para digitar 0.
+ *
+ * Está na mesma linha de `AFIRMATIVAS`/`NEGATIVAS`: literais fixos, não NLP.
+ */
+const PEDIDOS_ATENDENTE = [
+  "atendente",
+  "pessoa",
+  "humano",
+  "alguem",
+  "falar com atendente",
+  "falar com uma pessoa",
+  "falar com alguem",
+  "quero falar com atendente",
+  "quero falar com uma pessoa",
+  "quero falar com alguem",
+];
+
+/** A opção anunciada nos menus. Ver `ACAO_ATENDENTE` para o motivo do zero. */
+const ATENDENTE_POR_NUMERO = "0";
+
+/**
+ * Linha que anuncia a saída, colada no fim da mensagem.
+ *
+ * Uma mensagem só, e não uma segunda: duas mensagens seriam duas notificações no
+ * celular do cliente para cada pergunta do bot.
+ */
+const LINHA_ATENDENTE =
+  `Se preferir, digite ${ATENDENTE_POR_NUMERO} para falar com uma pessoa.`;
+
+/**
+ * O cliente está pedindo atendimento humano?
+ *
+ * O `0` só vale em etapa de menu numerado. Numa `texto_livre` ("Alguma
+ * observação?") um zero é resposta legítima, e engoli-lo silenciaria o bot no
+ * lugar de gravar a resposta — enquanto nos menus o zero é livre por construção,
+ * já que `lerIndice` é 1-based e rejeita zero.
+ */
+export function ehPedidoDeAtendente(
+  texto: string,
+  tipoEtapaAtual?: TipoEtapa,
+): boolean {
+  const limpo = normalizar(texto);
+
+  if (limpo === ATENDENTE_POR_NUMERO) return tipoEtapaAtual !== "texto_livre";
+
+  return PEDIDOS_ATENDENTE.includes(limpo);
+}
 
 function formatarPreco(preco: number | null): string {
   if (preco === null) return "";
@@ -795,7 +860,108 @@ function reapresentar(
   aviso: string,
 ): Decisao {
   const decisao = avancarPara(etapa, snapshot, dados, contexto);
-  return { ...decisao, mensagens: [aviso, ...decisao.mensagens] };
+
+  /**
+   * A saída para atendimento humano é anunciada aqui, e não em `avancarPara`.
+   *
+   * `reapresentar` é o caminho do "não entendi" — o cliente acabou de errar o
+   * formato, e é o momento exato em que ele precisa saber que existe uma pessoa
+   * do outro lado. Anunciar em toda apresentação de etapa inflaria cada pergunta
+   * do fluxo com uma linha que a maioria nunca vai usar.
+   */
+  return comLinhaDeAtendente({
+    ...decisao,
+    mensagens: [aviso, ...decisao.mensagens],
+  });
+}
+
+/**
+ * Cola a linha do atendente no fim da última mensagem.
+ *
+ * Só quando a decisão apresentou uma etapa (`estado` não nulo): sem etapa, o que
+ * está na tela é "o atendimento automático não está configurado" ou o fecho de um
+ * agendamento, e oferecer uma pessoa ali é ruído ou promessa que ninguém pediu.
+ */
+function comLinhaDeAtendente(decisao: Decisao): Decisao {
+  const ultima = decisao.mensagens.at(-1);
+  if (!decisao.estado || !ultima) return decisao;
+
+  const mensagens = [...decisao.mensagens];
+  mensagens[mensagens.length - 1] = `${ultima}\n\n${LINHA_ATENDENTE}`;
+
+  return { ...decisao, mensagens };
+}
+
+/**
+ * Mensagem ao cliente quando ele pede uma pessoa.
+ *
+ * Não promete prazo ("em alguns minutos", "logo"): quem responde é o dono, entre
+ * atendimentos, e o produto não tem como saber quando ele vai olhar o celular.
+ * Promessa que o sistema não controla é a que queima confiança.
+ */
+export const AVISO_CHAMANDO_PESSOA =
+  "Certo, avisei o pessoal do estabelecimento. " +
+  "Vou parar as respostas automáticas aqui para não atrapalhar a conversa de vocês.";
+
+/**
+ * Sai do fluxo e entrega a conversa a uma pessoa.
+ *
+ * O estado é **preservado como está**, não zerado: se o dono não responder e a
+ * janela vencer, `retomarConversa` reapresenta a etapa em que o cliente parou. Uma
+ * conversa que voltasse do zero depois de o cliente pedir ajuda seria a pior das
+ * duas experiências.
+ */
+function chamarPessoa(estado: EstadoConversa | null): Decisao {
+  return {
+    mensagens: [AVISO_CHAMANDO_PESSOA],
+    estado,
+    efeitos: [{ tipo: "pausar_bot" }],
+  };
+}
+
+/**
+ * Aviso de que o bot voltou depois do atendimento humano.
+ *
+ * Exportado para o teste poder afirmar o prefixo sem repetir a string — e para o
+ * dia em que o texto for revisto, que é onde as páginas de `/privacidade` e
+ * `/termos` costumam ficar desatualizadas.
+ */
+export const AVISO_RETOMADA =
+  "Voltei ao atendimento automático. Vamos continuar de onde paramos:";
+
+/**
+ * Retoma a conversa depois de a janela de atendimento humano expirar.
+ *
+ * A mensagem que chegou **não é interpretada como resposta**, e essa é a decisão
+ * central aqui. Durante a pausa o cliente conversou com uma pessoa, então a
+ * última lista que o bot apresentou pode ter dez mensagens de distância — ler um
+ * "1" daquela conversa humana como "opção 1 do menu" faria o bot avançar etapa
+ * por engano, com o cliente sem nunca ter visto o menu. Reapresentar é a única
+ * leitura honesta do que o bot sabe.
+ *
+ * Cai em `iniciar` quando não há etapa para onde voltar — estado sem etapa, etapa
+ * que saiu do snapshot (o dono editou o fluxo durante a pausa) ou a pseudo-etapa
+ * de cancelamento, que não existe no snapshot. Recomeçar é melhor que travar, que
+ * é a mesma regra do `decidir`.
+ */
+export function retomarConversa(
+  contexto: ContextoConversa,
+  estado: EstadoConversa | null,
+): Decisao {
+  if (!estado?.etapaAtualId) return iniciar(contexto);
+
+  const snapshot = ordenar(estado.fluxoSnapshot);
+  const etapaAtual = snapshot.find((e) => e.id === estado.etapaAtualId);
+
+  if (!etapaAtual) return iniciar(contexto);
+
+  return reapresentar(
+    etapaAtual,
+    snapshot,
+    { ...estado.dadosTemporarios },
+    contexto,
+    AVISO_RETOMADA,
+  );
 }
 
 /**
@@ -810,15 +976,34 @@ export function decidir(
   estado: EstadoConversa | null,
   mensagem: MensagemRecebida,
 ): Decisao {
+  /**
+   * "Quero falar com uma pessoa" vem **antes de tudo**, e a posição é a decisão.
+   *
+   * Antes do dispatch do snapshot pelo mesmo motivo do cancelamento (o id
+   * reservado não está no snapshot), e antes também do ramo de conversa nova: o
+   * pedido tem de funcionar na primeira mensagem, no meio da etapa de horário e
+   * dentro do fluxo de cancelamento, sem cada um desses caminhos precisar saber
+   * que a saída existe.
+   */
+  const etapaCorrente = estado?.etapaAtualId
+    ? ordenar(estado.fluxoSnapshot).find((e) => e.id === estado.etapaAtualId)
+    : undefined;
+
+  if (ehPedidoDeAtendente(mensagem.texto, etapaCorrente?.tipo)) {
+    return chamarPessoa(estado);
+  }
+
   if (!estado || !estado.etapaAtualId || conversaExpirou(estado, contexto)) {
     /**
      * Conversa nova (ou expirada): quem já tem horário marcado escolhe entre marcar
      * e cancelar; quem não tem cai em `iniciar` exatamente como antes. O custo de
      * +1 mensagem não é pago por quem só quer agendar.
      */
-    return temAgendamentoParaCancelar(contexto)
-      ? apresentarEntrada(contexto)
-      : iniciar(contexto);
+    return comLinhaDeAtendente(
+      temAgendamentoParaCancelar(contexto)
+        ? apresentarEntrada(contexto)
+        : iniciar(contexto),
+    );
   }
 
   /**

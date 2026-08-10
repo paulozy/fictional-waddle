@@ -49,14 +49,42 @@ vi.mock("@/lib/evolution-api", () => ({
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+
+/**
+ * Builder encadeável, e não um `eq` que já resolve: `definirPausaConversa` filtra
+ * por `usuario_id` **e** `remote_jid`, então um mock de um nível só passaria a
+ * testar a forma do mock em vez do action.
+ */
+const escrita = vi.hoisted(() => ({
+  tabela: null as string | null,
+  valores: null as Record<string, unknown> | null,
+  filtros: [] as [string, unknown][],
+  erro: null as { code: string } | null,
+}));
+
 vi.mock("@/lib/supabase/server", () => ({
   exigirUsuario: async () => "dono-1",
   criarClienteServidor: async () => ({
-    from: () => ({ update: () => ({ eq: async () => ({}) }) }),
+    from: (tabela: string) => {
+      const builder: Record<string, unknown> = {
+        update: (valores: Record<string, unknown>) => {
+          escrita.tabela = tabela;
+          escrita.valores = valores;
+          return builder;
+        },
+        eq: (coluna: string, valor: unknown) => {
+          escrita.filtros.push([coluna, valor]);
+          return builder;
+        },
+        then: (resolver: (v: { error: unknown }) => unknown) =>
+          Promise.resolve({ error: escrita.erro }).then(resolver),
+      };
+      return builder;
+    },
   }),
 }));
 
-const { gerarQrCode } = await import("./actions");
+const { definirPausaConversa, gerarQrCode } = await import("./actions");
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -169,5 +197,72 @@ describe("gerarQrCode", () => {
 
     expect(resultado.qrCodeBase64).toBeNull();
     expect(resultado.erro).toMatch(/encerrar a conexão atual/i);
+  });
+});
+
+/**
+ * Pausa e retomada de uma conversa pelo painel.
+ *
+ * O caminho normal de pausar é o dono digitar no WhatsApp (detectado no webhook);
+ * esta action existe porque o **inverso** não tinha caminho nenhum — quem pausou
+ * por engano esperava a janela de uma hora vencer sozinha.
+ */
+describe("definirPausaConversa", () => {
+  const JID = "5511999998888@s.whatsapp.net";
+
+  beforeEach(() => {
+    escrita.tabela = null;
+    escrita.valores = null;
+    escrita.filtros = [];
+    escrita.erro = null;
+  });
+
+  it("retomar grava null em pausado_ate", async () => {
+    const { erro } = await definirPausaConversa(JID, false);
+
+    expect(erro).toBeNull();
+    expect(escrita.tabela).toBe("conversas_estado");
+    expect(escrita.valores).toEqual({ pausado_ate: null });
+  });
+
+  it("pausar grava um instante no futuro", async () => {
+    await definirPausaConversa(JID, true);
+
+    const valor = escrita.valores?.pausado_ate as string;
+    expect(Date.parse(valor)).toBeGreaterThan(Date.now());
+  });
+
+  /**
+   * A escrita só toca a coluna da pausa. Se um dia mandasse `dados_temporarios`
+   * ou `etapa_atual_id`, reescreveria à mão o estado de uma conversa em voo — e o
+   * `grant update (pausado_ate)` do banco recusaria, o que viraria erro genérico
+   * na cara do dono em vez de bug de dado.
+   */
+  it("não escreve nenhuma outra coluna de conversas_estado", async () => {
+    await definirPausaConversa(JID, true);
+
+    expect(Object.keys(escrita.valores ?? {})).toEqual(["pausado_ate"]);
+  });
+
+  /**
+   * O filtro por tenant não é redundância sob RLS: é a única barreira no dia em
+   * que esta escrita migrar para o client admin, que ignora RLS.
+   */
+  it("filtra por tenant e por conversa", async () => {
+    await definirPausaConversa(JID, true);
+
+    expect(escrita.filtros).toEqual([
+      ["usuario_id", "dono-1"],
+      ["remote_jid", JID],
+    ]);
+  });
+
+  it("erro do banco vira mensagem, não exceção", async () => {
+    escrita.erro = { code: "42501" };
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { erro } = await definirPausaConversa(JID, true);
+
+    expect(erro).toMatch(/não foi possível/i);
   });
 });

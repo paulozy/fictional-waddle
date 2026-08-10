@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { instanteNoFuso } from "./disponibilidade";
 import {
+  AVISO_CHAMANDO_PESSOA,
+  AVISO_RETOMADA,
+  ehPedidoDeAtendente,
   conversaExpirou,
   decidir,
+  retomarConversa,
   mensagemAgendamentoConfirmado,
   respostasCustomizadas,
   type ContextoConversa,
@@ -215,8 +219,20 @@ describe("entrada inválida", () => {
     expect(estado?.etapaAtualId).toBe("etapa-servico");
   });
 
-  it("rejeita zero (a lista é 1-based)", () => {
-    const { estado } = conversar(contexto(), ["oi", "0"]);
+  /**
+   * O zero deixou de ser "índice inválido" e passou a ser o atalho de atendimento
+   * humano — `lerIndice` continua 1-based, então nenhum menu perdeu opção.
+   *
+   * Este teste era "rejeita zero", e continuava **passando** depois da mudança:
+   * `chamarPessoa` preserva o estado, então a etapa não muda de qualquer jeito. Um
+   * teste que passa pelo motivo errado é pior que um que quebra, daí a asserção
+   * agora ser sobre o efeito.
+   */
+  it("zero não é entrada inválida: é o pedido de atendimento humano", () => {
+    const { ultima, estado } = conversar(contexto(), ["oi", "0"]);
+
+    expect(ultima.efeitos).toEqual([{ tipo: "pausar_bot" }]);
+    expect(ultima.mensagens[0]).not.toMatch(/Não entendi/);
     expect(estado?.etapaAtualId).toBe("etapa-servico");
   });
 
@@ -1056,5 +1072,175 @@ describe("mensagemAgendamentoConfirmado", () => {
     expect(texto).toContain("sex 14/08 09:00");
     expect(texto).not.toContain("sex.");
     expect(texto).not.toContain(", 09:00");
+  });
+});
+
+/**
+ * Retomada depois do atendimento humano. A janela em si é de `lib/bot/pausa.ts`;
+ * o que se afirma aqui é o comportamento da conversa quando o bot volta.
+ */
+describe("retomarConversa", () => {
+  it("reapresenta a etapa em que a conversa parou, avisando", () => {
+    const { estado } = conversar(contexto(), ["oi", "1"]);
+    expect(estado?.etapaAtualId).toBe("etapa-horario");
+
+    const decisao = retomarConversa(contexto(), estado);
+
+    expect(decisao.mensagens[0]).toBe(AVISO_RETOMADA);
+    // A etapa continua a mesma: retomar não avança nem recomeça.
+    expect(decisao.estado?.etapaAtualId).toBe("etapa-horario");
+    expect(decisao.mensagens.join("\n")).toMatch(/hor[áa]rio/i);
+  });
+
+  /**
+   * O ponto central: durante a pausa o cliente conversou com uma pessoa, então a
+   * última lista que o bot apresentou pode ter dez mensagens de distância. Ler
+   * aquele diálogo humano como resposta de menu faria o bot avançar por engano.
+   */
+  it("não interpreta a mensagem que chegou como resposta", () => {
+    const { estado } = conversar(contexto(), ["oi"]);
+    expect(estado?.etapaAtualId).toBe("etapa-servico");
+
+    // "1" seria a escolha de um serviço se passasse por `decidir`.
+    const decisao = retomarConversa(contexto(), estado);
+
+    expect(decisao.estado?.etapaAtualId).toBe("etapa-servico");
+    expect(decisao.estado?.dadosTemporarios.__servico_id).toBeUndefined();
+    expect(decisao.efeitos).toEqual([]);
+  });
+
+  it("preserva o que já havia sido respondido", () => {
+    // Ordens explícitas: `ETAPA_PRIMEIRA_VEZ` e `ETAPA_HORARIO` nascem as duas com
+    // `ordem: 2`, e o desempate por id põe horário na frente.
+    const ctx = contexto({
+      etapasAtivas: [
+        ETAPA_SERVICO,
+        { ...ETAPA_PRIMEIRA_VEZ, ordem: 2 },
+        { ...ETAPA_HORARIO, ordem: 3 },
+        { ...ETAPA_CONFIRMACAO, ordem: 4 },
+      ],
+    });
+    const { estado } = conversar(ctx, ["oi", "1", "1"]);
+
+    const decisao = retomarConversa(ctx, estado);
+
+    expect(decisao.estado?.dadosTemporarios.primeira_vez).toBe("sim");
+    expect(decisao.estado?.dadosTemporarios.__servico_id).toBe("svc-corte");
+  });
+
+  it("recomeça quando não há etapa para onde voltar", () => {
+    const decisao = retomarConversa(contexto(), null);
+
+    expect(decisao.mensagens[0]).not.toBe(AVISO_RETOMADA);
+    expect(decisao.estado?.etapaAtualId).toBe("etapa-servico");
+  });
+
+  /** O dono editou o fluxo durante a pausa e a etapa saiu do snapshot. */
+  it("recomeça quando a etapa atual não existe mais no snapshot", () => {
+    const decisao = retomarConversa(contexto(), {
+      etapaAtualId: "etapa-que-sumiu",
+      fluxoSnapshot: [ETAPA_SERVICO, ETAPA_HORARIO, ETAPA_CONFIRMACAO],
+      dadosTemporarios: {},
+      atualizadoEm: AGORA,
+    });
+
+    expect(decisao.estado?.etapaAtualId).toBe("etapa-servico");
+  });
+});
+
+/**
+ * A saída para atendimento humano. O que se prende aqui é o léxico **fechado** e a
+ * posição do intercepto: o pedido tem de funcionar na primeira mensagem, no meio
+ * de uma etapa e sem engolir resposta legítima de `texto_livre`.
+ */
+describe("pedido de atendimento humano", () => {
+  it("reconhece o zero em menu, e NÃO em texto livre", () => {
+    expect(ehPedidoDeAtendente("0", "servico")).toBe(true);
+    expect(ehPedidoDeAtendente("0", "horario")).toBe(true);
+    expect(ehPedidoDeAtendente("0", "confirmacao")).toBe(true);
+    // "Alguma observação?" → "0" é resposta, não pedido de atendente.
+    expect(ehPedidoDeAtendente("0", "texto_livre")).toBe(false);
+  });
+
+  it("reconhece as palavras, com acento, caixa e espaço em volta", () => {
+    for (const texto of [
+      "atendente",
+      "Atendente",
+      "  PESSOA  ",
+      "humano",
+      "alguém",
+      "quero falar com uma pessoa",
+      "Falar com Atendente",
+    ]) {
+      expect(ehPedidoDeAtendente(texto, "servico"), texto).toBe(true);
+    }
+  });
+
+  /**
+   * Comparação exata, nunca `includes`: substring transformaria "vou levar uma
+   * pessoa comigo" em silêncio do bot, e o modo de falha viraria "entendi algo que
+   * você não quis dizer".
+   */
+  it("não dispara por frase que só contém a palavra", () => {
+    for (const texto of [
+      "vou levar uma pessoa comigo",
+      "sou pessoa fisica",
+      "o humano de sempre",
+      "10",
+      "0 minutos",
+    ]) {
+      expect(ehPedidoDeAtendente(texto, "servico"), texto).toBe(false);
+    }
+  });
+
+  it("funciona já na primeira mensagem, sem conversa em curso", () => {
+    const decisao = decidir(contexto(), null, mensagem("atendente"));
+
+    expect(decisao.mensagens).toEqual([AVISO_CHAMANDO_PESSOA]);
+    expect(decisao.efeitos).toEqual([{ tipo: "pausar_bot" }]);
+  });
+
+  it("funciona no meio do fluxo e preserva o estado da conversa", () => {
+    const ctx = contexto();
+    const { estado } = conversar(ctx, ["oi", "1"]);
+    expect(estado?.etapaAtualId).toBe("etapa-horario");
+
+    const decisao = decidir(ctx, estado, mensagem("0"));
+
+    expect(decisao.efeitos).toEqual([{ tipo: "pausar_bot" }]);
+    // Preservado: se o dono não responder, `retomarConversa` volta para cá.
+    expect(decisao.estado?.etapaAtualId).toBe("etapa-horario");
+    expect(decisao.estado?.dadosTemporarios.__servico_id).toBe("svc-corte");
+  });
+
+  it("zero em etapa de texto livre é gravado como resposta, não vira pedido", () => {
+    const ctx = contexto({
+      etapasAtivas: [
+        ETAPA_SERVICO,
+        { ...ETAPA_OBSERVACAO, ordem: 2 },
+        { ...ETAPA_HORARIO, ordem: 3 },
+        { ...ETAPA_CONFIRMACAO, ordem: 4 },
+      ],
+    });
+
+    const { ultima, estado } = conversar(ctx, ["oi", "1", "0"]);
+
+    expect(ultima.efeitos).toEqual([]);
+    expect(estado?.dadosTemporarios.observacao).toBe("0");
+  });
+
+  it("anuncia a saída no primeiro contato e quando não entende", () => {
+    const primeira = decidir(contexto(), null, mensagem("oi"));
+    expect(primeira.mensagens.at(-1)).toMatch(/digite 0 para falar com uma pessoa/i);
+
+    const { ultima } = conversar(contexto(), ["oi", "banana"]);
+    expect(ultima.mensagens.at(-1)).toMatch(/digite 0 para falar com uma pessoa/i);
+  });
+
+  /** Uma mensagem só: duas seriam duas notificações no celular do cliente. */
+  it("a linha vai colada na mensagem da etapa, não numa mensagem extra", () => {
+    const decisao = decidir(contexto(), null, mensagem("oi"));
+
+    expect(decisao.mensagens).toHaveLength(1);
   });
 });

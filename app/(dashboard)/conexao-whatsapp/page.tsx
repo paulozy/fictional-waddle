@@ -8,6 +8,11 @@ import {
 } from "@/lib/metricas-whatsapp";
 import { criarClienteServidor, exigirUsuario } from "@/lib/supabase/server";
 import { normalizarNumeroWhatsApp } from "@/lib/telefone";
+import { pausaAtiva } from "@/lib/bot/pausa";
+import {
+  ConversasAtendimento,
+  type ConversaAtendimento,
+} from "./conversas-atendimento";
 import { PainelConexao } from "./painel-conexao";
 
 export const metadata: Metadata = { title: "Conexão do WhatsApp" };
@@ -82,6 +87,13 @@ export default async function ConexaoWhatsAppPage({
         .limit(1)
         .maybeSingle(),
     ],
+  );
+
+  const conversas = await conversasParaAtendimento(
+    supabase,
+    usuarioId,
+    agora,
+    fusoHorario,
   );
 
   const conectadoDesde = conexao.data?.em ? new Date(conexao.data.em) : null;
@@ -185,6 +197,10 @@ export default async function ConexaoWhatsAppPage({
         </dl>
       )}
 
+      {estado === "conectado" && (
+        <ConversasAtendimento conversas={conversas} />
+      )}
+
       <p className="mt-8 max-w-[62ch] text-xs leading-relaxed text-muted-foreground">
         Deixe o celular do estabelecimento com bateria e conectado à internet. Se
         o WhatsApp for desconectado no aparelho ou o chip for trocado, será
@@ -192,6 +208,77 @@ export default async function ConexaoWhatsAppPage({
       </p>
     </>
   );
+}
+
+/** Quantas conversas a seção de atendimento mostra. */
+const MAX_CONVERSAS_ATENDIMENTO = 8;
+
+/**
+ * As conversas recentes, com o estado do atendimento de cada uma.
+ *
+ * Duas queries e não um join: `conversas_estado` **não tem FK** para
+ * `clientes_finais` (a identidade é o `remote_jid` em ambas, e a conversa existe
+ * antes de o cliente ser criado), então o PostgREST não pode embutir o nome. A
+ * segunda query só roda se houver conversa, e busca só os JIDs da página.
+ *
+ * O nome cai para telefone, e o telefone cai para o identificador do JID: em
+ * conversa `@lid` não existe telefone nenhum, e um rótulo vazio deixaria o dono
+ * sem saber qual conversa está silenciando.
+ *
+ * A ordenação é por `atualizado_em` e o corte é por quantidade — não por "hoje".
+ * Uma conversa pausada às 23h de ontem ainda pode estar pausada agora, e sumir da
+ * lista justamente por isso seria o defeito.
+ */
+async function conversasParaAtendimento(
+  supabase: Awaited<ReturnType<typeof criarClienteServidor>>,
+  usuarioId: string,
+  agora: Date,
+  fusoHorario: string,
+): Promise<ConversaAtendimento[]> {
+  const { data: linhas } = await supabase
+    .from("conversas_estado")
+    .select("remote_jid, telefone_cliente, pausado_ate, atualizado_em")
+    .eq("usuario_id", usuarioId)
+    .order("atualizado_em", { ascending: false })
+    .limit(MAX_CONVERSAS_ATENDIMENTO);
+
+  if (!linhas || linhas.length === 0) return [];
+
+  const { data: clientes } = await supabase
+    .from("clientes_finais")
+    .select("remote_jid, nome")
+    .eq("usuario_id", usuarioId)
+    .in(
+      "remote_jid",
+      linhas.map((linha) => linha.remote_jid),
+    );
+
+  const nomePorJid = new Map(
+    (clientes ?? []).map((cliente) => [cliente.remote_jid, cliente.nome]),
+  );
+
+  return linhas.map((linha) => ({
+    remoteJid: linha.remote_jid,
+    rotulo:
+      nomePorJid.get(linha.remote_jid) ||
+      linha.telefone_cliente ||
+      linha.remote_jid.split("@")[0],
+    /**
+     * Formatado aqui, no fuso do negócio, e não no navegador: é a mesma razão de
+     * `lib/metricas-whatsapp.ts` existir — o runtime da Vercel é UTC e o
+     * navegador do dono pode estar em qualquer fuso.
+     *
+     * Nulo quando a janela já venceu, mesmo com a coluna preenchida: o webhook só
+     * limpa `pausado_ate` na próxima mensagem do cliente, então uma pausa vencida
+     * fica na tabela sem significar nada. `pausaAtiva` é a mesma função que o
+     * webhook usa, para não haver duas noções de "está pausada".
+     */
+    pausadoAte: pausaAtiva(linha.pausado_ate, agora)
+      ? dataHoraLocal(new Date(linha.pausado_ate!), fusoHorario)
+      : null,
+    ultimaAtividade:
+      tempoRelativo(new Date(linha.atualizado_em), agora, fusoHorario) ?? "—",
+  }));
 }
 
 /**
