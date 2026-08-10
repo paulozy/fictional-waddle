@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { formatarValor } from "@/lib/bot/mensagens-pagamento";
+import { dataHoraLocal } from "@/lib/metricas-whatsapp";
 import { motivoSemCobranca } from "@/lib/pagamentos/capacidade";
 import { criarClienteServidor, exigirUsuario } from "@/lib/supabase/server";
 import { conectarMercadoPago, salvarPrazoSinal } from "./actions";
-import { BotaoDesconectar, BotaoEstornar } from "./painel-pagamentos";
+import { BotaoEstornar, BotaoRevogar } from "./painel-pagamentos";
 
 export const metadata: Metadata = { title: "Pagamentos" };
 
@@ -45,6 +47,8 @@ const AVISOS: Record<string, { texto: string; tom: "ok" | "erro" }> = {
   },
 };
 
+const FUSO_PADRAO = "America/Sao_Paulo";
+
 export default async function PagamentosPage({
   searchParams,
 }: {
@@ -56,7 +60,14 @@ export default async function PagamentosPage({
 
   const { data: perfil, error: erroPerfil } = await supabase
     .from("perfis")
-    .select("plano, pagamento_conectado_em, sinal_minutos_validade")
+    /**
+     * `fuso_horario` entra porque esta tela mostra **hora**: o instante em que o
+     * sinal caiu. Sem ele, `Intl.DateTimeFormat` formata no fuso do runtime — UTC
+     * na Vercel — e um Pix pago às 23h em São Paulo aparecia como 02h do dia
+     * seguinte. O erro é invisível em desenvolvimento, porque a máquina do dono
+     * já está no fuso certo. Mesmo motivo de `lib/metricas-whatsapp.ts` existir.
+     */
+    .select("plano, pagamento_conectado_em, sinal_minutos_validade, fuso_horario")
     .eq("id", usuarioId)
     .maybeSingle();
 
@@ -86,25 +97,54 @@ export default async function PagamentosPage({
 
   const motivo = motivoSemCobranca(perfil);
   const aviso = conexao ? AVISOS[conexao] : undefined;
+  const fusoHorario = perfil?.fuso_horario ?? FUSO_PADRAO;
 
   /**
    * Só as cobranças que exigem ação: pagas sem horário.
    *
    * O painel não é extrato — quem quer ver tudo tem a agenda. Listar cobrança
    * normal aqui afogaria justamente a linha que precisa de decisão humana.
+   *
+   * `clientes_finais(nome)` entrou porque o design identifica a linha pela
+   * pessoa, e é a leitura certa: quem decide devolver está pensando "o Marcos
+   * pagou e não foi atendido", não num valor solto.
    */
-  const { data: pendentes } = await supabase
-    .from("cobrancas_sinal")
-    .select("id, valor_centavos, criado_em, agendamentos(data_hora, servicos(nome))")
-    .eq("usuario_id", usuarioId)
-    .eq("estorno_pendente", true)
-    .is("estornado_em", null)
-    .order("criado_em", { ascending: false });
+  const [{ data: pendentes }, { data: comSinal }] = await Promise.all([
+    supabase
+      .from("cobrancas_sinal")
+      .select(
+        "id, valor_centavos, pago_em, criado_em, agendamentos(data_hora, servicos(nome), clientes_finais(nome))",
+      )
+      .eq("usuario_id", usuarioId)
+      .eq("estorno_pendente", true)
+      .is("estornado_em", null)
+      .order("criado_em", { ascending: false }),
+    /**
+     * Quais serviços cobram, para a linha "Valor do sinal".
+     *
+     * O design tinha ali um campo editável de valor único por agendamento, e o
+     * schema não tem onde guardar isso: o valor mora em `servicos.valor_sinal`,
+     * um por serviço. Criar um valor global seria uma segunda fonte de verdade
+     * para o mesmo número — daí a linha relatar o que existe e mandar para onde
+     * se edita, em vez de inventar um campo.
+     */
+    supabase
+      .from("servicos")
+      .select("valor_sinal")
+      .eq("usuario_id", usuarioId)
+      .eq("ativo", true)
+      .not("valor_sinal", "is", null)
+      .order("valor_sinal"),
+  ]);
+
+  const valores = (comSinal ?? [])
+    .map((s) => s.valor_sinal)
+    .filter((v): v is number => v !== null);
 
   return (
     <>
       <h1 className="text-2xl font-semibold tracking-tight">Pagamentos</h1>
-      <p className="mt-2 max-w-[36rem] text-base text-muted-foreground md:text-sm">
+      <p className="mt-2 max-w-[56ch] text-base leading-relaxed text-muted-foreground md:text-sm">
         Com a conta conectada, o bot pede um sinal por Pix antes de fechar o
         agendamento. O dinheiro cai direto na sua conta do Mercado Pago — a
         Encaixaria não recebe nem retém nada.
@@ -113,9 +153,9 @@ export default async function PagamentosPage({
       {aviso && (
         <p
           role="status"
-          className={`mt-4 rounded-lg border px-4 py-3 text-sm ${
+          className={`mt-4 max-w-2xl rounded-lg border px-4 py-3 text-sm ${
             aviso.tom === "ok"
-              ? "border-border bg-card text-foreground"
+              ? "border-confirmado-borda bg-confirmado text-confirmado-tinta"
               : "border-aviso bg-aviso-suave text-foreground"
           }`}
         >
@@ -125,130 +165,258 @@ export default async function PagamentosPage({
 
       {motivo === "plano" ? (
         <SemPlano />
-      ) : (
+      ) : perfil?.pagamento_conectado_em ? (
         <>
-          <section className="mt-6 rounded-lg border border-border bg-card p-4">
-            <h2 className="font-medium">Conta do Mercado Pago</h2>
-
-            {perfil?.pagamento_conectado_em ? (
-              <>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Conectada em{" "}
-                  {new Intl.DateTimeFormat("pt-BR", {
-                    dateStyle: "long",
-                  }).format(new Date(perfil.pagamento_conectado_em))}
-                  .
-                </p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <BotaoDesconectar />
-                </div>
-              </>
-            ) : (
-              <>
-                <p className="mt-1 max-w-[36rem] text-sm text-muted-foreground">
-                  Você autoriza uma vez e pode revogar quando quiser, aqui ou no
-                  painel do Mercado Pago. Não pedimos sua senha nem acesso ao seu
-                  saldo — só a permissão de gerar cobranças em seu nome.
-                </p>
-                {/**
-                  * `<form action>` e não ilha de cliente.
-                  *
-                  * A versão anterior era um botão com `onClick` que chamava a
-                  * Server Action e navegava com `window.location`. Dois modos de
-                  * falha, os dois silenciosos: se a hidratação não acontecesse, o
-                  * clique não fazia NADA; e se a ação rejeitasse, o erro morria
-                  * dentro do `startTransition`, sem `catch`. "Não acontece nada"
-                  * é o pior desfecho possível — não dá nem para começar a
-                  * diagnosticar.
-                  *
-                  * Com formulário, o navegador envia mesmo sem JavaScript, e a
-                  * própria ação decide o destino: ou o Mercado Pago, ou de volta
-                  * para cá com um código de erro que a página sabe explicar.
-                  */}
-                <form action={conectarMercadoPago} className="mt-4">
-                  <button
-                    type="submit"
-                    className="inline-flex h-10 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground max-md:h-11"
-                  >
-                    Conectar conta do Mercado Pago
-                  </button>
-                </form>
-              </>
-            )}
+          {/**
+           * Cartão de conectado no mesmo idioma do "WhatsApp conectado" em
+           * `painel-conexao.tsx`: os tokens `confirmado`/`confirmado-borda`/
+           * `confirmado-tinta` são exatamente o trio de cores que o design pede,
+           * então não há cor nova nem par claro/escuro a inventar.
+           *
+           * O design mostrava também o e-mail da conta autorizada. **Não é
+           * possível, e não é para ser:** o único identificador guardado é
+           * `credenciais_pagamento.conta_externa_id` (o id do Mercado Pago, não
+           * um e-mail), e aquela tabela não tem policy de `select` para
+           * `authenticated` — guarda token cifrado. Exibi-lo exigiria a service
+           * role numa página de leitura, ou seja, ampliar privilégio para
+           * enfeite. Mesma decisão do número do WhatsApp, que também não aparece
+           * no painel.
+           */}
+          <section className="mt-8 flex max-w-2xl flex-col gap-4 rounded-xl border border-confirmado-borda bg-confirmado p-5 sm:flex-row sm:items-center">
+            {/* Decorativo: o estado já está dito por extenso ao lado. */}
+            <span
+              aria-hidden
+              className="hidden size-2.5 shrink-0 rounded-full bg-confirmado-tinta sm:block"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-confirmado-tinta">
+                Mercado Pago conectado
+              </p>
+              <p className="mt-1 text-sm leading-relaxed text-confirmado-tinta">
+                Autorizado em{" "}
+                <span className="font-mono">
+                  {dataHoraLocal(
+                    new Date(perfil.pagamento_conectado_em),
+                    fusoHorario,
+                  )}
+                </span>
+                . Você revoga quando quiser, aqui ou no painel do Mercado Pago.
+              </p>
+            </div>
+            <BotaoRevogar />
           </section>
 
-          <section className="mt-4 rounded-lg border border-border bg-card p-4">
-            <h2 className="font-medium">Prazo para pagar</h2>
-            <p className="mt-1 max-w-[36rem] text-sm text-muted-foreground">
+          <section className="mt-11 max-w-2xl">
+            <h2 className="font-heading text-lg font-semibold tracking-tight">
+              Sinal e prazo
+            </h2>
+            <p className="mt-2 max-w-[54ch] text-base leading-relaxed text-muted-foreground md:text-sm">
               Quanto tempo o horário fica segurado esperando o Pix. Passado o
               prazo sem pagamento, o agendamento é cancelado e o horário volta a
               ser oferecido.
             </p>
 
-            <form action={salvarPrazoSinal} className="mt-4 flex flex-wrap items-end gap-3">
-              <label className="text-sm">
-                <span className="block text-muted-foreground">Minutos</span>
-                <input
-                  name="minutos"
-                  type="number"
-                  min={30}
-                  max={1440}
-                  defaultValue={perfil?.sinal_minutos_validade ?? 30}
-                  /* Sem `text-sm`: herda os 16px do corpo, que é o que impede o
-                     zoom de foco do iOS. */
-                  className="mt-1 h-10 w-28 rounded-md border border-input bg-transparent px-3 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 max-md:h-11 dark:bg-input/30"
-                />
-              </label>
-              <button
-                type="submit"
-                className="inline-flex h-10 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground max-md:h-11"
+            {/**
+             * Grade de rótulo à esquerda a partir de `sm`, empilhada abaixo — o
+             * design usa 180px fixos, que a 375px não deixariam largura para o
+             * campo.
+             */}
+            <dl className="mt-5 space-y-4">
+              <div className="grid gap-1.5 sm:grid-cols-[11rem_1fr] sm:items-center sm:gap-5">
+                <dt className="text-sm text-muted-foreground">
+                  Valor do sinal
+                </dt>
+                <dd className="text-sm">
+                  {valores.length === 0 ? (
+                    <>
+                      <span className="text-muted-foreground">
+                        Nenhum serviço cobra sinal ainda.
+                      </span>{" "}
+                      <Link
+                        href="/servicos"
+                        className="underline underline-offset-4"
+                      >
+                        Definir por serviço
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-mono">
+                        {formatarValor(Math.round(valores[0] * 100))}
+                        {valores.length > 1 &&
+                          valores.at(-1) !== valores[0] &&
+                          ` – ${formatarValor(
+                            Math.round(valores.at(-1)! * 100),
+                          )}`}
+                      </span>{" "}
+                      <span className="text-muted-foreground">
+                        em {valores.length}{" "}
+                        {valores.length === 1 ? "serviço" : "serviços"}.
+                      </span>{" "}
+                      <Link
+                        href="/servicos"
+                        className="underline underline-offset-4"
+                      >
+                        Editar por serviço
+                      </Link>
+                    </>
+                  )}
+                </dd>
+              </div>
+
+              <form
+                action={salvarPrazoSinal}
+                className="grid gap-1.5 sm:grid-cols-[11rem_1fr] sm:items-center sm:gap-5"
               >
-                Salvar
-              </button>
-            </form>
+                <label
+                  htmlFor="minutos"
+                  className="text-sm text-muted-foreground"
+                >
+                  Prazo para pagar
+                </label>
+                <div className="flex flex-wrap items-center gap-3">
+                  <input
+                    id="minutos"
+                    name="minutos"
+                    type="number"
+                    min={30}
+                    max={1440}
+                    defaultValue={perfil.sinal_minutos_validade ?? 30}
+                    /* Sem `text-sm`: herda os 16px do corpo, que é o que impede
+                       o zoom de foco do iOS. `font-mono` porque é número que se
+                       compara, como no design. */
+                    className="h-11 w-24 rounded-md border border-input bg-transparent px-3 font-mono outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:h-10 dark:bg-input/30"
+                  />
+                  <span className="text-sm text-muted-foreground">minutos</span>
+                  <button
+                    type="submit"
+                    className="inline-flex h-11 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground md:h-10"
+                  >
+                    Salvar
+                  </button>
+                </div>
+              </form>
+            </dl>
+
+            <p className="mt-4 max-w-[56ch] text-xs leading-relaxed text-muted-foreground">
+              Vale para os próximos agendamentos, não para os já marcados.
+            </p>
           </section>
 
-          <section className="mt-4">
-            <h2 className="font-medium">Devoluções pendentes</h2>
-            <p className="mt-1 max-w-[36rem] text-sm text-muted-foreground">
+          <section className="mt-12 max-w-2xl">
+            <h2 className="font-heading text-lg font-semibold tracking-tight">
+              Devoluções pendentes
+            </h2>
+            <p className="mt-2 max-w-[54ch] text-base leading-relaxed text-muted-foreground md:text-sm">
               Sinal que caiu depois do prazo, quando o horário já tinha sido
               reservado por outra pessoa. O cliente pagou e não foi atendido.
             </p>
 
             {pendentes?.length ? (
-              <ul className="mt-3 divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
-                {pendentes.map((cobranca) => (
-                  <li
-                    key={cobranca.id}
-                    className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3"
-                  >
-                    <span className="font-medium">
-                      {formatarValor(cobranca.valor_centavos)}
-                    </span>
-                    <span className="text-sm text-muted-foreground">
-                      {cobranca.agendamentos?.servicos?.nome ?? "Serviço"} —{" "}
-                      {cobranca.agendamentos?.data_hora
-                        ? new Intl.DateTimeFormat("pt-BR", {
-                            dateStyle: "short",
-                            timeStyle: "short",
-                          }).format(new Date(cobranca.agendamentos.data_hora))
-                        : "sem horário"}
-                    </span>
-                    <span className="ml-auto">
-                      <BotaoEstornar cobrancaId={cobranca.id} />
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <>
+                <ul className="mt-5 divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+                  {pendentes.map((cobranca) => {
+                    /**
+                     * `pago_em` é o instante que interessa — é o pagamento que
+                     * precisa voltar. Cai para `criado_em` só por robustez: uma
+                     * linha marcada para estorno sem data de pagamento não
+                     * deveria existir, e some seria pior que aproximada.
+                     */
+                    const quando = cobranca.pago_em ?? cobranca.criado_em;
+
+                    return (
+                      <li
+                        key={cobranca.id}
+                        className="flex flex-wrap items-center gap-x-5 gap-y-3 px-5 py-4"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium">
+                            {cobranca.agendamentos?.clientes_finais?.nome ??
+                              "Cliente sem nome"}
+                          </p>
+                          <p className="mt-1 font-mono text-xs text-muted-foreground">
+                            {formatarValor(cobranca.valor_centavos)}
+                            {quando &&
+                              ` · pago ${dataHoraLocal(new Date(quando), fusoHorario)}`}
+                            {cobranca.agendamentos?.servicos?.nome &&
+                              ` · ${cobranca.agendamentos.servicos.nome}`}
+                          </p>
+                        </div>
+                        <BotaoEstornar cobrancaId={cobranca.id} />
+                      </li>
+                    );
+                  })}
+                </ul>
+
+                <p className="mt-4 max-w-[56ch] text-xs leading-relaxed text-muted-foreground">
+                  A devolução é feita pelo Mercado Pago, com o valor cheio. A
+                  Encaixaria só registra que foi feita.
+                </p>
+              </>
             ) : (
-              <p className="mt-3 rounded-lg border border-border bg-card px-4 py-6 text-center text-sm text-muted-foreground">
+              <p className="mt-5 rounded-xl border border-dashed border-border bg-card px-6 py-8 text-center text-sm text-muted-foreground">
                 Nenhuma devolução pendente.
               </p>
             )}
           </section>
         </>
+      ) : (
+        <SemConta />
       )}
     </>
+  );
+}
+
+/**
+ * Ainda não conectou.
+ *
+ * Cartão de borda tracejada, como os empty states de serviços e horários: é
+ * espaço que ainda vai ser preenchido, não problema. O rodapé fora do cartão
+ * responde a pergunta que o dono faz nesse instante — "e enquanto eu não
+ * conectar, o bot para?".
+ */
+function SemConta() {
+  return (
+    <div className="mt-8 max-w-2xl">
+      <div className="rounded-xl border border-dashed border-border bg-card p-7">
+        <p className="font-heading text-lg font-semibold tracking-tight">
+          Nenhuma conta conectada
+        </p>
+        <p className="mt-2.5 max-w-[52ch] text-base leading-relaxed text-muted-foreground md:text-sm">
+          Você autoriza uma vez e revoga quando quiser, aqui ou no painel do
+          Mercado Pago. Não pedimos sua senha nem acesso ao saldo — só a
+          permissão de gerar cobranças em seu nome.
+        </p>
+
+        {/**
+         * `<form action>` e não ilha de cliente.
+         *
+         * A versão anterior era um botão com `onClick` que chamava a Server
+         * Action e navegava com `window.location`. Dois modos de falha, os dois
+         * silenciosos: se a hidratação não acontecesse, o clique não fazia NADA;
+         * e se a ação rejeitasse, o erro morria dentro do `startTransition`, sem
+         * `catch`. "Não acontece nada" é o pior desfecho possível — não dá nem
+         * para começar a diagnosticar.
+         *
+         * Com formulário, o navegador envia mesmo sem JavaScript, e a própria
+         * ação decide o destino: ou o Mercado Pago, ou de volta para cá com um
+         * código de erro que a página sabe explicar.
+         */}
+        <form action={conectarMercadoPago} className="mt-6">
+          <button
+            type="submit"
+            className="inline-flex h-11 items-center rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground md:h-10"
+          >
+            Conectar conta do Mercado Pago
+          </button>
+        </form>
+      </div>
+
+      <p className="mt-4 max-w-[56ch] text-xs leading-relaxed text-muted-foreground">
+        Enquanto não houver conta conectada, o bot fecha o agendamento sem sinal
+        — como faz hoje.
+      </p>
+    </div>
   );
 }
 
@@ -267,9 +435,11 @@ function FalhaAoCarregar({ codigo }: { codigo?: string }) {
   return (
     <>
       <h1 className="text-2xl font-semibold tracking-tight">Pagamentos</h1>
-      <section className="mt-6 rounded-lg border border-aviso bg-aviso-suave p-4">
-        <h2 className="font-medium">Não foi possível carregar esta tela</h2>
-        <p className="mt-1 max-w-[36rem] text-sm text-muted-foreground">
+      <section className="mt-8 max-w-2xl rounded-xl border border-aviso bg-aviso-suave p-5">
+        <h2 className="font-heading text-lg font-semibold tracking-tight">
+          Não foi possível carregar esta tela
+        </h2>
+        <p className="mt-2 text-base leading-relaxed text-muted-foreground md:text-sm">
           {codigo === "42703"
             ? "O banco de dados deste ambiente está desatualizado em relação ao aplicativo — faltam colunas que esta tela usa. Isso é problema nosso, não do seu plano."
             : "Houve uma falha ao ler sua configuração de pagamentos. Isso é problema nosso, não do seu plano."}{" "}
@@ -291,9 +461,11 @@ function SemPlano() {
   const contato = process.env.WHATSAPP_CONTATO;
 
   return (
-    <section className="mt-6 rounded-lg border border-border bg-card p-4">
-      <h2 className="font-medium">Cobrança de sinal não está no seu plano</h2>
-      <p className="mt-1 max-w-[36rem] text-sm text-muted-foreground">
+    <section className="mt-8 max-w-2xl rounded-xl border border-border bg-card p-7">
+      <h2 className="font-heading text-lg font-semibold tracking-tight">
+        Cobrança de sinal não está no seu plano
+      </h2>
+      <p className="mt-2.5 max-w-[52ch] text-base leading-relaxed text-muted-foreground md:text-sm">
         Cobrar sinal é um adicional. Com ele, o bot pede um Pix antes de fechar o
         agendamento e segura o horário até o pagamento cair — o dinheiro vai
         direto para a sua conta do Mercado Pago.
@@ -302,7 +474,7 @@ function SemPlano() {
       {contato && (
         <a
           href={`https://wa.me/${contato}`}
-          className="mt-4 inline-flex h-10 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground max-md:h-11"
+          className="mt-6 inline-flex h-11 items-center rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground md:h-10"
         >
           Falar sobre o adicional
         </a>

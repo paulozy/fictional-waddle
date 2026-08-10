@@ -13,11 +13,11 @@ import { desconectarMercadoPago, estornarSinal } from "./actions";
  * envio. Mesmo recorte de `navegacao-dashboard.tsx` — hidratar o mínimo.
  */
 
-export function BotaoDesconectar() {
+export function BotaoRevogar() {
   const [enviando, iniciar] = useTransition();
   const [confirmando, setConfirmando] = useState(false);
 
-  function desconectar() {
+  function revogar() {
     iniciar(async () => {
       const { erro } = await desconectarMercadoPago();
       setConfirmando(false);
@@ -34,34 +34,45 @@ export function BotaoDesconectar() {
   /**
    * Confirmação em dois passos, sem diálogo.
    *
-   * Desconectar interrompe a cobrança de todo agendamento novo, e o dono não tem
+   * Revogar interrompe a cobrança de todo agendamento novo, e o dono não tem
    * como perceber sozinho — o efeito só aparece depois, como sinal que ninguém
-   * pagou. Um clique acidental num botão de "desconectar" ao lado de "conectar"
-   * é fácil demais.
+   * pagou. Um clique acidental é fácil demais.
+   *
+   * O texto de confirmação vive fora do cartão verde (a página o renderiza
+   * abaixo), porque dentro dele a linha empurrava o layout do banner a cada
+   * clique.
    */
   if (!confirmando) {
     return (
-      <Button variant="outline" onClick={() => setConfirmando(true)}>
-        Desconectar
+      <Button
+        variant="outline"
+        onClick={() => setConfirmando(true)}
+        /* Sobre o fundo `confirmado`, o `outline` padrão (borda `input`, fundo
+           transparente) sumia. Borda e fundo do próprio par de tokens. */
+        className="border-confirmado-borda bg-card text-confirmado-tinta hover:bg-secondary"
+      >
+        Revogar
       </Button>
     );
   }
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-sm text-muted-foreground">
-        Novos agendamentos deixam de cobrar sinal. Confirma?
-      </span>
-      <Button variant="destructive" onClick={desconectar} disabled={enviando}>
-        {enviando ? "Desconectando…" : "Sim, desconectar"}
+      <Button variant="destructive" onClick={revogar} disabled={enviando}>
+        {enviando ? "Revogando…" : "Sim, revogar"}
       </Button>
-      <Button variant="ghost" onClick={() => setConfirmando(false)}>
+      <Button
+        variant="ghost"
+        onClick={() => setConfirmando(false)}
+        className="text-confirmado-tinta hover:bg-card"
+      >
         Cancelar
       </Button>
     </div>
   );
 }
 
+/** Verdadeiro enquanto o dono está confirmando — a página usa para o recado. */
 export function BotaoEstornar({ cobrancaId }: { cobrancaId: string }) {
   const [enviando, iniciar] = useTransition();
 
@@ -79,8 +90,8 @@ export function BotaoEstornar({ cobrancaId }: { cobrancaId: string }) {
   }
 
   return (
-    <Button size="sm" variant="outline" onClick={estornar} disabled={enviando}>
-      {enviando ? "Estornando…" : "Devolver sinal"}
+    <Button size="sm" onClick={estornar} disabled={enviando}>
+      {enviando ? "Devolvendo…" : "Devolver"}
     </Button>
   );
 }
