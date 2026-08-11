@@ -16,6 +16,7 @@ import {
   lerEmail,
   lerEstabelecimento,
   lerNovaSenha,
+  lerPlano,
   lerTelefone,
   type EstadoAuth,
 } from "./schema";
@@ -129,6 +130,45 @@ export async function salvarEstabelecimento(
   if (error) {
     console.error("registro: falha ao salvar o perfil", error);
     return { erro: "Não foi possível salvar agora. Tente de novo." };
+  }
+
+  /*
+    A faixa vai por RPC, e não neste `update`, porque `perfis.plano` está fora do
+    `grant update` de `authenticated` de propósito — quem pudesse escrevê-lo se
+    autoconcederia a capacidade de cobrar sinal. `escolher_plano_trial` é
+    `security definer` **sem parâmetro de identidade** (o alvo é `auth.uid()`
+    dentro dela) e só grava para quem está num trial real, em curso e não
+    bloqueado. Ver o comentário da migration: a guarda exclui de propósito o VIP
+    e o pagante.
+
+    Depois do `update` de nome/fuso, e nunca antes: se a RPC falhar, o cadastro
+    segue com o plano no default, que é a direção certa (menos capacidade vira
+    conversa comercial; o inverso vira capacidade concedida por engano). O
+    contrário deixaria `plano = 'sinal'` num perfil ainda sem nome — e o nome é o
+    que o bot usa na mensagem ao cliente.
+  */
+  const plano = lerPlano(formData);
+  const { data: desfecho, error: erroPlano } = await supabase.rpc(
+    "escolher_plano_trial",
+    { p_plano: plano },
+  );
+
+  /*
+    Registrado, nunca devolvido à tela.
+
+    `'nao_permitido'` é o caminho de quem tentou trocar fora do trial, e não há o
+    que ele possa corrigir no formulário — a troca dele é por mensagem. Falha de
+    rede também não vale travar aqui: nome e fuso já estão salvos, e barrar o
+    cadastro na escolha de faixa perderia a conta inteira por causa do item mais
+    barato de consertar depois.
+  */
+  if (erroPlano || (desfecho !== "trocado" && desfecho !== "sem_efeito")) {
+    console.warn("registro: plano não foi aplicado", {
+      usuario_id: usuarioId,
+      plano,
+      desfecho: desfecho ?? null,
+      erro: erroPlano?.message,
+    });
   }
 
   redirect(ROTA_REGISTRO_WHATSAPP);

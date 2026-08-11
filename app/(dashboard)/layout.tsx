@@ -16,6 +16,7 @@ import {
   motivoBloqueio,
   type PerfilAssinatura,
 } from "@/lib/assinatura";
+import { PLANO_PADRAO } from "@/lib/plano";
 import { COOKIE_SIDEBAR_RECOLHIDA } from "@/lib/preferencias-ui";
 import { ROBOTS_PRIVADO } from "@/lib/site";
 import { criarClienteServidor, obterClaims } from "@/lib/supabase/server";
@@ -125,11 +126,28 @@ export default async function DashboardLayout({
   const { data: perfil } = await supabase
     .from("perfis")
     .select(
-      "status_assinatura, trial_expira_em, trial_bloqueado_em, status_conexao_whatsapp",
+      "status_assinatura, trial_expira_em, trial_bloqueado_em, status_conexao_whatsapp, plano",
     )
     .eq("id", claims.sub)
-    .maybeSingle<PerfilAssinatura & { status_conexao_whatsapp: EstadoConexao }>();
+    .maybeSingle<
+      PerfilAssinatura & { status_conexao_whatsapp: EstadoConexao; plano: string }
+    >();
   const motivo = motivoBloqueio(perfil, new Date());
+
+  /**
+   * O caminho para subir de faixa, no shell — e não só em `/pagamentos`.
+   *
+   * `plano` entrou no `select` acima por causa disto: até agora só a tela de
+   * Conta o lia. A condição tem duas metades e a segunda não é zelo — com
+   * bloqueio ativo o banner logo abaixo já pede "assine para o bot voltar", e um
+   * segundo CTA oferecendo outra coisa na mesma tela competiria com ele.
+   *
+   * Vale em trial e para pagante: quem está testando é exatamente quem ainda
+   * decide a faixa, e esconder o caminho até ele pagar é escondê-lo de quem mais
+   * precisa dele.
+   */
+  const podeSubirDePlano = perfil?.plano === PLANO_PADRAO && !motivo;
+  const linkUpgrade = podeSubirDePlano ? linkAssinatura("upgrade") : null;
 
   /**
    * Lido no servidor, não em `localStorage`: o menu precisa sair na largura
@@ -149,6 +167,7 @@ export default async function DashboardLayout({
         itemConta={CONTA}
         estadoConexao={perfil?.status_conexao_whatsapp ?? "desconectado"}
         recolhidaInicial={recolhidaInicial}
+        linkUpgrade={linkUpgrade}
         aoSair={sair}
       />
 
@@ -176,6 +195,7 @@ export default async function DashboardLayout({
         <NavegacaoDashboard
           abas={ABAS_PRINCIPAIS}
           itensExtras={ITENS_EXTRAS}
+          linkUpgrade={linkUpgrade}
           aoSair={sair}
         />
 

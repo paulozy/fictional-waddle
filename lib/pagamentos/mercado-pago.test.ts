@@ -196,7 +196,7 @@ describe("criarPagamentoPix", () => {
       payment_method_id: "pix",
       external_reference: "cobranca-uuid",
       notification_url: "https://app/api/webhook/pagamento/mercadopago",
-      payer: { email: "pagamentos@encaixaria.com.br" },
+      payer: { email: "pagamentos@newgensoftware.xyz" },
     });
   });
 

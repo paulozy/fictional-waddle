@@ -543,6 +543,10 @@ export type Database = {
         Args: { p_provedor_pagamento_id: string; p_valor_centavos: number }
         Returns: string
       }
+      escolher_plano_trial: {
+        Args: { p_plano: string }
+        Returns: string
+      }
       expirar_sinais_vencidos: {
         Args: { p_usuario_id: string }
         Returns: number

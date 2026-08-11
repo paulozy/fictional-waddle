@@ -11,6 +11,7 @@ import {
   ICONES,
   type ItemNavegacao,
 } from "@/components/navegacao-dashboard";
+import { CtaUpgrade } from "@/components/cta-upgrade";
 import { Button } from "@/components/ui/button";
 import {
   COOKIE_SIDEBAR_RECOLHIDA,
@@ -46,6 +47,7 @@ export function BarraLateral({
   itemConta,
   estadoConexao,
   recolhidaInicial,
+  linkUpgrade,
   aoSair,
 }: {
   grupos: GrupoNavegacao[];
@@ -53,6 +55,8 @@ export function BarraLateral({
   /** Alimenta o ponto ao lado de "WhatsApp". */
   estadoConexao: EstadoConexao;
   recolhidaInicial: boolean;
+  /** `null` esconde o CTA — quem decide isso é o layout, não esta peça. */
+  linkUpgrade: string | null;
   /** Server Action de logout, repassada pelo layout. */
   aoSair: () => void | Promise<void>;
 }) {
@@ -121,6 +125,10 @@ export function BarraLateral({
       </nav>
 
       <div className="mt-auto flex flex-col gap-1 border-t border-border pt-4">
+        {/* Acima de "Conta", que é onde o dono procura assinatura — e dentro do
+            rodapé, não da navegação: não é um destino do app. */}
+        <CtaUpgrade href={linkUpgrade} recolhida={recolhida} />
+
         <ItemLateral
           item={itemConta}
           ativo={ehAtivo(caminho, itemConta.href)}

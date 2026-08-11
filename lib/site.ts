@@ -29,6 +29,11 @@ export const DESCRICAO_PADRAO =
  * branco. Preencher os três valores apaga a falha.
  */
 export const IDENTIFICACAO_LEGAL = {
+  /**
+   * Razão social do CNPJ, que num MEI é o nome civil do titular — não é o nome
+   * comercial e não deve ser "corrigido" para ele. É este o nome que o titular
+   * dos dados precisa poder acionar.
+   */
   razaoSocial: "Paulo Ricardo de Abreu Santana",
   /**
    * Nome fantasia do CNPJ. Aparece nas páginas legais, para identificar a
@@ -36,13 +41,13 @@ export const IDENTIFICACAO_LEGAL = {
    *
    * O campo natural para ele seria `Organization.alternateName` — que é
    * justamente o plano B que o Google usa para escolher o nome do site na SERP.
-   * Declarar "PRTI" ali colocaria uma segunda marca competindo com "Encaixaria"
-   * pela consulta de marca, que é o oposto do objetivo de todo o trabalho de SEO
-   * deste repositório.
+   * Declarar "New Gen Software" ali colocaria uma segunda marca competindo com
+   * "Encaixaria" pela consulta de marca, que é o oposto do objetivo de todo o
+   * trabalho de SEO deste repositório. Há teste afirmando a ausência.
    */
-  nomeFantasia: "PRTI",
+  nomeFantasia: "New Gen Software",
   cnpj: "57.914.030/0001-20",
-  emailContato: "dev.pa.aabreu18@gmail.com",
+  emailContato: "contato@newgensoftware.xyz",
 } as const;
 
 /**
@@ -93,8 +98,13 @@ export const PERFIS_EXTERNOS: string[] = [];
  *
  * A ordem importa:
  *
- * - `SITE_URL` é a resposta certa e é o que se define quando o domínio próprio
- *   existir.
+ * - `SITE_URL` é a resposta certa. O domínio já existe:
+ *   `https://encaixaria.newgensoftware.xyz`. **Enquanto essa variável não estiver
+ *   definida no ambiente de produção, o canonical e o sitemap anunciam o alias da
+ *   Vercel** — o site funciona e a falha é invisível, que é exatamente por que
+ *   ela está escrita aqui e no `.env.example`. Não vale hardcodar o domínio como
+ *   segundo elo da cadeia: um deploy de preview passaria a se declarar cópia
+ *   canônica da produção.
  * - `VERCEL_PROJECT_PRODUCTION_URL` é o alias **estável** do projeto. Note que
  *   não é `VERCEL_URL`: aquela muda a cada deploy, e usá-la faria o canonical e
  *   o sitemap apontarem para um deployment específico em vez de para o site

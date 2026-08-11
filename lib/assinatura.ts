@@ -111,10 +111,27 @@ export function motivoBloqueio(
  * `NEXT_PUBLIC_`, então num bundle de cliente ela devolveria `null` em
  * silêncio, e o botão sumiria sem ninguém entender por quê.
  */
-export function linkAssinatura(): string | null {
+export type IntencaoContato = "assinar" | "upgrade";
+
+/**
+ * A mensagem já vem escrita porque ela é a primeira coisa que **nós** lemos.
+ *
+ * Sem gateway, cada troca de plano é uma conversa manual, e a diferença entre
+ * "quero assinar" e "quero subir para o Garantido" decide o que respondemos. Um
+ * texto genérico obrigaria uma pergunta de ida e volta antes de qualquer coisa
+ * acontecer.
+ */
+const TEXTO_CONTATO: Record<IntencaoContato, string> = {
+  assinar: "Olá! Quero assinar um plano da Encaixaria.",
+  upgrade: "Olá! Quero mudar para o plano Garantido, com cobrança de sinal.",
+};
+
+export function linkAssinatura(
+  intencao: IntencaoContato = "assinar",
+): string | null {
   const numero = process.env.WHATSAPP_CONTATO?.replace(/\D/g, "");
   if (!numero) return null;
-  const texto = encodeURIComponent("Olá! Quero assinar um plano da Encaixaria.");
+  const texto = encodeURIComponent(TEXTO_CONTATO[intencao]);
   return `https://wa.me/${numero}?text=${texto}`;
 }
 

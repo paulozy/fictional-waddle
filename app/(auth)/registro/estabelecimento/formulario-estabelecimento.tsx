@@ -12,13 +12,16 @@ import {
 } from "../../pecas";
 import type { EstadoAuth } from "../../schema";
 import { Passos } from "../passos";
+import { EscolhaPlano } from "./escolha-plano";
 
 export function FormularioEstabelecimento({
   nomeInicial,
   fusoInicial,
+  planoInicial,
 }: {
   nomeInicial: string;
   fusoInicial: string;
+  planoInicial: string;
 }) {
   const [estado, acao, salvando] = useActionState<EstadoAuth, FormData>(
     salvarEstabelecimento,
@@ -62,6 +65,8 @@ export function FormularioEstabelecimento({
             </option>
           ))}
         </CampoSelecao>
+
+        <EscolhaPlano planoInicial={planoInicial} />
 
         {/**
          * O design tem um par "Voltar / Continuar" aqui, e o "Voltar" fica de

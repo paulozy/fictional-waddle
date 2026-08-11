@@ -142,6 +142,11 @@ export default function PrivacidadePage() {
           duas vezes e para investigar reclamação de mensagem não recebida.
         </li>
         <li>Impedir que o mesmo número faça o teste gratuito repetidas vezes.</li>
+        <li>
+          No plano Garantido, gerar a cobrança de sinal em nome do
+          estabelecimento e registrar o desfecho dela — pago, expirado ou
+          devolvido.
+        </li>
       </ul>
       <p>
         Não vendemos dados, não fazemos publicidade com eles e não compartilhamos
@@ -165,13 +170,26 @@ export default function PrivacidadePage() {
           <strong>Cumprimento de obrigação legal</strong> (Art. 7º, II) quando
           houver.
         </li>
+        <li>
+          <strong>Execução de contrato</strong>, também, para a cobrança de sinal
+          no plano Garantido: ela existe porque o estabelecimento a contratou e a
+          autorizou, e os dados tratados são os mínimos para emitir a cobrança e
+          saber se ela foi paga.
+        </li>
       </ul>
 
-      <h2>Se a cobrança de sinal estiver ativa</h2>
+      <h2>Se a cobrança de sinal estiver ativa (plano Garantido)</h2>
       <p>
-        A cobrança de sinal é um adicional e só existe se o dono contratá-la e
-        autorizar a própria conta do Mercado Pago. Quando isso acontece, três
-        coisas passam a ser guardadas — e uma que <em>não</em> é:
+        A cobrança de sinal existe apenas no plano Garantido, e só passa a
+        funcionar depois de o dono autorizar a própria conta do Mercado Pago —
+        conta da qual ele é o titular — o que pode ser feito já durante o período
+        de teste —, porque{" "}
+        <strong>
+          a regulação do Pix não permite receber pagamento por meio de conta de
+          terceiro
+        </strong>
+        . Quando isso acontece, três coisas passam a ser guardadas — e uma que{" "}
+        <em>não</em> é:
       </p>
       <ul>
         <li>
@@ -200,7 +218,10 @@ export default function PrivacidadePage() {
       <p>
         <strong>O dinheiro não passa por nós em momento nenhum.</strong> O Pix é
         pago diretamente à conta do estabelecimento; a Encaixaria não recebe, não
-        retém e não repassa valores.
+        retém, não repassa valores e não é intermediária do pagamento. Também não
+        temos acesso a saldo, extrato ou movimentação da conta do dono: a
+        autorização serve para gerar cobranças e consultar o resultado delas, e
+        nada além disso.
       </p>
 
       <h2>Com quem os dados são compartilhados</h2>

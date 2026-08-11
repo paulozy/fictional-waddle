@@ -5,10 +5,10 @@ import {
   MessageSquareIcon,
   ScissorsIcon,
 } from "lucide-react";
-import { ConversaDemo } from "@/components/conversa-demo";
+import { ConversaDemo, ConversaPausa } from "@/components/conversa-demo";
 import { Button } from "@/components/ui/button";
 import { jsonLdHome, serializarJsonLd } from "@/lib/json-ld";
-import { DIAS_TRIAL, INCLUSO, PRECO_MENSAL } from "@/lib/plano";
+import { DIAS_TRIAL, PLANOS } from "@/lib/plano";
 import { metadataPagina } from "@/lib/site";
 import { PerguntasFrequentes } from "./perguntas-frequentes";
 import { VideoDemonstracao } from "./video-demonstracao";
@@ -225,6 +225,52 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/*
+        A objeção mais comum a um bot de atendimento não é "ele funciona?" — é "e
+        quando o cliente precisa falar comigo?". Sem esta seção, quem tem essa
+        dúvida sai da landing com ela; com ela, a resposta chega antes da
+        pergunta. É também a única seção que mostra o produto pelo lado do dono.
+      */}
+      <section className="mx-auto max-w-5xl px-4 sm:px-6 py-16">
+        <div className="grid gap-10 lg:grid-cols-[1fr_0.9fr] lg:items-center">
+          <div>
+            <h2 className="font-heading text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
+              Quando o assunto pede gente, o bot sai da frente
+            </h2>
+            <p className="mt-4 max-w-[36rem] text-muted-foreground lg:max-w-none">
+              Nem toda conversa é um agendamento. Cliente perguntando sobre um
+              procedimento, reclamando de um corte ou negociando preço merece
+              você do outro lado, não um menu.
+            </p>
+            <p className="mt-3 max-w-[36rem] text-muted-foreground lg:max-w-none">
+              Você responde pelo WhatsApp de sempre, do seu celular, e o bot
+              entende que assumiu: ele se cala naquela conversa e não responde
+              mais nada para aquele cliente. Passado o prazo, volta a atender
+              sozinho — sem você precisar lembrar de reativar nada.
+            </p>
+            <p className="mt-3 max-w-[36rem] text-muted-foreground lg:max-w-none">
+              A pausa vale só para aquele contato. Os outros clientes continuam
+              sendo atendidos normalmente, e o horário já marcado e o lembrete
+              dele não são afetados.
+            </p>
+          </div>
+
+          <div className="lg:pl-4">
+            <ConversaPausa />
+            {/*
+              Legenda deliberadamente diferente da da `ConversaDemo`: aquela
+              afirma ser transcrição do bot e esta não pode afirmar o mesmo — as
+              falas de gente são exemplo. Ver o comentário em
+              `components/conversa-demo.tsx`.
+            */}
+            <p className="mt-3 text-center text-sm text-muted-foreground sm:text-xs">
+              Exemplo: as duas linhas de estado e a mensagem de retomada são o
+              que o produto gera sozinho.
+            </p>
+          </div>
+        </div>
+      </section>
+
       <section className="mx-auto max-w-5xl px-4 sm:px-6 py-16">
         <div className="grid gap-10 lg:grid-cols-2 lg:items-start">
           <div>
@@ -263,48 +309,79 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/*
+        Preço na landing: **os dois planos, com a lista curta, e a decisão
+        empurrada para `/precos`.** Repetir aqui as oito linhas do Essencial mais
+        as cinco do Garantido faria da landing uma segunda página de preço, e a
+        primeira coisa que se perde numa página de preço duplicada é a
+        coincidência entre as duas.
+
+        O que precisa estar aqui é só o que decide se a pessoa clica: os dois
+        números, a frase que separa um do outro, e o aviso de que o Garantido
+        pede conta no Mercado Pago — porque descobrir isso na tela de conexão,
+        depois de assinar, é a pior hora possível.
+      */}
       <section id="preco" className="border-y border-border bg-card">
         <div className="mx-auto max-w-5xl px-4 sm:px-6 py-16">
           <h2 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
             Preço
           </h2>
+          <p className="mt-3 max-w-[36rem] text-muted-foreground">
+            Dois planos, um valor por estabelecimento. Nenhum dos dois conta
+            cadeira, cliente nem mensagem.
+          </p>
 
-          <div className="mt-8 grid gap-8 rounded-lg border border-border bg-background p-8 sm:grid-cols-[auto_1fr] sm:gap-12">
-            <div>
-              <p className="flex items-baseline gap-1">
-                <span className="text-sm text-muted-foreground">R$</span>
-                <span className="font-heading text-5xl font-semibold tabular-nums">
-                  {PRECO_MENSAL}
-                </span>
-                <span className="text-sm text-muted-foreground">/mês</span>
-              </p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Um estabelecimento, um número de WhatsApp.
-              </p>
-              <Button asChild size="lg" className="mt-6 w-full sm:w-auto">
-                <Link href="/registro">Começar teste grátis</Link>
-              </Button>
-              <p className="mt-3 text-sm leading-6 text-muted-foreground sm:text-xs sm:leading-5">
-                {DIAS_TRIAL} dias grátis, sem cartão. Cancele quando quiser.{" "}
-                <Link href="/precos" className="underline underline-offset-2">
-                  Ver o que está incluído
-                </Link>
-                .
-              </p>
-            </div>
-
-            <ul className="space-y-3 text-base md:text-sm sm:border-l sm:border-border sm:pl-12">
-              {INCLUSO.map((item) => (
-                <li key={item} className="flex items-start gap-2.5">
-                  <CheckIcon
-                    aria-hidden
-                    className="mt-0.5 size-4 shrink-0 text-primary"
-                  />
-                  {item}
-                </li>
-              ))}
-            </ul>
+          <div className="mt-8 grid gap-6 lg:grid-cols-2">
+            {PLANOS.map((plano) => (
+              <div
+                key={plano.id}
+                className="rounded-lg border border-border bg-background p-6 sm:p-8"
+              >
+                <p className="font-mono text-sm uppercase tracking-widest text-muted-foreground sm:text-xs">
+                  {plano.nome}
+                </p>
+                <p className="mt-4 flex items-baseline gap-1">
+                  <span className="text-sm text-muted-foreground">R$</span>
+                  <span className="font-heading text-5xl font-semibold tabular-nums">
+                    {plano.preco}
+                  </span>
+                  <span className="text-sm text-muted-foreground">/mês</span>
+                </p>
+                <p className="mt-3 text-base leading-7 text-muted-foreground md:text-sm md:leading-6">
+                  {plano.resumo}
+                </p>
+                {plano.destacado && (
+                  <p className="mt-3 flex items-start gap-2.5 text-base leading-7 text-muted-foreground md:text-sm md:leading-6">
+                    <CheckIcon
+                      aria-hidden
+                      className="mt-1 size-4 shrink-0 text-primary md:mt-0.5"
+                    />
+                    <span>
+                      O Pix cai direto na sua conta do Mercado Pago. O dinheiro
+                      não passa por nós, e não cobramos comissão sobre ele.
+                    </span>
+                  </p>
+                )}
+              </div>
+            ))}
           </div>
+
+          <div className="mt-8 flex flex-wrap items-center gap-4">
+            <Button asChild size="lg">
+              <Link href="/registro">Começar teste grátis</Link>
+            </Button>
+            {/* Alvo isolado: precisa do piso de toque, como em `comparacao.tsx`. */}
+            <Link
+              href="/precos"
+              className="flex min-h-11 items-center px-2 text-sm text-muted-foreground underline underline-offset-4 transition-colors hover:text-foreground"
+            >
+              Comparar os dois planos
+            </Link>
+          </div>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground sm:text-xs sm:leading-5">
+            {DIAS_TRIAL} dias grátis, sem cartão. Você escolhe o plano ao criar a
+            conta, e cancela quando quiser.
+          </p>
         </div>
       </section>
 

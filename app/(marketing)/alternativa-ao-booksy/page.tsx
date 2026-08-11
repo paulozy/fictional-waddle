@@ -1,4 +1,4 @@
-import { PRECO_MENSAL } from "@/lib/plano";
+import { PRECO_ESSENCIAL } from "@/lib/plano";
 import { metadataPagina } from "@/lib/site";
 import {
   ChamadaComparacao,
@@ -55,7 +55,7 @@ const LINHAS: LinhaComparacao[] = [
   },
   {
     aspecto: "Como o preço escala",
-    encaixaria: `Faixa única de R$ ${PRECO_MENSAL}, sem contar profissional.`,
+    encaixaria: `A partir de R$ ${PRECO_ESSENCIAL}, sem contar profissional.`,
     concorrente: "Por agenda: uma faixa inicial e um valor por agenda adicional.",
   },
   {

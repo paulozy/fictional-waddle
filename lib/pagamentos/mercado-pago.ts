@@ -37,7 +37,7 @@ const URL_PADRAO = "https://api.mercadopago.com";
  * e não gambiarra: um e-mail que não coletamos é um dado pessoal que não passa a
  * existir num sistema que não precisa dele.
  */
-const EMAIL_PAGADOR_PADRAO = "pagamentos@encaixaria.com.br";
+const EMAIL_PAGADOR_PADRAO = "pagamentos@newgensoftware.xyz";
 
 const TIMEOUT_PADRAO_MS = 10_000;
 

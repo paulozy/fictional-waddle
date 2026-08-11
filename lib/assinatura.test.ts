@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   assinaturaValida,
+  linkAssinatura,
   motivoBloqueio,
   resumoAssinatura,
   type PerfilAssinatura,
@@ -253,5 +254,45 @@ describe("resumoAssinatura", () => {
     expect(resumoAssinatura(null, AGORA, "49,90")).toMatchObject({
       ofereceAssinar: true,
     });
+  });
+});
+
+/**
+ * `linkAssinatura` não tinha teste nenhum, e ela tem dois modos de falhar em
+ * silêncio: sem a env var devolve `null` (e o botão some sem ninguém entender),
+ * e a mensagem pré-escrita é o que decide o que respondemos do outro lado — sem
+ * gateway, cada troca de plano é uma conversa humana.
+ */
+describe("linkAssinatura", () => {
+  afterEach(() => {
+    delete process.env.WHATSAPP_CONTATO;
+  });
+
+  it("devolve null sem a env var, para o botão sumir em vez de levar a lugar nenhum", () => {
+    expect(linkAssinatura()).toBeNull();
+    expect(linkAssinatura("upgrade")).toBeNull();
+  });
+
+  it("descarta tudo que não é dígito do número", () => {
+    process.env.WHATSAPP_CONTATO = "+55 (11) 99999-8888";
+
+    expect(linkAssinatura()).toContain("https://wa.me/5511999998888?text=");
+  });
+
+  it("manda mensagens diferentes para assinar e para subir de plano", () => {
+    process.env.WHATSAPP_CONTATO = "5511999998888";
+
+    const assinar = decodeURIComponent(linkAssinatura() ?? "");
+    const upgrade = decodeURIComponent(linkAssinatura("upgrade") ?? "");
+
+    expect(assinar).toContain("assinar um plano");
+    expect(upgrade).toContain("Garantido");
+    expect(assinar).not.toBe(upgrade);
+  });
+
+  it("usa a intenção de assinar como padrão", () => {
+    process.env.WHATSAPP_CONTATO = "5511999998888";
+
+    expect(linkAssinatura()).toBe(linkAssinatura("assinar"));
   });
 });

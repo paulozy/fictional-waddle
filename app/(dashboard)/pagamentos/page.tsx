@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { linkAssinatura } from "@/lib/assinatura";
 import { formatarValor } from "@/lib/bot/mensagens-pagamento";
 import { dataHoraLocal } from "@/lib/metricas-whatsapp";
 import { motivoSemCobranca } from "@/lib/pagamentos/capacidade";
 import { expirarSinaisDoDono } from "@/lib/pagamentos/expirar";
+import { PRECO_GARANTIDO } from "@/lib/plano";
 import { criarClienteServidor, exigirUsuario } from "@/lib/supabase/server";
 import { conectarMercadoPago, salvarPrazoSinal } from "./actions";
 import { BotaoEstornar, BotaoRevogar } from "./painel-pagamentos";
@@ -173,7 +175,7 @@ export default async function PagamentosPage({
       )}
 
       {motivo === "plano" ? (
-        <SemPlano />
+        <SemPlano contaConectada={Boolean(perfil?.pagamento_conectado_em)} />
       ) : perfil?.pagamento_conectado_em ? (
         <>
           {/**
@@ -490,8 +492,8 @@ function FalhaAoCarregar({ codigo }: { codigo?: string }) {
  * ao WhatsApp, mesmo caminho do banner de assinatura. Sem a env var, o texto
  * aparece sem botão, como lá.
  */
-function SemPlano() {
-  const contato = process.env.WHATSAPP_CONTATO;
+function SemPlano({ contaConectada }: { contaConectada: boolean }) {
+  const href = linkAssinatura("upgrade");
 
   return (
     <section className="mt-8 max-w-2xl rounded-xl border border-border bg-card p-7">
@@ -499,18 +501,49 @@ function SemPlano() {
         Cobrança de sinal não está no seu plano
       </h2>
       <p className="mt-2.5 max-w-[52ch] text-base leading-relaxed text-muted-foreground md:text-sm">
-        Cobrar sinal é um adicional. Com ele, o bot pede um Pix antes de fechar o
+        Cobrar sinal é o plano{" "}
+        <strong className="font-medium text-foreground">Garantido</strong>, de R${" "}
+        {PRECO_GARANTIDO} por mês. Com ele, o bot pede um Pix antes de fechar o
         agendamento e segura o horário até o pagamento cair — o dinheiro vai
-        direto para a sua conta do Mercado Pago.
+        direto para a sua conta do Mercado Pago, sem passar por nós e sem
+        comissão.
       </p>
 
-      {contato && (
+      {/* Sem a env var o texto fica sem botão, como no banner de assinatura: a
+          informação de que a capacidade não está no plano vale por si. */}
+      {href && (
         <a
-          href={`https://wa.me/${contato}`}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
           className="mt-6 inline-flex h-11 items-center rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground md:h-10"
         >
-          Falar sobre o adicional
+          Fazer upgrade
         </a>
+      )}
+
+      {/*
+        A saída para uma autorização que sobrou.
+
+        Este braço da tela é o único que um tenant vê depois de perder a
+        capacidade — e ele podia ter conectado o Mercado Pago antes disso, agora
+        que o trial pode nascer no Garantido. O botão de revogar só existia no
+        braço de quem TEM o plano, então a autorização ficava cifrada no banco
+        sem nenhum caminho de saída pela nossa interface. A política de
+        privacidade promete que ela é revogável "a qualquer momento, no painel da
+        Encaixaria ou no do Mercado Pago"; sem isto, metade da promessa era falsa.
+      */}
+      {contaConectada && (
+        <div className="mt-7 border-t border-border pt-5">
+          <p className="max-w-[52ch] text-base leading-relaxed text-muted-foreground md:text-sm">
+            Sua conta do Mercado Pago continua conectada. Enquanto o plano não
+            incluir a cobrança, ela não é usada para nada — se preferir, pode
+            desconectar agora e reconectar quando voltar ao Garantido.
+          </p>
+          <div className="mt-4">
+            <BotaoRevogar />
+          </div>
+        </div>
       )}
     </section>
   );

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { FUSO_PADRAO } from "@/lib/fusos";
+import { PLANO_PADRAO } from "@/lib/plano";
 import { ROBOTS_PRIVADO } from "@/lib/site";
 import { criarClienteServidor, exigirUsuario } from "@/lib/supabase/server";
 import { FormularioEstabelecimento } from "./formulario-estabelecimento";
@@ -23,7 +24,7 @@ export default async function EstabelecimentoPage() {
 
   const { data: perfil } = await supabase
     .from("perfis")
-    .select("nome_estabelecimento, fuso_horario")
+    .select("nome_estabelecimento, fuso_horario, plano")
     .eq("id", usuarioId)
     .single();
 
@@ -31,6 +32,7 @@ export default async function EstabelecimentoPage() {
     <FormularioEstabelecimento
       nomeInicial={perfil?.nome_estabelecimento ?? ""}
       fusoInicial={perfil?.fuso_horario ?? FUSO_PADRAO}
+      planoInicial={perfil?.plano ?? PLANO_PADRAO}
     />
   );
 }

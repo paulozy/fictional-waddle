@@ -51,11 +51,11 @@ export default function SobrePage() {
       <h2>O que ela deliberadamente não é</h2>
       <p>
         Não é um sistema de gestão. Não tem financeiro, comissão, controle de
-        estoque nem relatório de faturamento. Cobrar sinal por Pix existe como
-        adicional, e mesmo assim o dinheiro vai direto para a conta do dono — não
-        passa por nós em momento nenhum. Existem produtos
-        bons que fazem tudo isso e custam mais — se é o que você precisa, vale
-        olhar para eles com honestidade.
+        estoque nem relatório de faturamento. Cobrar sinal por Pix existe no plano
+        Garantido, e mesmo lá o dinheiro vai direto para a conta do dono — não
+        passa por nós em momento nenhum, e não somos intermediários dele. Existem
+        produtos bons que fazem tudo isso e custam mais — se é o que você precisa,
+        vale olhar para eles com honestidade.
       </p>
       <p>
         A escolha de fazer uma coisa só tem um motivo prático: um produto que faz

@@ -62,10 +62,12 @@ function montar({
   caminho = "/agendamentos",
   recolhidaInicial = false,
   estadoConexao = "conectado",
+  linkUpgrade = null,
 }: {
   caminho?: string;
   recolhidaInicial?: boolean;
   estadoConexao?: EstadoConexao;
+  linkUpgrade?: string | null;
 } = {}) {
   caminhoAtual.valor = caminho;
   return render(
@@ -74,6 +76,7 @@ function montar({
       itemConta={CONTA}
       estadoConexao={estadoConexao}
       recolhidaInicial={recolhidaInicial}
+      linkUpgrade={linkUpgrade}
       aoSair={() => {}}
     />,
   );
@@ -176,5 +179,45 @@ describe("BarraLateral", () => {
     expect(
       within(navegacao()).getByRole("link", { name: /WhatsApp, desconectado/ }),
     ).toBeTruthy();
+  });
+});
+
+/**
+ * O CTA de upgrade. Quem decide se ele aparece é `app/(dashboard)/layout.tsx`
+ * (só no Essencial e só sem bloqueio de assinatura); aqui o que se trava é que a
+ * peça obedece ao `href` e some sem ele — sem `WHATSAPP_CONTATO` o link seria um
+ * botão para lugar nenhum.
+ */
+describe("CTA de upgrade", () => {
+  function cta() {
+    return screen.queryByRole("link", { name: /fazer upgrade/i });
+  }
+
+  it("não aparece quando não há link", () => {
+    montar({ linkUpgrade: null });
+
+    expect(cta()).toBeNull();
+  });
+
+  it("aparece no rodapé, apontando para o WhatsApp", () => {
+    montar({ linkUpgrade: "https://wa.me/5511999998888?text=oi" });
+
+    expect(cta()?.getAttribute("href")).toBe(
+      "https://wa.me/5511999998888?text=oi",
+    );
+  });
+
+  /**
+   * Recolhida, o rótulo vive só para leitor de tela — mas precisa continuar
+   * existindo, senão o link fica sem nome acessível. É o mesmo arranjo de
+   * `ItemLateral`.
+   */
+  it("mantém nome acessível com o menu recolhido", () => {
+    montar({
+      linkUpgrade: "https://wa.me/5511999998888",
+      recolhidaInicial: true,
+    });
+
+    expect(cta()).not.toBeNull();
   });
 });

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { DIAS_TRIAL, PRECO_MENSAL } from "@/lib/plano";
+import { DIAS_TRIAL, PRECO_ESSENCIAL, PRECO_GARANTIDO } from "@/lib/plano";
 import {
   IDENTIFICACAO_LEGAL,
   identificacaoPendente,
@@ -56,7 +56,8 @@ export default function TermosPage() {
 
       <h2>O que o serviço não faz</h2>
       <ul>
-        <li>Não recebe o pagamento do serviço. A cobrança de sinal por Pix é um adicional, e mesmo com ela o dinheiro nunca passa por nós.</li>
+        <li>Não recebe o pagamento do serviço. A cobrança de sinal por Pix existe no plano Garantido, e mesmo nela o dinheiro nunca passa por nós.</li>
+        <li>Não tem financeiro, comissão nem controle de caixa.</li>
         <li>Não divide a agenda por profissional.</li>
         <li>Não interpreta texto livre: o cliente responde por números.</li>
         <li>Não integra com Google Calendar nem com outros sistemas de agenda.</li>
@@ -70,6 +71,21 @@ export default function TermosPage() {
         continuam acessíveis no painel.
       </p>
       <p>
+        O teste pode começar em <strong>qualquer um dos dois planos</strong>,
+        escolhido no cadastro. Se você escolher o Garantido, a cobrança de sinal só
+        passa a funcionar depois de conectar sua conta do Mercado Pago; sem ela, o
+        bot simplesmente não pede sinal e o restante funciona igual.
+      </p>
+      <p>
+        <strong>
+          Durante o teste, o sinal cobrado é dinheiro real, não simulação.
+        </strong>{" "}
+        O que é gratuito nesses {DIAS_TRIAL} dias é a nossa mensalidade. O Pix que
+        o seu cliente pagar cai de verdade na sua conta do Mercado Pago desde o
+        primeiro dia, e a devolução, se houver, também sai de lá. Não existe modo
+        de simulação — recomendamos experimentar primeiro com um valor pequeno.
+      </p>
+      <p>
         <strong>O teste é um por número de WhatsApp</strong>, não por e-mail. Como
         o bot atende pelo número do estabelecimento, é ele que identifica o
         negócio. Se você trocou de número ou assumiu um estabelecimento que já
@@ -79,9 +95,26 @@ export default function TermosPage() {
 
       <h2>Assinatura e pagamento</h2>
       <p>
-        O valor é de <strong>R$ {PRECO_MENSAL} por mês</strong>, em faixa única,
-        sem cobrança por profissional, por cliente ou por mensagem, e sem limite de
-        agendamentos.
+        São dois planos, por estabelecimento, sem cobrança por profissional, por
+        cliente ou por mensagem, e sem limite de agendamentos:
+      </p>
+      <ul>
+        <li>
+          <strong>Essencial — R$ {PRECO_ESSENCIAL} por mês.</strong> Atendimento
+          e agendamento pelo WhatsApp, cancelamento pelo cliente e lembrete no dia
+          anterior.
+        </li>
+        <li>
+          <strong>Garantido — R$ {PRECO_GARANTIDO} por mês.</strong> Tudo do
+          Essencial, mais a cobrança de sinal por Pix descrita abaixo. Depende de
+          você conectar uma conta do Mercado Pago da qual seja titular; sem essa
+          conta conectada, o bot simplesmente não pede sinal, e as demais funções
+          seguem valendo.
+        </li>
+      </ul>
+      <p>
+        A troca de plano é feita pelo mesmo canal da assinatura e passa a valer no
+        período seguinte.
       </p>
       <p>
         Nesta fase <strong>não há cobrança automática</strong>: nenhum cartão é
@@ -126,17 +159,28 @@ export default function TermosPage() {
         transmite o aviso.
       </p>
 
-      <h2>Cobrança de sinal (adicional)</h2>
+      <h2>Cobrança de sinal (plano Garantido)</h2>
       <p>
-        Se o adicional estiver contratado e você conectar sua conta do Mercado
-        Pago, o bot pode pedir um sinal por Pix antes de fechar o agendamento.
-        Três pontos que valem estar escritos:
+        No plano Garantido, com a sua conta do Mercado Pago conectada, o bot pode
+        pedir um sinal por Pix antes de fechar o agendamento. Quatro pontos que
+        valem estar escritos:
       </p>
       <ul>
         <li>
           <strong>O dinheiro nunca passa por nós.</strong> A cobrança é criada em
           seu nome, com a autorização que você deu, e o Pix cai direto na sua
           conta. Não retemos, não repassamos e não cobramos comissão sobre ela.
+          Não somos parte da transação nem intermediários dela: juridicamente, o
+          pagamento é entre você e o seu cliente, e nós apenas geramos a cobrança
+          com a autorização que você concedeu.
+        </li>
+        <li>
+          <strong>A conta tem de ser sua.</strong> Você declara ser o titular da
+          conta do Mercado Pago que conectar, e é responsável por ela: pelos dados
+          cadastrais, pelos tributos que incidam sobre o que receber e pelo
+          cumprimento das regras do próprio Mercado Pago. A exigência de conta
+          própria não é nossa escolha comercial — a regulação do Pix não permite
+          que alguém receba pagamentos por meio de conta de terceiro.
         </li>
         <li>
           <strong>A devolução é sua.</strong> Se o cliente desmarcar, ou se o

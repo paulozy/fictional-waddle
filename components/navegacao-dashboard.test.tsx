@@ -47,10 +47,15 @@ vi.mock("next/navigation", () => ({
   usePathname: () => caminhoAtual.valor,
 }));
 
-function montar(caminho: string) {
+function montar(caminho: string, linkUpgrade: string | null = null) {
   caminhoAtual.valor = caminho;
   return render(
-    <NavegacaoDashboard abas={ABAS} itensExtras={EXTRAS} aoSair={() => {}} />,
+    <NavegacaoDashboard
+      abas={ABAS}
+      itensExtras={EXTRAS}
+      linkUpgrade={linkUpgrade}
+      aoSair={() => {}}
+    />,
   );
 }
 
@@ -149,5 +154,36 @@ describe("NavegacaoDashboard", () => {
      */
     expect(screen.getAllByRole("navigation")).toHaveLength(1);
     expect(screen.getAllByRole("link", { name: "Serviços" })).toHaveLength(1);
+  });
+});
+
+/**
+ * O mesmo CTA no celular, dentro da folha "Mais".
+ *
+ * Precisa existir aqui porque a barra lateral só aparece a partir de `md`: sem
+ * isto, quem usa o painel no celular só encontraria o caminho de upgrade em
+ * `/conta` e `/pagamentos`.
+ */
+describe("CTA de upgrade na folha", () => {
+  function abrirFolha() {
+    fireEvent.click(screen.getByRole("button", { name: /mais/i }));
+  }
+
+  it("não aparece quando não há link", () => {
+    montar("/agendamentos", null);
+    abrirFolha();
+
+    expect(screen.queryByRole("link", { name: /fazer upgrade/i })).toBeNull();
+  });
+
+  it("aparece com o link do WhatsApp", () => {
+    montar("/agendamentos", "https://wa.me/5511999998888?text=oi");
+    abrirFolha();
+
+    expect(
+      screen
+        .getByRole("link", { name: /fazer upgrade/i })
+        .getAttribute("href"),
+    ).toBe("https://wa.me/5511999998888?text=oi");
   });
 });
