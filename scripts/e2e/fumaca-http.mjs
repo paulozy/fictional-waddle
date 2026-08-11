@@ -42,6 +42,10 @@ const AMBIENTE = {
   PAGAMENTO_CRYPTO_KEY: "b".repeat(64),
   WEBHOOK_SECRET: "fumaca-bot",
   WEBHOOK_BASE_URL: BASE,
+  // Pública e separada: `BASE` é loopback, e `urlDeNotificacao` recusa endereço
+  // privado de propósito (o MP não alcança). Sem isto, um teste que passasse a
+  // exercitar a criação de cobrança falharia por uma guarda que está certa.
+  APP_PUBLIC_URL: "https://fumaca.encaixaria.test",
   EVOLUTION_API_URL: "http://127.0.0.1:59998",
   EVOLUTION_API_ADMIN_KEY: "fumaca",
 };

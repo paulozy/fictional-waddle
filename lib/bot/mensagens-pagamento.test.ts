@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  MODELO_PADRAO_COBRANCA,
+  MODELO_PADRAO_RECEBIDO,
   formatarValor,
   montarTextoCobrancaSinal,
   montarTextoCodigoPix,
@@ -8,6 +10,7 @@ import {
   montarTextoSinalRecebido,
   montarTextoSinalSemHorario,
 } from "./mensagens-pagamento";
+import { validarModelo } from "./modelo-mensagem";
 
 const FUSO = "America/Sao_Paulo";
 const COPIA_E_COLA =
@@ -29,6 +32,9 @@ describe("montarTextoCobrancaSinal", () => {
     expiraEm: new Date("2026-08-09T17:30:00.000Z"),
     fusoHorario: FUSO,
     servicoNome: "Corte masculino",
+    // 12:30 UTC = 09:30 em São Paulo. Só alimenta o `{quando}` do modelo do dono;
+    // o texto padrão não cita o horário do agendamento.
+    dataHora: "2026-08-10T12:30:00.000Z",
   };
 
   it("diz valor, prazo e serviço", () => {
@@ -115,5 +121,106 @@ describe("montarTextoSinalExpirado", () => {
     const texto = montarTextoSinalExpirado();
     expect(texto).toMatch(/prazo/i);
     expect(texto).toMatch(/mensagem/i);
+  });
+});
+
+/**
+ * Modelo personalizado do dono (`mensagens_tenant`).
+ *
+ * O que se prende aqui é o fallback e a fronteira: sem modelo, o texto padrão
+ * intacto; com modelo, os placeholders resolvidos no fuso do estabelecimento. E o
+ * copia-e-cola continua fora, sempre — é a garantia que faz o Pix ser colável.
+ */
+describe("modelo personalizado", () => {
+  const base = {
+    valorCentavos: 2000,
+    expiraEm: new Date("2026-08-09T17:30:00.000Z"),
+    fusoHorario: FUSO,
+    servicoNome: "Corte masculino",
+    dataHora: "2026-08-10T12:30:00.000Z",
+  };
+
+  it("sem modelo, mantém o texto padrão", () => {
+    expect(montarTextoCobrancaSinal({ ...base, modelo: null })).toBe(
+      montarTextoCobrancaSinal(base),
+    );
+  });
+
+  it("resolve valor, serviço, prazo e horário do agendamento", () => {
+    const texto = montarTextoCobrancaSinal({
+      ...base,
+      modelo: "{servico} em {quando}: {valor} até {prazo}",
+    });
+
+    expect(texto).toContain("Corte masculino");
+    // `\s?` porque o Intl separa símbolo e número com espaço NÃO-QUEBRÁVEL, não
+    // com espaço comum — mesmo idioma dos testes da engine.
+    expect(texto).toMatch(/R\$\s?20,00/);
+    // Prazo às 14:30 e agendamento às 09:30, os dois no fuso do negócio.
+    expect(texto).toContain("14:30");
+    expect(texto).toContain("09:30");
+    expect(texto).not.toContain("17:30");
+  });
+
+  it("a confirmação também aceita modelo, com fallback", () => {
+    const dadosRecebido = {
+      valorCentavos: 500,
+      servicoNome: "Barba",
+      quando: "10/08 às 09:30",
+    };
+
+    expect(montarTextoSinalRecebido({ ...dadosRecebido, modelo: "  " })).toBe(
+      montarTextoSinalRecebido(dadosRecebido),
+    );
+    expect(
+      montarTextoSinalRecebido({ ...dadosRecebido, modelo: "Caiu {valor}!" }),
+    ).toMatch(/^Caiu R\$\s?5,00!$/);
+  });
+});
+
+/**
+ * A sugestão que o painel mostra e a mensagem que o cliente recebe são a MESMA
+ * string, uma crua e a outra renderizada.
+ *
+ * Estes testes existem porque por um instante houve duas cópias — uma no módulo e
+ * outra na tela — e duas cópias divergem no primeiro ajuste, com o painel
+ * prometendo um texto e o WhatsApp entregando outro. Agora a tela exibe
+ * `MODELO_PADRAO_*` e o bot renderiza a mesma constante; o que segue prende essa
+ * equivalência.
+ */
+describe("modelo padrão é a fonte do texto enviado", () => {
+  it("a cobrança padrão é o modelo renderizado", () => {
+    const dados = {
+      valorCentavos: 2000,
+      expiraEm: new Date("2026-08-09T17:30:00.000Z"),
+      fusoHorario: FUSO,
+      servicoNome: "Corte masculino",
+      dataHora: "2026-08-10T12:30:00.000Z",
+    };
+
+    expect(montarTextoCobrancaSinal(dados)).toBe(
+      montarTextoCobrancaSinal({ ...dados, modelo: MODELO_PADRAO_COBRANCA }),
+    );
+  });
+
+  it("a confirmação padrão é o modelo renderizado", () => {
+    const dados = {
+      valorCentavos: 500,
+      servicoNome: "Barba",
+      quando: "10/08 às 09:30",
+    };
+
+    expect(montarTextoSinalRecebido(dados)).toBe(
+      montarTextoSinalRecebido({ ...dados, modelo: MODELO_PADRAO_RECEBIDO }),
+    );
+  });
+
+  /**
+   * E os modelos precisam passar na própria validação: um `{prazo}` esquecido no
+   * padrão faria a tela sugerir um texto que o dono não consegue salvar.
+   */
+  it("os modelos padrão passam na validação que a tela aplica", () => {
+    expect(validarModelo("sinal_cobranca", MODELO_PADRAO_COBRANCA).ok).toBe(true);
+    expect(validarModelo("sinal_recebido", MODELO_PADRAO_RECEBIDO).ok).toBe(true);
   });
 });

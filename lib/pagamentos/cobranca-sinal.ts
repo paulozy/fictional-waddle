@@ -22,9 +22,81 @@ export type PerfilParaCobranca = PerfilCobranca & {
   sinal_minutos_validade: number;
 };
 
-/** Caminho do webhook que o MP vai chamar quando o pagamento mudar. */
+/**
+ * Hosts que só existem dentro da máquina ou da rede local.
+ *
+ * `localhost`, loopback, link-local e os três blocos privados da RFC 1918 —
+ * `10/8`, `172.16/12` (que é onde vive o gateway das redes bridge do Docker) e
+ * `192.168/16`.
+ */
+const HOST_PRIVADO =
+  /^(localhost$|127\.|0\.0\.0\.0$|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?$)/i;
+
+/**
+ * Endereço PÚBLICO deste app — o que vai para o Mercado Pago.
+ *
+ * Variável própria, e não a `WEBHOOK_BASE_URL`, porque as duas têm exigências
+ * **opostas** e por um tempo compartilharam o mesmo valor:
+ *
+ *  - `WEBHOOK_BASE_URL` é onde a **Evolution API** alcança este app. Com a
+ *    Evolution em container na mesma máquina, o valor certo é o gateway da rede
+ *    dela (`172.20.0.1:3000`) — privado de propósito, e melhor assim: o bot não
+ *    passa a depender de um túnel de desenvolvimento para responder.
+ *  - `APP_PUBLIC_URL` é onde os **servidores do Mercado Pago** alcançam este
+ *    app. Tem de ser roteável da internet.
+ *
+ * Uma variável servindo os dois significa que consertar um lado quebra o outro,
+ * em silêncio — foi o que aconteceu: com a `WEBHOOK_BASE_URL` apontada para o
+ * gateway do Docker (o valor correto para a Evolution), todo Pix saiu com uma
+ * `notification_url` que o MP não tem como chamar.
+ *
+ * Cai para `WEBHOOK_BASE_URL` quando `APP_PUBLIC_URL` não existe, para não
+ * quebrar ambiente já configurado (em produção as duas são a mesma URL pública).
+ */
+function basePublica(): string {
+  const publica = process.env.APP_PUBLIC_URL?.trim();
+  const base = publica || envObrigatoria("WEBHOOK_BASE_URL");
+  return base.replace(/\/+$/, "");
+}
+
+/**
+ * Caminho do webhook que o MP vai chamar quando o pagamento mudar.
+ *
+ * **Lança quando o endereço não é alcançável de fora, e isso é falha fechada de
+ * propósito** — mesmo raciocínio da guarda de `collector_id` mais abaixo. As duas
+ * alternativas são ruins, mas em graus muito diferentes:
+ *
+ *  - recusar a cobrança custa **um agendamento sem sinal**, e o horário fica de
+ *    pé (é a política do módulo: falhar ao cobrar não derruba agendamento);
+ *  - emitir com URL inalcançável custa **o dinheiro do cliente**: ele paga, a
+ *    confirmação nunca chega, a varredura de holds vencidos cancela o
+ *    agendamento — e como o webhook nunca rodou, nem `estorno_pendente` é
+ *    levantado. Ninguém fica sabendo que há um Pix para devolver.
+ *
+ * Quem chama é `cobrarSinal`, cuja exceção o webhook engole em
+ * `console.error("falha ao cobrar sinal")` — então o efeito prático é um log
+ * explícito no lugar de um cliente lesado em silêncio.
+ */
 export function urlDeNotificacao(): string {
-  const base = envObrigatoria("WEBHOOK_BASE_URL").replace(/\/+$/, "");
+  const base = basePublica();
+  const host = (() => {
+    try {
+      return new URL(base).hostname;
+    } catch {
+      return "";
+    }
+  })();
+
+  if (!host || HOST_PRIVADO.test(host)) {
+    throw new Error(
+      `APP_PUBLIC_URL precisa ser um endereço público — recebido "${base}". ` +
+        "Os servidores do Mercado Pago não alcançam localhost nem IP de rede privada. " +
+        "Em desenvolvimento, use a URL do túnel (ngrok/cloudflared) apontando " +
+        "para a porta do app; não reaproveite a WEBHOOK_BASE_URL, que é o " +
+        "endereço da Evolution API e pode ser privado.",
+    );
+  }
+
   return `${base}/api/webhook/pagamento/mercadopago`;
 }
 
@@ -56,18 +128,35 @@ export async function cobrarSinal(dados: {
   agendamentoId: string;
   servicoId: string;
   servicoNome: string;
+  /** Horário do agendamento, em ISO — alimenta o `{quando}` do modelo do dono. */
+  dataHora: string;
 }): Promise<string[] | null> {
   const { admin, perfil } = dados;
 
   if (!cobrancaSinalHabilitada(perfil)) return null;
 
-  const { data: servico } = await admin
-    .from("servicos")
-    .select("valor_sinal")
-    // A service role ignora RLS: este filtro é a única barreira entre tenants.
-    .eq("usuario_id", perfil.id)
-    .eq("id", dados.servicoId)
-    .maybeSingle();
+  /**
+   * Valor do serviço e texto personalizado do dono, em paralelo.
+   *
+   * Duas leituras num `Promise.all` e não em sequência: nenhuma depende da outra,
+   * e este é o caminho quente de toda mensagem que fecha agendamento. A do modelo
+   * pode voltar vazia — ausência de linha significa "usa o padrão".
+   */
+  const [{ data: servico }, { data: modelo }] = await Promise.all([
+    admin
+      .from("servicos")
+      .select("valor_sinal")
+      // A service role ignora RLS: este filtro é a única barreira entre tenants.
+      .eq("usuario_id", perfil.id)
+      .eq("id", dados.servicoId)
+      .maybeSingle(),
+    admin
+      .from("mensagens_tenant")
+      .select("texto")
+      .eq("usuario_id", perfil.id)
+      .eq("chave", "sinal_cobranca")
+      .maybeSingle(),
+  ]);
 
   const valorCentavos = sinalEmCentavos(servico?.valor_sinal);
   if (valorCentavos === null) return null;
@@ -167,6 +256,8 @@ export async function cobrarSinal(dados: {
       expiraEm,
       fusoHorario: perfil.fuso_horario,
       servicoNome: dados.servicoNome,
+      dataHora: dados.dataHora,
+      modelo: modelo?.texto,
     }),
     // Sozinho na mensagem: o cliente segura para copiar, e qualquer texto em
     // volta entra na cópia e faz o banco recusar o código.

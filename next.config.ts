@@ -24,9 +24,29 @@ const origensExtras = (process.env.SERVER_ACTIONS_ALLOWED_ORIGINS ?? "")
   .map((origem) => origem.trim())
   .filter(Boolean);
 
+/**
+ * A MESMA lista serve o `allowedDevOrigins`, e a segunda metade custou uma tarde.
+ *
+ * O dev server bloqueia cross-origin para os recursos de `/_next/*` — o log diz
+ * `Blocked cross-origin request to Next.js dev resource /_next/webpack-hmr`. Sem
+ * os chunks o cliente **não hidrata**, e o sintoma não se parece com nada disso:
+ * o `<form>` da tela de conexão cai no submit nativo, o navegador recarrega a
+ * página com `?numero=…` na query, e nenhum QR code aparece. Nada de erro na
+ * tela, nada de erro no terminal fora daquele aviso.
+ *
+ * Reusar a variável em vez de criar uma segunda é decisão, não preguiça: aqui as
+ * duas exigências são **idênticas** (a origem pela qual o navegador abre o app),
+ * ao contrário de `WEBHOOK_BASE_URL`/`APP_PUBLIC_URL`, que foram separadas
+ * justamente porque as exigências eram opostas. Duas variáveis com o mesmo valor
+ * obrigatório são duas chances de divergirem em silêncio.
+ *
+ * `allowedDevOrigins` é ignorado em produção, então não há config de
+ * desenvolvimento vazando para o build.
+ */
 const nextConfig: NextConfig = {
   ...(origensExtras.length > 0 && {
     experimental: { serverActions: { allowedOrigins: origensExtras } },
+    allowedDevOrigins: origensExtras,
   }),
 };
 

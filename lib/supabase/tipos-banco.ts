@@ -395,6 +395,27 @@ export type Database = {
           },
         ]
       }
+      mensagens_tenant: {
+        Row: {
+          atualizado_em: string
+          chave: string
+          texto: string
+          usuario_id: string
+        }
+        Insert: {
+          atualizado_em?: string
+          chave: string
+          texto: string
+          usuario_id: string
+        }
+        Update: {
+          atualizado_em?: string
+          chave?: string
+          texto?: string
+          usuario_id?: string
+        }
+        Relationships: []
+      }
       perfis: {
         Row: {
           antecedencia_maxima_dias: number

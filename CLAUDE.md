@@ -283,6 +283,28 @@ painel, cliente pelo bot): os dois gravam `status = 'cancelado'` e não sabem na
 sobre sinal, e sem isso a agenda mostraria "Aguardando sinal" ao lado de um
 horário cancelado, com a cobrança `pendente` para sempre.
 
+**O terceiro ponto de varredura é a LEITURA do painel** (`lib/pagamentos/expirar.ts`,
+chamado por `/agendamentos` e `/pagamentos`), e existe porque os dois primeiros
+cobriam dois dos três danos e não o terceiro. Horário bloqueado para outro cliente:
+coberto, porque quem tenta agendar dispara a varredura antes de ver a lista.
+Lembrete indevido: coberto, porque o cron expira antes de montar os lembretes.
+**A agenda do dono mostrando "aguardando sinal" num horário que já venceu não
+estava coberta** — quem abre o painel não disparava varredura nenhuma, e no plano
+Hobby o registro só se corrigia 1x/dia. Medido: prazo de 2 min vencido, agendamento
+seguia `confirmado`/`aguardando` cinco minutos depois.
+
+Três detalhes desse ponto não são livres. É **service role**, porque a RPC é
+`security invoker` com `execute` só para `service_role` — ela escreve nas colunas de
+sinal, que ficam fora do `grant` de `authenticated` de propósito; logo o `usuarioId`
+tem de vir **sempre da sessão**, nunca de `searchParams`, ou a tela viraria "expire
+os sinais de qualquer tenant". É **sequencial e antes** da leitura dos agendamentos,
+pelo mesmo motivo de `montarContexto`. E é **guardada por `cobrancaSinalHabilitada`**,
+para não custar uma escrita a cada abertura de agenda da maioria que não cobra sinal
+— quem desligou a capacidade com holds abertos segue coberto pelo cron, que ignora
+essa condição de propósito. Não precisa de `export const dynamic`: as duas páginas
+já são dinâmicas por usarem `cookies()`, o que o build confirma marcando as duas
+com `ƒ`.
+
 **A ordem de lock das duas RPCs é a mesma — `cobrancas_sinal` e só então
 `agendamentos` — e inverter uma delas cria deadlock.** Elas foram desenhadas para
 correr juntas: a varredura está no caminho quente de toda mensagem, e um Pix que
@@ -652,7 +674,7 @@ Antes dela, `nome_estabelecimento` e `fuso_horario` só eram graváveis no passo
 
 **Trocar senha dispara `enviarLinkRecuperacao`, não um campo de senha nesta tela.** Um segundo caminho para definir senha significaria duas implementações da mesma regra de força — e a sessão do painel pode estar aberta há semanas num aparelho emprestado, prova de posse que o e-mail dá e ela não. Trocar de **e-mail** ficou de fora: exige reconfirmar o endereço novo, que é fluxo próprio.
 
-**`encerrarConta` é o terceiro ponto de uso da service role**, e o único com sessão. Só `auth.admin.deleteUser` apaga `auth.users`, e é o cascade dela que leva os dados do tenant (LGPD). A ordem dos passos não é intercambiável e está no JSDoc da action; o que não pode cair:
+**`encerrarConta` é um dos quatro pontos de uso da service role** (com o webhook, o cron e `lib/pagamentos/expirar.ts`), e um dos dois com sessão. Só `auth.admin.deleteUser` apaga `auth.users`, e é o cascade dela que leva os dados do tenant (LGPD). A ordem dos passos não é intercambiável e está no JSDoc da action; o que não pode cair:
 
 - **O alvo é sempre `claims.sub`, nunca um id do `FormData`** — senão a action vira "apague a conta de qualquer um".
 - **A instância da Evolution sai antes do banco.** Depois do `deleteUser` não há mais de onde ler `evolution_instance_name`, e a instância órfã deixa o socket Baileys aberto respondendo por um número cujo dono não tem mais painel.
@@ -806,6 +828,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 EVOLUTION_API_URL=
 EVOLUTION_API_ADMIN_KEY=
+WEBHOOK_BASE_URL=
+APP_PUBLIC_URL=
 CRON_SECRET=
 MERCADO_PAGO_CLIENT_ID=
 MERCADO_PAGO_CLIENT_SECRET=
@@ -817,6 +841,25 @@ PAGAMENTO_CRYPTO_KEY=
 O `.env.example` é a fonte com as explicações: cada variável documenta **o que
 acontece quando ela está vazia**, que é a informação que falta na hora do
 incidente.
+
+**`WEBHOOK_BASE_URL` e `APP_PUBLIC_URL` são duas porque as exigências são
+opostas, e por um tempo foram uma só.** A primeira é onde a **Evolution API**
+alcança este app: com a Evolution em container na mesma máquina, o valor certo é
+o gateway da rede dela (`172.20.0.1:3000`, de `docker exec <container> ip route`),
+privado de propósito — assim o bot não passa a depender de um túnel de
+desenvolvimento para responder. A segunda é o `notification_url` do Pix, ou seja,
+por onde os **servidores do Mercado Pago** chamam de volta, e tem de ser roteável
+da internet. Em produção as duas coincidem na URL da Vercel; em dev, a pública é a URL do
+túnel apontando para a porta do app, e a outra segue privada.
+
+Com uma variável só, consertar um lado quebrava o outro em silêncio — e o modo de
+falha é o pior do produto: o cliente paga, a confirmação nunca chega, a varredura
+de holds vencidos cancela o agendamento e, como o webhook nunca rodou, nem
+`estorno_pendente` é levantado. Ninguém descobre que há dinheiro para devolver.
+Por isso `urlDeNotificacao` **lança** quando o host resolvido é loopback ou RFC
+1918, em vez de emitir um Pix impossível de confirmar: recusar custa um
+agendamento sem sinal, emitir custa o dinheiro do cliente. É a mesma direção da
+guarda de `collector_id`.
 
 ---
 

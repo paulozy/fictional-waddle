@@ -1,6 +1,7 @@
 import { addDays } from "date-fns";
 import { assinaturaValida } from "@/lib/assinatura";
 import { ErroEvolutionApi, enviarTexto, traduzirEstado } from "@/lib/evolution-api";
+import { ErroMercadoPago } from "@/lib/pagamentos/mercado-pago";
 import { criarClienteAdmin } from "@/lib/supabase/admin";
 import {
   decidir,
@@ -803,6 +804,8 @@ async function executarEfeito(
       agendamentoId: agendamentoId as unknown as string,
       servicoId: efeito.servicoId,
       servicoNome: nomeServico,
+      // Alimenta o `{quando}` do texto personalizado do dono.
+      dataHora: efeito.dataHora.toISOString(),
     });
 
     /**
@@ -847,18 +850,75 @@ async function executarEfeito(
 async function tentarCobrarSinal(
   admin: ClienteAdmin,
   perfil: Perfil,
-  dados: { agendamentoId: string; servicoId: string; servicoNome: string },
+  dados: {
+    agendamentoId: string;
+    servicoId: string;
+    servicoNome: string;
+    dataHora: string;
+  },
 ): Promise<string[] | null> {
   try {
     return await cobrarSinal({ admin, perfil, ...dados });
   } catch (erro) {
-    console.error("falha ao cobrar sinal", {
-      usuario_id: perfil.id,
-      agendamento_id: dados.agendamentoId,
-      erro: erro instanceof Error ? erro.message : String(erro),
-    });
+    /**
+     * O motivo vai na **string** da mensagem, não num objeto de contexto.
+     *
+     * Não é estilo: o logger de desenvolvimento do Next grava
+     * `.next/dev/logs/next-development.log` renderizando argumentos-objeto como
+     * `{}`. O terminal mostra o objeto, o arquivo não — e o arquivo é o que
+     * sobrevive à sessão. Com o motivo dentro da mensagem, os dois caminhos
+     * carregam a informação.
+     *
+     * Isto custou uma rodada de diagnóstico: um `falha ao cobrar sinal {}` no
+     * arquivo, com a causa real perdida. Mesmo cuidado vale para qualquer log de
+     * caminho de erro raro — quando alguém for ler, o terminal já rolou.
+     */
+    console.error(
+      `falha ao cobrar sinal: ${motivoDaFalha(erro)} ` +
+        `(usuario=${perfil.id} agendamento=${dados.agendamentoId})`,
+    );
     return null;
   }
+}
+
+/**
+ * Motivo legível de uma falha de cobrança, com o código do provedor quando existe.
+ *
+ * `ErroMercadoPago.message` diz apenas "respondeu 400 em /v1/payments" — o que de
+ * fato resolve o incidente está no corpo, em `error` e `cause[].code`
+ * (`invalid_users_involved`, `collector_not_allowed`, e afins).
+ *
+ * **Projeção explícita, nunca o corpo inteiro.** A regra do módulo de pagamentos
+ * é não despejar resposta crua do provedor em log — no `/oauth/token` aquilo
+ * carrega `access_token`, e um log é o lugar mais fácil de vazar segredo sem
+ * ninguém perceber. Aqui só saem três campos, todos descritivos.
+ */
+function motivoDaFalha(erro: unknown): string {
+  if (!(erro instanceof ErroMercadoPago)) {
+    return erro instanceof Error ? erro.message : String(erro);
+  }
+
+  const corpo = erro.corpo;
+  if (typeof corpo !== "object" || corpo === null) return erro.message;
+
+  const registro = corpo as Record<string, unknown>;
+  const causas = Array.isArray(registro.cause)
+    ? registro.cause
+        .map((c) =>
+          typeof c === "object" && c !== null
+            ? String((c as Record<string, unknown>).code ?? "")
+            : "",
+        )
+        .filter(Boolean)
+    : [];
+
+  const partes = [
+    typeof registro.error === "string" ? registro.error : null,
+    typeof registro.message === "string" ? registro.message : null,
+    causas.length > 0 ? `cause=${causas.join(",")}` : null,
+  ].filter(Boolean);
+
+  return partes.length > 0 ? `${erro.message} — ${partes.join(" | ")}` : erro.message;
 }
 
 /**

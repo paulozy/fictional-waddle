@@ -4,6 +4,7 @@ import Link from "next/link";
 import { formatarValor } from "@/lib/bot/mensagens-pagamento";
 import { dataHoraLocal } from "@/lib/metricas-whatsapp";
 import { motivoSemCobranca } from "@/lib/pagamentos/capacidade";
+import { expirarSinaisDoDono } from "@/lib/pagamentos/expirar";
 import { criarClienteServidor, exigirUsuario } from "@/lib/supabase/server";
 import { conectarMercadoPago, salvarPrazoSinal } from "./actions";
 import { BotaoEstornar, BotaoRevogar } from "./painel-pagamentos";
@@ -95,6 +96,14 @@ export default async function PagamentosPage({
     return <FalhaAoCarregar codigo={erroPerfil.code} />;
   }
 
+  /**
+   * Mesma varredura da agenda, e aqui ela é pré-requisito da lista de devoluções:
+   * `expirar_sinais_vencidos` também **reconcilia** cobrança de agendamento
+   * cancelado por outro caminho. Sem isto, a tela poderia listar como pendente uma
+   * devolução que já não faz sentido.
+   */
+  await expirarSinaisDoDono(usuarioId, perfil);
+
   const motivo = motivoSemCobranca(perfil);
   const aviso = conexao ? AVISOS[conexao] : undefined;
   const fusoHorario = perfil?.fuso_horario ?? FUSO_PADRAO;
@@ -141,6 +150,7 @@ export default async function PagamentosPage({
     .map((s) => s.valor_sinal)
     .filter((v): v is number => v !== null);
 
+
   return (
     <>
       <h1 className="text-2xl font-semibold tracking-tight">Pagamentos</h1>
@@ -153,11 +163,10 @@ export default async function PagamentosPage({
       {aviso && (
         <p
           role="status"
-          className={`mt-4 max-w-2xl rounded-lg border px-4 py-3 text-sm ${
-            aviso.tom === "ok"
+          className={`mt-4 max-w-2xl rounded-lg border px-4 py-3 text-sm ${aviso.tom === "ok"
               ? "border-confirmado-borda bg-confirmado text-confirmado-tinta"
               : "border-aviso bg-aviso-suave text-foreground"
-          }`}
+            }`}
         >
           {aviso.texto}
         </p>
@@ -279,7 +288,7 @@ export default async function PagamentosPage({
                     id="minutos"
                     name="minutos"
                     type="number"
-                    min={30}
+                    min={15}
                     max={1440}
                     defaultValue={perfil.sinal_minutos_validade ?? 30}
                     /* Sem `text-sm`: herda os 16px do corpo, que é o que impede
@@ -299,7 +308,10 @@ export default async function PagamentosPage({
             </dl>
 
             <p className="mt-4 max-w-[56ch] text-xs leading-relaxed text-muted-foreground">
-              Vale para os próximos agendamentos, não para os já marcados.
+              Vale para os próximos agendamentos, não para os já marcados. O
+              mínimo é 15 minutos: com prazo curto demais, o código Pix morre
+              antes de o cliente conseguir pagar, e o app do banco dele diz que
+              sua conta não pode receber.
             </p>
           </section>
 
@@ -358,6 +370,27 @@ export default async function PagamentosPage({
                 Nenhuma devolução pendente.
               </p>
             )}
+          </section>
+          {/**
+           * As mensagens moram na tela de fluxo, com o resto do que o bot fala —
+           * aqui o assunto é a conta e o dinheiro. Este link existe porque o dono
+           * que acabou de conectar a conta pensa nas duas coisas na mesma sessão,
+           * e não teria por que adivinhar que o texto se edita em outro lugar.
+           */}
+          <section className="mt-12 max-w-2xl">
+            <h2 className="font-heading text-lg font-semibold tracking-tight">
+              Mensagens do sinal
+            </h2>
+            <p className="mt-2 max-w-[54ch] text-base leading-relaxed text-muted-foreground md:text-sm">
+              O que o bot fala ao pedir o sinal e ao confirmar que ele caiu fica
+              junto do resto da conversa, no fluxo.
+            </p>
+            <Link
+              href="/fluxo-conversa?contexto=sinal"
+              className="mt-4 inline-flex h-11 items-center rounded-lg border border-border bg-card px-5 text-sm font-medium md:h-10"
+            >
+              Editar mensagens do sinal
+            </Link>
           </section>
         </>
       ) : (

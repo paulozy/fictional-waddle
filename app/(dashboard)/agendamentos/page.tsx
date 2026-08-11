@@ -16,6 +16,7 @@ import {
   montarCalendario,
   type AgendamentoParaCalendario,
 } from "@/lib/calendario";
+import { expirarSinaisDoDono } from "@/lib/pagamentos/expirar";
 import { criarClienteServidor, exigirUsuario } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Agendamentos" };
@@ -34,9 +35,26 @@ export default async function AgendamentosPage({
 
   const { data: perfil } = await supabase
     .from("perfis")
-    .select("fuso_horario")
+    /**
+     * `plano` e `pagamento_conectado_em` entram só para a varredura de sinais
+     * vencidos logo abaixo — é a mesma leitura, sem query nova.
+     */
+    .select("fuso_horario, plano, pagamento_conectado_em")
     .eq("id", usuarioId)
     .single();
+
+  /**
+   * Expira holds de sinal vencidos ANTES de ler os agendamentos.
+   *
+   * Sequencial e não em paralelo, pelo mesmo motivo de `montarContexto`: é uma
+   * escrita que muda o resultado da leitura seguinte. Em paralelo, o horário
+   * recém-liberado poderia não aparecer nesta passada — e o dono veria "aguardando
+   * sinal" num agendamento que a varredura acabou de cancelar.
+   *
+   * O `usuarioId` vem de `exigirUsuario()`, nunca de `searchParams`: a função usa
+   * a service role, e o id de sessão é o que a mantém restrita a este tenant.
+   */
+  await expirarSinaisDoDono(usuarioId, perfil);
 
   const fusoHorario = perfil?.fuso_horario ?? "America/Sao_Paulo";
   const agora = new Date();

@@ -253,7 +253,8 @@ async function avisarCliente(
    * `perfis:usuario_id(...)` falha no gerador de tipos, não em runtime, que é
    * a hora certa de descobrir.
    */
-  const [{ data: agendamento }, { data: perfil }] = await Promise.all([
+  const [{ data: agendamento }, { data: perfil }, { data: modelo }] =
+    await Promise.all([
     admin
       .from("agendamentos")
       .select("data_hora, servicos(nome), clientes_finais(remote_jid)")
@@ -264,6 +265,20 @@ async function avisarCliente(
       .from("perfis")
       .select("evolution_instance_name, fuso_horario, nome_estabelecimento")
       .eq("id", cobranca.usuario_id)
+      .maybeSingle(),
+    /**
+     * Texto personalizado do dono para a confirmação, quando existe.
+     *
+     * Entra no mesmo `Promise.all` — é leitura independente, e este caminho já
+     * está no orçamento de tempo de uma notificação do PSP. Só a chave da
+     * confirmação: o "pagou sem horário" é fixo de propósito, porque precisa
+     * continuar dizendo que quem devolve é o estabelecimento.
+     */
+    admin
+      .from("mensagens_tenant")
+      .select("texto")
+      .eq("usuario_id", cobranca.usuario_id)
+      .eq("chave", "sinal_recebido")
       .maybeSingle(),
   ]);
 
@@ -289,6 +304,7 @@ async function avisarCliente(
           valorCentavos: cobranca.valor_centavos,
           servicoNome: agendamento.servicos?.nome ?? "seu serviço",
           quando: formatarQuando(agendamento.data_hora, perfil.fuso_horario),
+          modelo: modelo?.texto,
         });
 
   try {

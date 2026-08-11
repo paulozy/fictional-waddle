@@ -15,6 +15,11 @@ import {
 import { obterCredencial, removerCredenciais } from "@/lib/pagamentos/credenciais";
 import { COOKIE_STATE } from "@/lib/pagamentos/oauth-state";
 import { criarClienteAdmin } from "@/lib/supabase/admin";
+import {
+  CHAVES_MENSAGEM,
+  validarModelo,
+  type ChaveMensagem,
+} from "@/lib/bot/modelo-mensagem";
 import { criarClienteServidor, exigirUsuario } from "@/lib/supabase/server";
 
 /**
@@ -198,23 +203,44 @@ export async function estornarSinal(
 export async function salvarPrazoSinal(formData: FormData): Promise<void> {
   const usuarioId = await exigirUsuario();
 
-  const bruto = Number(formData.get("minutos"));
+  /**
+   * Campo vazio precisa ser barrado **antes** do `Number`, e é uma armadilha
+   * medida: `Number("")` é `0` e `Number("  ")` também — os dois são finitos,
+   * então passavam pela checagem abaixo e caíam no piso do clamp. Efeito prático:
+   * apagar o conteúdo do campo e salvar **mudava** o prazo em silêncio, para 15,
+   * enquanto o JSDoc acima promete que valor inválido não grava nada. Um teste
+   * pegou a divergência entre o código e a própria documentação dele.
+   */
+  const texto = String(formData.get("minutos") ?? "").trim();
+  if (texto === "") return;
+
+  const bruto = Number(texto);
   if (!Number.isFinite(bruto)) return;
 
   /**
-   * Piso de 30 minutos, e não 5.
+   * Piso de 15 minutos, e o número mudou por medição — não por leitura de doc.
    *
-   * A doc do Mercado Pago documenta 30 minutos como período mínimo do
-   * `date_of_expiration` de um Pix. Com prazo menor, TODA cobrança daquele
-   * tenant seria recusada na criação — e como a falha é fail-open, o
-   * agendamento sairia confirmado sem sinal, tendo como único sinal um
-   * `console.error`. O dono levaria dias para descobrir.
+   * A versão anterior travava em 30 e justificava com "a doc do MP documenta 30
+   * minutos como mínimo do `date_of_expiration`", afirmando que prazo menor faria
+   * **toda cobrança ser recusada na criação**. Medido contra a API de produção em
+   * 2026-08-11, isso está errado, e errado no sentido pior:
    *
-   * Ainda não foi medido contra o servidor real (o spike nunca chegou a criar
-   * cobrança — ver o beco sem saída do sandbox no README dele). Na primeira
-   * passada real, confirmar; se o limite for outro, este é o número a ajustar.
+   *  - `2 min`  → o MP **aceita criar** o pagamento, sem reclamar de nada. Quem
+   *    recusa é o app do banco do cliente **na hora de pagar**, com
+   *    `PIXPP02 — conta destino não pode receber esse Pix no momento`;
+   *  - `30 min` → funciona ponta a ponta, pagamento liquidado.
+   *
+   * A consequência de a recusa ser no pagamento e não na criação é que o sintoma
+   * **não passa pelo nosso log**: aparece no celular do cliente, com um texto que
+   * o faz desconfiar da conta do salão. Nem `console.error` haveria — para nós, a
+   * cobrança nasceu perfeita.
+   *
+   * **15 minutos ainda não foi medido.** É o valor pedido para o tenant de teste,
+   * e está entre um ponto que falha (2) e um que funciona (30). Se aparecer
+   * `PIXPP02` com 15, o piso volta a subir — e a evidência vai estar no relato do
+   * cliente, não aqui.
    */
-  const minutos = Math.min(1440, Math.max(30, Math.round(bruto)));
+  const minutos = Math.min(1440, Math.max(15, Math.round(bruto)));
 
   // Client que respeita RLS: esta coluna É escrevível pelo dono (está no grant
   // por coluna de `perfis`), diferente de `plano` e `pagamento_conectado_em`.
@@ -233,4 +259,101 @@ export async function salvarPrazoSinal(formData: FormData): Promise<void> {
   }
 
   revalidatePath("/pagamentos");
+}
+
+/**
+ * Estado do formulário de mensagem.
+ *
+ * `export type` num arquivo `"use server"` é seguro: tipo é apagado na
+ * compilação, então não vira export não-async — a regra que vale ali é sobre
+ * valor, e é por isso que `COOKIE_STATE` mora em `oauth-state.ts`.
+ *
+ * A `chave` viaja no estado porque as mensagens compartilham a mesma action: sem
+ * ela, um erro numa apareceria embaixo das outras.
+ */
+export type EstadoMensagem =
+  | undefined
+  | { ok: true; chave: ChaveMensagem }
+  | { erro: string; chave: ChaveMensagem | null };
+
+function ehChaveMensagem(valor: string): valor is ChaveMensagem {
+  return (CHAVES_MENSAGEM as string[]).includes(valor);
+}
+
+/**
+ * Salva (ou volta ao padrão) um texto do bot sobre sinal.
+ *
+ * Devolve estado, ao contrário de `salvarPrazoSinal`: aqui **recusar é o ponto**.
+ * Um placeholder digitado errado precisa parar na tela com explicação — se
+ * passasse, o cliente receberia `{valro}` no WhatsApp e o dono descobriria dias
+ * depois, pelo cliente. É a mesma direção do léxico fechado da conversa: a falha
+ * aceitável é "corrija isto", nunca "aceitei o que você não quis dizer".
+ *
+ * Campo em branco **apaga a linha** em vez de gravar string vazia: ausência de
+ * linha é o que a leitura do bot entende como "usa o padrão", e gravar branco
+ * faria o bot enviar mensagem vazia — que a Evolution aceita e o cliente recebe
+ * como uma bolha em branco.
+ *
+ * Client que respeita RLS: estes textos são conteúdo do dono, e a tabela lhe dá
+ * CRUD completo — diferente das colunas de sinal, que afirmam que dinheiro entrou.
+ */
+export async function salvarMensagemSinal(
+  _anterior: EstadoMensagem,
+  formData: FormData,
+): Promise<EstadoMensagem> {
+  const usuarioId = await exigirUsuario();
+
+  const chave = String(formData.get("chave") ?? "");
+  if (!ehChaveMensagem(chave)) {
+    // Só chega aqui com FormData forjado: a tela manda um campo oculto fixo.
+    return { erro: "Mensagem desconhecida.", chave: null };
+  }
+
+  /**
+   * `restaurar` é caminho próprio, e não "salvar com o campo vazio".
+   *
+   * Desde que o campo nasce preenchido com o texto padrão, apagar tudo deixou de
+   * ser o gesto natural de voltar atrás — e um botão explícito também não corre o
+   * risco de o dono limpar o campo por engano e gravar isso. Os dois desfechos
+   * apagam a linha: ausência de linha é o que a leitura do bot entende como "usa o
+   * padrão".
+   */
+  const restaurar = formData.get("acao") === "restaurar";
+
+  const validacao = restaurar
+    ? ({ ok: true, texto: "" } as const)
+    : validarModelo(chave, String(formData.get("texto") ?? ""));
+
+  if (!validacao.ok) return { erro: validacao.erro, chave };
+
+  const supabase = await criarClienteServidor();
+
+  const { error } =
+    validacao.texto === ""
+      ? await supabase
+          .from("mensagens_tenant")
+          .delete()
+          .eq("usuario_id", usuarioId)
+          .eq("chave", chave)
+      : await supabase.from("mensagens_tenant").upsert(
+          {
+            usuario_id: usuarioId,
+            chave,
+            texto: validacao.texto,
+            atualizado_em: new Date().toISOString(),
+          },
+          { onConflict: "usuario_id,chave" },
+        );
+
+  if (error) {
+    console.error("falha ao salvar mensagem do sinal", {
+      usuario_id: usuarioId,
+      chave,
+      codigo: error.code,
+    });
+    return { erro: "Não foi possível salvar este texto.", chave };
+  }
+
+  revalidatePath("/pagamentos");
+  return { ok: true, chave };
 }

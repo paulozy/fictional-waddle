@@ -11,6 +11,29 @@
  * nossa — o texto que diz "é seu na hora e ninguém tira" vira reclamação.
  */
 
+import { aplicarModelo, renderizarOuPadrao } from "@/lib/bot/modelo-mensagem";
+
+/**
+ * Os textos de fábrica, escritos **na forma de modelo** — com as chaves à mostra.
+ *
+ * Fonte única, e a razão é uma duplicação que existiu por dez minutos: a tela de
+ * edição precisa mostrar o padrão com `{valor}` visível (é o que ensina a
+ * mecânica), enquanto o bot precisa dele já interpolado. Manter as duas versões
+ * escritas à mão significaria dois "padrões" divergindo no primeiro ajuste, com a
+ * tela sugerindo um texto e o cliente recebendo outro.
+ *
+ * Aqui existe um só: o painel exibe a constante crua, e as funções abaixo a
+ * renderizam. Mudar o texto num lugar muda nos dois, por construção.
+ */
+export const MODELO_PADRAO_COBRANCA =
+  "Separei seu horário de {servico}. Para confirmar, é preciso um sinal de {valor}.\n\n" +
+  "Você tem até {prazo} para pagar — depois disso o horário volta a ficar disponível.\n\n" +
+  "Copie o código Pix da próxima mensagem e cole no seu banco:";
+
+export const MODELO_PADRAO_RECEBIDO =
+  "Sinal de {valor} recebido. Seu horário de {servico} em {quando} está confirmado.\n\n" +
+  "Até lá!";
+
 /** "R$ 20,00" a partir de centavos. */
 export function formatarValor(centavos: number): string {
   return new Intl.NumberFormat("pt-BR", {
@@ -60,13 +83,30 @@ export function montarTextoCobrancaSinal(dados: {
   expiraEm: Date;
   fusoHorario: string;
   servicoNome: string;
+  /** Horário do agendamento, para o `{quando}` do modelo do dono. */
+  dataHora: string;
+  /** Texto personalizado do dono (`mensagens_tenant`). Vazio = usa o padrão. */
+  modelo?: string | null;
 }): string {
-  return (
-    `Separei seu horário de ${dados.servicoNome}. ` +
-    `Para confirmar, é preciso um sinal de ${formatarValor(dados.valorCentavos)}.\n\n` +
-    `Você tem até ${formatarPrazo(dados.expiraEm, dados.fusoHorario)} para pagar — ` +
-    "depois disso o horário volta a ficar disponível.\n\n" +
-    "Copie o código Pix da próxima mensagem e cole no seu banco:"
+  const prazo = formatarPrazo(dados.expiraEm, dados.fusoHorario);
+
+  const valores = {
+    valor: formatarValor(dados.valorCentavos),
+    servico: dados.servicoNome,
+    quando: formatarQuando(dados.dataHora, dados.fusoHorario),
+    prazo,
+  };
+
+  /**
+   * O padrão termina anunciando a mensagem seguinte, e isso é parte do desenho:
+   * o copia-e-cola vai sozinho na próxima bolha porque texto em volta entra na
+   * cópia do cliente. Um modelo personalizado **não** perde essa garantia — o
+   * código continua vindo separado —, mas perde o aviso, e é decisão do dono.
+   */
+  return renderizarOuPadrao(
+    dados.modelo,
+    valores,
+    aplicarModelo(MODELO_PADRAO_COBRANCA, valores),
   );
 }
 
@@ -85,11 +125,19 @@ export function montarTextoSinalRecebido(dados: {
   valorCentavos: number;
   servicoNome: string;
   quando: string;
+  /** Texto personalizado do dono (`mensagens_tenant`). Vazio = usa o padrão. */
+  modelo?: string | null;
 }): string {
-  return (
-    `Sinal de ${formatarValor(dados.valorCentavos)} recebido. ` +
-    `Seu horário de ${dados.servicoNome} em ${dados.quando} está confirmado.\n\n` +
-    "Até lá!"
+  const valores = {
+    valor: formatarValor(dados.valorCentavos),
+    servico: dados.servicoNome,
+    quando: dados.quando,
+  };
+
+  return renderizarOuPadrao(
+    dados.modelo,
+    valores,
+    aplicarModelo(MODELO_PADRAO_RECEBIDO, valores),
   );
 }
 
