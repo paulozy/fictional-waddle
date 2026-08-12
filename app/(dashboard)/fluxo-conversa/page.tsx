@@ -138,7 +138,13 @@ export default async function FluxoConversaPage({
 
       <div className="mt-8">
         {ativo === "sinal" ? (
-          <MensagensSinal mensagens={mensagens} />
+          // `politica_sinal` nunca é nulo aqui: a aba só existe quando
+          // `cobrancaSinalHabilitada` é verdadeira, e ela já exige a política. O
+          // `?? ""` é só para satisfazer o tipo.
+          <MensagensSinal
+            mensagens={mensagens}
+            politica={perfil?.politica_sinal ?? ""}
+          />
         ) : (
           <>
             <p className="max-w-[60ch] text-base leading-relaxed text-muted-foreground md:text-sm">
@@ -173,10 +179,14 @@ export default async function FluxoConversaPage({
 /**
  * O que cada chave vira no envio.
  *
- * Valores de exemplo, e não os dados de um agendamento real: a legenda é lida numa
- * tela de configuração, onde não há cliente nem horário em jogo. O que ela precisa
- * ensinar é a MECÂNICA — "{valor} vira R$ 20,00" —, e para isso um exemplo estável
- * é melhor que um dado que muda a cada visita.
+ * **Valores de exemplo, e a UI precisa dizer isso em voz alta.** A legenda é lida
+ * numa tela de configuração, onde não há cliente nem horário em jogo, então um
+ * exemplo estável ensina melhor que um dado que muda a cada visita. Mas sem a
+ * palavra "exemplo" ao lado, `{valor} vira R$ 20,00` se lê como afirmação sobre o
+ * valor do sinal — e ele **não é fixo**: sai de `servicos.valor_sinal`, um por
+ * serviço, definido pelo dono. Quem lesse como fato configuraria o valor errado,
+ * ou não configuraria nenhum achando que R$ 20 já era o padrão. Daí o "No envio,
+ * por exemplo:" que precede esta lista em `mensagens-sinal.tsx`.
  */
 const EXEMPLOS: Record<string, string> = {
   valor: "R$ 20,00",

@@ -44,6 +44,20 @@ export const MODELO_PADRAO_COBRANCA =
 const FECHO_COBRANCA =
   "Copie o código Pix da próxima mensagem e cole no seu banco:";
 
+/**
+ * A ordem da mensagem de cobrança, num lugar só: **corpo → política → fecho**.
+ *
+ * Exportada porque tem dois chamadores, e é exatamente o tipo de coisa que não
+ * pode ter duas implementações: `montarTextoCobrancaSinal`, que produz o texto
+ * que o cliente recebe, e a prévia "Como chega no WhatsApp" do painel, que
+ * promete ao dono estar mostrando esse mesmo texto. Se a ordem morasse escrita
+ * nos dois, a prévia passaria a mentir no primeiro ajuste — e mentir ali é pior
+ * do que não ter prévia, porque o dono confere e aprova algo que não é o que sai.
+ */
+export function comporCobranca(corpo: string, politica: string): string {
+  return `${corpo}\n\n${politica.trim()}\n\n${FECHO_COBRANCA}`;
+}
+
 export const MODELO_PADRAO_RECEBIDO =
   "Sinal de {valor} recebido. Seu horário de {servico} em {quando} está confirmado.\n\n" +
   "Até lá!";
@@ -140,7 +154,7 @@ export function montarTextoCobrancaSinal(dados: {
     tarde — a pessoa já colou no banco. O único lugar em que ela muda uma decisão
     é imediatamente antes de a decisão ser tomada.
   */
-  return `${corpo}\n\n${dados.politica.trim()}\n\n${FECHO_COBRANCA}`;
+  return comporCobranca(corpo, dados.politica);
 }
 
 /**
