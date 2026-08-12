@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "tipos:banco": "supabase gen types typescript --local > lib/supabase/tipos-banco.ts",
     "verificar:contraste": "node scripts/verificar-contraste.mjs",
-    "demo:video": "node scripts/demo/gravar.mjs && node scripts/demo/converter.mjs"
+    "demo:video": "node scripts/demo/gravar.mjs && node scripts/demo/converter.mjs",
+    "e2e:fumaca": "node scripts/e2e/fumaca-http.mjs"
   },
   "dependencies": {
     "@date-fns/tz": "^1.5.0",

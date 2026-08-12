@@ -5,6 +5,7 @@ import {
   lerEmail,
   lerEstabelecimento,
   lerNovaSenha,
+  lerPlano,
   lerTelefone,
 } from "./schema";
 
@@ -144,6 +145,38 @@ describe("estabelecimento", () => {
         .success,
     ).toBe(false);
   });
+});
+
+describe("plano do passo 2", () => {
+  /**
+   * O caso que protege a tela de Conta.
+   *
+   * `salvarEstabelecimento` de `app/(dashboard)/conta/actions.ts` reusa o schema
+   * de estabelecimento e **não** manda `plano`. Se este campo virasse erro de
+   * validação, aquela tela pararia de salvar nome e fuso — e ela não tem teste
+   * próprio, então a quebra sairia silenciosa.
+   */
+  it("cai no plano de entrada quando o campo não vem", () => {
+    expect(lerPlano(new FormData())).toBe("basico");
+  });
+
+  it("aceita os dois valores que o banco aceita", () => {
+    expect(lerPlano(dados({ plano: "basico" }))).toBe("basico");
+    expect(lerPlano(dados({ plano: "sinal" }))).toBe("sinal");
+  });
+
+  /**
+   * Um POST direto com valor inventado não pode virar capacidade, e também não
+   * deve travar o cadastro: cai no Essencial e a pessoa resolve por mensagem. O
+   * nome comercial entra aqui de propósito — "garantido" é o que alguém chutaria
+   * ao forjar o formulário, e não é o valor da coluna.
+   */
+  it.each(["garantido", "premium", "", "  "])(
+    "recusa %o sem lançar, caindo no plano de entrada",
+    (valor) => {
+      expect(lerPlano(dados({ plano: valor }))).toBe("basico");
+    },
+  );
 });
 
 describe("telefone do passo 3", () => {

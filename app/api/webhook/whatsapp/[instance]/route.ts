@@ -1,6 +1,7 @@
 import { addDays } from "date-fns";
 import { assinaturaValida } from "@/lib/assinatura";
 import { ErroEvolutionApi, enviarTexto, traduzirEstado } from "@/lib/evolution-api";
+import { ErroMercadoPago } from "@/lib/pagamentos/mercado-pago";
 import { criarClienteAdmin } from "@/lib/supabase/admin";
 import {
   decidir,
@@ -27,6 +28,8 @@ import {
 } from "@/lib/bot/webhook-payload";
 import { fimDaPausa, pausaAtiva } from "@/lib/bot/pausa";
 import { hashNumeroWhatsapp } from "@/lib/trial-numero";
+import { cobrancaSinalHabilitada } from "@/lib/pagamentos/capacidade";
+import { cobrarSinal } from "@/lib/pagamentos/cobranca-sinal";
 
 /**
  * Adaptador de I/O em volta da engine de fluxo.
@@ -102,7 +105,7 @@ export async function POST(
   const { data: perfil } = await admin
     .from("perfis")
     .select(
-      "id, fuso_horario, passo_slot_minutos, antecedencia_minima_minutos, antecedencia_maxima_dias, status_conexao_whatsapp, status_assinatura, trial_expira_em, trial_bloqueado_em",
+      "id, fuso_horario, passo_slot_minutos, antecedencia_minima_minutos, antecedencia_maxima_dias, status_conexao_whatsapp, status_assinatura, trial_expira_em, trial_bloqueado_em, plano, pagamento_conectado_em, politica_sinal, sinal_minutos_validade",
     )
     .eq("evolution_instance_name", instance)
     .maybeSingle();
@@ -457,6 +460,16 @@ type Perfil = {
   passo_slot_minutos: number;
   antecedencia_minima_minutos: number;
   antecedencia_maxima_dias: number;
+  /**
+   * Capacidade de cobrar sinal. Os dois campos são obrigatórios, e não
+   * opcionais, pelo mesmo motivo de `trial_bloqueado_em` em `PerfilAssinatura`:
+   * assim o TypeScript quebra em todo `select` que esquecer a coluna, em vez de
+   * deixar o gate cego respondendo sempre "não cobra".
+   */
+  plano: string;
+  pagamento_conectado_em: string | null;
+  politica_sinal: string | null;
+  sinal_minutos_validade: number;
 };
 
 async function processarMensagem(
@@ -499,6 +512,17 @@ async function processarMensagem(
    * O gate fica depois do de assinatura porque o de assinatura também silencia:
    * a ordem entre os dois não muda o efeito, e manter o comercial antes deixa a
    * razão do silêncio na ordem em que se lê o arquivo.
+   *
+   * **E fica ANTES de `montarContexto`, que é onde a cobrança de sinal varre os
+   * holds vencidos — de propósito, e isso parece bug até se ler a invariante do
+   * outro lado.** A varredura preguiçosa existe para rodar "imediatamente antes
+   * de calcular disponibilidade" (o único instante em que um slot indevidamente
+   * bloqueado causa dano). O caminho de pausa **nunca calcula disponibilidade**,
+   * então a garantia continua valendo: qualquer outra conversa do mesmo tenant
+   * varre antes do próprio cálculo, e um tenant cuja única mensagem do dia caiu
+   * numa conversa pausada não tem ninguém agendando para prejudicar. O resto é do
+   * cron diário. Mover a varredura para antes deste gate só compraria escrita no
+   * caminho quente de uma mensagem que o bot não vai nem responder.
    */
   if (pausaAtiva(linha?.pausado_ate, new Date())) {
     return ok("conversa pausada para atendimento humano");
@@ -563,17 +587,22 @@ async function processarMensagem(
   const mensagens = [...decisao.mensagens];
 
   for (const efeito of decisao.efeitos) {
-    const texto = await executarEfeito(admin, perfil, contexto, mensagem, efeito, {
+    const textos = await executarEfeito(admin, perfil, contexto, mensagem, efeito, {
       instancia,
       jidDono,
     });
 
     /**
-     * String vazia = o efeito deu certo e a mensagem já veio da engine, que é o caso
+     * Lista vazia = o efeito deu certo e a mensagem já veio da engine, que é o caso
      * do cancelamento (só ela tem o horário formatado no fuso). Empurrar vazio faria
      * a Evolution receber um `text` em branco.
+     *
+     * São várias mensagens e não uma porque a cobrança de sinal precisa mandar o
+     * copia-e-cola Pix SOZINHO: no WhatsApp o cliente segura a mensagem para
+     * copiar, e qualquer texto em volta entra na cópia — o banco recusa o código
+     * e o cliente não tem como saber por quê.
      */
-    if (texto) mensagens.push(texto);
+    mensagens.push(...textos.filter(Boolean));
   }
 
   await enviarComTolerancia(instancia, mensagem.remoteJid, mensagens);
@@ -621,6 +650,41 @@ async function montarContexto(
 ): Promise<ContextoConversa> {
   const agora = new Date();
   const fimDoHorizonte = addDays(agora, perfil.antecedencia_maxima_dias + 1);
+
+  /**
+   * Expiração preguiçosa, ANTES de ler os agendamentos.
+   *
+   * Um sinal vence em minutos, e o cron da Vercel no plano Hobby roda 1x por dia
+   * — grosso demais. O idioma do projeto para isso já existe: `conversas_estado`
+   * trata `atualizado_em` mais velho que 6h como conversa nova, sem cron nenhum.
+   *
+   * Aqui o raciocínio tem uma vantagem extra: o único instante em que um slot
+   * indevidamente bloqueado causa dano é quando alguém tenta agendar. Varrer
+   * exatamente antes do cálculo de disponibilidade cobre esse instante, e a
+   * query de `agendamentos` logo abaixo já enxerga o horário liberado.
+   *
+   * Sequencial e não dentro do `Promise.all` de propósito: é uma escrita que
+   * MUDA o resultado da leitura seguinte. Em paralelo, as duas correriam e o
+   * horário recém-liberado poderia não aparecer nesta passada.
+   *
+   * Só para quem cobra sinal — para todo o resto seria uma escrita no caminho
+   * quente de toda mensagem sem nada para fazer. Tenant que desligou a
+   * capacidade com holds abertos é varrido pelo cron diário.
+   */
+  if (cobrancaSinalHabilitada(perfil)) {
+    const { error } = await admin.rpc("expirar_sinais_vencidos", {
+      p_usuario_id: perfil.id,
+    });
+
+    // Fail-open: no pior caso um horário segue bloqueado até o cron diário, o
+    // que é muito melhor que derrubar a conversa inteira por causa disso.
+    if (error) {
+      console.error("falha ao expirar sinais vencidos", {
+        usuario_id: perfil.id,
+        codigo: error.code,
+      });
+    }
+  }
 
   const [etapas, servicos, grade, agendamentos] = await Promise.all([
     admin
@@ -697,9 +761,9 @@ async function executarEfeito(
   mensagem: MensagemWebhook,
   efeito: Efeito,
   entrega: { instancia: string; jidDono: string | null },
-): Promise<string> {
+): Promise<string[]> {
   if (efeito.tipo === "cancelar_agendamento") {
-    return cancelarPeloCliente(admin, perfil, efeito.agendamentoId);
+    return [await cancelarPeloCliente(admin, perfil, efeito.agendamentoId)];
   }
 
   if (efeito.tipo === "pausar_bot") {
@@ -707,12 +771,19 @@ async function executarEfeito(
     await avisarDonoQueChamaram(entrega.instancia, entrega.jidDono, mensagem);
 
     // A mensagem ao cliente já veio da engine (`AVISO_CHAMANDO_PESSOA`).
-    return "";
+    return [];
   }
 
   const servico = contexto.servicos.find((s) => s.id === efeito.servicoId);
 
-  const { error } = await admin.rpc("confirmar_agendamento", {
+  /**
+   * O uuid devolvido pela RPC deixou de ser descartado.
+   *
+   * Ele é o elo com a cobrança de sinal: sem ele, criar o Pix exigiria uma
+   * segunda consulta para descobrir qual linha acabou de nascer — e "a última do
+   * cliente" não é identificação confiável quando duas conversas correm juntas.
+   */
+  const { data: agendamentoId, error } = await admin.rpc("confirmar_agendamento", {
     p_usuario_id: perfil.id,
     p_remote_jid: mensagem.remoteJid,
     // O Postgres não expressa nulabilidade em parâmetro de função, então o
@@ -728,26 +799,127 @@ async function executarEfeito(
   });
 
   if (!error) {
-    return mensagemAgendamentoConfirmado(
-      efeito,
-      servico?.nome ?? "seu serviço",
-      contexto.fusoHorario,
-    );
+    const nomeServico = servico?.nome ?? "seu serviço";
+
+    const cobranca = await tentarCobrarSinal(admin, perfil, {
+      agendamentoId: agendamentoId as unknown as string,
+      servicoId: efeito.servicoId,
+      servicoNome: nomeServico,
+      // Alimenta o `{quando}` do texto personalizado do dono.
+      dataHora: efeito.dataHora.toISOString(),
+    });
+
+    /**
+     * Com sinal, o texto de "confirmado" NÃO é enviado.
+     *
+     * As duas mensagens juntas se contradiriam: uma diz que está agendado, a
+     * outra que depende de pagar. A cobrança já nomeia o serviço e o prazo, e o
+     * "confirmado" de verdade sai quando o Pix cai.
+     */
+    if (cobranca) return cobranca;
+
+    return [
+      mensagemAgendamentoConfirmado(efeito, nomeServico, contexto.fusoHorario),
+    ];
   }
 
   // 23P01 = violação da constraint anti-sobreposição. Não é erro genérico: é o
   // caso real de outro cliente ter fechado o mesmo horário durante a conversa.
-  if (error.code === "23P01") return mensagemSlotIndisponivel();
+  if (error.code === "23P01") return [mensagemSlotIndisponivel()];
 
   console.error("falha ao confirmar agendamento", {
     usuario_id: perfil.id,
     codigo: error.code,
   });
 
-  return (
+  return [
     "Tive um problema para registrar seu agendamento. " +
-    "Pode tentar de novo em instantes?"
-  );
+      "Pode tentar de novo em instantes?",
+  ];
+}
+
+/**
+ * Emite o Pix de sinal, se este tenant e este serviço cobram.
+ *
+ * O `try` engole tudo de propósito, e a direção é oposta à do gate de assinatura:
+ * lá a falha aceitável é "cliente reclama que parou"; aqui é "o dono não recebeu
+ * o sinal desta vez". O agendamento **já existe e já está confirmado** quando
+ * esta função roda — desfazê-lo porque o Mercado Pago estava fora do ar puniria
+ * o cliente por um problema que não é dele, e o produto existe justamente para
+ * não perder agendamento.
+ */
+async function tentarCobrarSinal(
+  admin: ClienteAdmin,
+  perfil: Perfil,
+  dados: {
+    agendamentoId: string;
+    servicoId: string;
+    servicoNome: string;
+    dataHora: string;
+  },
+): Promise<string[] | null> {
+  try {
+    return await cobrarSinal({ admin, perfil, ...dados });
+  } catch (erro) {
+    /**
+     * O motivo vai na **string** da mensagem, não num objeto de contexto.
+     *
+     * Não é estilo: o logger de desenvolvimento do Next grava
+     * `.next/dev/logs/next-development.log` renderizando argumentos-objeto como
+     * `{}`. O terminal mostra o objeto, o arquivo não — e o arquivo é o que
+     * sobrevive à sessão. Com o motivo dentro da mensagem, os dois caminhos
+     * carregam a informação.
+     *
+     * Isto custou uma rodada de diagnóstico: um `falha ao cobrar sinal {}` no
+     * arquivo, com a causa real perdida. Mesmo cuidado vale para qualquer log de
+     * caminho de erro raro — quando alguém for ler, o terminal já rolou.
+     */
+    console.error(
+      `falha ao cobrar sinal: ${motivoDaFalha(erro)} ` +
+        `(usuario=${perfil.id} agendamento=${dados.agendamentoId})`,
+    );
+    return null;
+  }
+}
+
+/**
+ * Motivo legível de uma falha de cobrança, com o código do provedor quando existe.
+ *
+ * `ErroMercadoPago.message` diz apenas "respondeu 400 em /v1/payments" — o que de
+ * fato resolve o incidente está no corpo, em `error` e `cause[].code`
+ * (`invalid_users_involved`, `collector_not_allowed`, e afins).
+ *
+ * **Projeção explícita, nunca o corpo inteiro.** A regra do módulo de pagamentos
+ * é não despejar resposta crua do provedor em log — no `/oauth/token` aquilo
+ * carrega `access_token`, e um log é o lugar mais fácil de vazar segredo sem
+ * ninguém perceber. Aqui só saem três campos, todos descritivos.
+ */
+function motivoDaFalha(erro: unknown): string {
+  if (!(erro instanceof ErroMercadoPago)) {
+    return erro instanceof Error ? erro.message : String(erro);
+  }
+
+  const corpo = erro.corpo;
+  if (typeof corpo !== "object" || corpo === null) return erro.message;
+
+  const registro = corpo as Record<string, unknown>;
+  const causas = Array.isArray(registro.cause)
+    ? registro.cause
+        .map((c) =>
+          typeof c === "object" && c !== null
+            ? String((c as Record<string, unknown>).code ?? "")
+            : "",
+        )
+        .filter(Boolean)
+    : [];
+
+  const partes = [
+    typeof registro.error === "string" ? registro.error : null,
+    typeof registro.message === "string" ? registro.message : null,
+    causas.length > 0 ? `cause=${causas.join(",")}` : null,
+  ].filter(Boolean);
+
+  return partes.length > 0 ? `${erro.message} — ${partes.join(" | ")}` : erro.message;
 }
 
 /**

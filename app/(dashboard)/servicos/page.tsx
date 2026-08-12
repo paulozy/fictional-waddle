@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ScissorsIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { criarClienteServidor, exigirUsuario } from "@/lib/supabase/server";
+import { cobrancaSinalHabilitada } from "@/lib/pagamentos/capacidade";
 import { alternarServico } from "./actions";
 import { DialogoEditar } from "./dialogo-editar";
 import { FormularioServico } from "./formulario-servico";
@@ -17,9 +18,38 @@ export default async function ServicosPage() {
   const usuarioId = await exigirUsuario();
   const supabase = await criarClienteServidor();
 
+  /**
+   * O campo de sinal só aparece para quem pode cobrar. `cobrancaSinalHabilitada`
+   * é a mesma função que o bot usa — uma segunda regra aqui deixaria o
+   * formulário e o comportamento real divergirem no primeiro ajuste.
+   */
+  const { data: perfil, error: erroPerfil } = await supabase
+    .from("perfis")
+    .select("plano, pagamento_conectado_em, politica_sinal")
+    .eq("id", usuarioId)
+    .maybeSingle();
+
+  /**
+   * Aqui a falha degrada em silêncio de propósito — o cadastro de serviço tem
+   * de continuar funcionando —, mas ela **precisa aparecer no log**.
+   *
+   * Sem isto, uma coluna ausente (migration não aplicada neste ambiente) apenas
+   * some com o campo de sinal, e o dono conclui que a capacidade não está
+   * contratada. Foi assim que o problema apareceu da primeira vez, na tela de
+   * pagamentos.
+   */
+  if (erroPerfil) {
+    console.error("falha ao ler capacidade de cobrança em /servicos", {
+      usuario_id: usuarioId,
+      codigo: erroPerfil.code,
+    });
+  }
+
+  const cobraSinal = cobrancaSinalHabilitada(perfil);
+
   const { data: servicos } = await supabase
     .from("servicos")
-    .select("id, nome, duracao_minutos, preco, ativo")
+    .select("id, nome, duracao_minutos, preco, valor_sinal, ativo")
     .eq("usuario_id", usuarioId)
     .order("ativo", { ascending: false })
     .order("nome");
@@ -70,7 +100,7 @@ export default async function ServicosPage() {
                   </div>
 
                   <div className="flex items-center gap-1">
-                    <DialogoEditar servico={servico} />
+                    <DialogoEditar servico={servico} cobraSinal={cobraSinal} />
                     <form action={alternarServico}>
                       <input type="hidden" name="id" value={servico.id} />
                       <input
@@ -108,7 +138,7 @@ export default async function ServicosPage() {
           )}
         </div>
 
-        <FormularioServico />
+        <FormularioServico cobraSinal={cobraSinal} />
       </div>
     </>
   );

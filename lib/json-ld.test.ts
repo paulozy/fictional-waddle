@@ -124,14 +124,14 @@ describe("jsonLdHome", () => {
     /**
      * O nome do site na SERP é o alvo de todo o trabalho de SEO aqui, e
      * `alternateName` é o campo que o Google usa como plano B para escolhê-lo.
-     * O nome fantasia do CNPJ (PRTI) **não** pode aparecer nele: seria uma
+     * O nome fantasia do CNPJ (New Gen Software) **não** pode aparecer nele: seria uma
      * segunda marca competindo com "Encaixaria" pela mesma consulta.
      */
     it("não deixa o nome fantasia competir com a marca", () => {
       const serializado = JSON.stringify(jsonLdHome());
 
       expect(serializado).not.toContain("alternateName");
-      expect(serializado).not.toContain("PRTI");
+      expect(serializado).not.toContain("New Gen Software");
 
       const grafo = jsonLdHome()["@graph"] as Record<string, unknown>[];
       for (const no of grafo) {

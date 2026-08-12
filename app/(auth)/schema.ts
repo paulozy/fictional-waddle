@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ehFusoConhecido } from "@/lib/fusos";
+import { ehIdPlano, PLANO_PADRAO, type IdPlano } from "@/lib/plano";
 import { normalizarNumeroWhatsApp } from "@/lib/telefone";
 
 /**
@@ -53,6 +54,25 @@ export const estabelecimentoSchema = z.object({
     .refine(ehFusoConhecido, "Escolha um fuso horário da lista."),
 });
 
+/**
+ * A faixa escolhida no passo 2, num schema **separado** de
+ * `estabelecimentoSchema`.
+ *
+ * Não é organização: `lerEstabelecimento` é reusado por
+ * `app/(dashboard)/conta/actions.ts`, que edita nome e fuso e **não** manda
+ * `plano`. Um campo obrigatório lá quebraria a tela de Conta em silêncio — ela
+ * não tem teste — e um campo opcional abriria uma segunda porta para o mesmo
+ * privilégio, num formulário que nunca deveria tocá-lo.
+ *
+ * `catch` e não `optional`: o campo ausente **e** o campo com lixo caem os dois
+ * no Essencial, que é o default da coluna no banco. Um POST direto sem o campo
+ * não deve virar erro de formulário, e não deve virar capacidade.
+ */
+export const planoSchema = z
+  .string()
+  .refine(ehIdPlano, "Escolha um dos planos.")
+  .catch(PLANO_PADRAO);
+
 export type EstadoAuth = { erro?: string; aviso?: string } | undefined;
 
 export function lerCredenciais(formData: FormData) {
@@ -78,6 +98,18 @@ export function lerEstabelecimento(formData: FormData) {
     nome: formData.get("nome"),
     fuso: formData.get("fuso"),
   });
+}
+
+/**
+ * Devolve sempre um `IdPlano`, nunca um resultado a destrinchar.
+ *
+ * É o `catch` de `planoSchema` que garante isso, e é o que permite chamar esta
+ * função sem tratar erro: a escolha de faixa não pode reprovar um cadastro. Se o
+ * valor não fizer sentido, o dono termina no Essencial e resolve por mensagem —
+ * o mesmo caminho de quem quer trocar depois.
+ */
+export function lerPlano(formData: FormData): IdPlano {
+  return planoSchema.parse(formData.get("plano"));
 }
 
 /**

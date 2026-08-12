@@ -29,7 +29,48 @@ describe("servicoSchema", () => {
       nome: "Corte masculino",
       duracaoMinutos: 45,
       preco: 60,
+      // Ausente no formulário de quem não cobra sinal — o schema tolera.
+      valorSinal: null,
     });
+  });
+
+  it("aceita o valor do sinal, no mesmo formato do preço", () => {
+    expect(
+      servicoSchema.parse({
+        nome: "Corte",
+        duracaoMinutos: "30",
+        preco: "60,00",
+        valorSinal: "20,00",
+      }),
+    ).toMatchObject({ valorSinal: 20 });
+  });
+
+  it("trata sinal ausente e vazio como nulo", () => {
+    // O campo só é renderizado para quem tem a capacidade de cobrar, então ele
+    // REALMENTE não vem no FormData da maioria dos tenants. Exigir a chave faria
+    // todo salvamento de serviço falhar com erro sobre um campo invisível.
+    expect(
+      servicoSchema.parse({ nome: "C", duracaoMinutos: "30", preco: "" }),
+    ).toMatchObject({ valorSinal: null });
+
+    expect(
+      servicoSchema.parse({
+        nome: "C",
+        duracaoMinutos: "30",
+        preco: "",
+        valorSinal: "",
+      }),
+    ).toMatchObject({ valorSinal: null });
+  });
+
+  it("rejeita sinal negativo", () => {
+    const r = servicoSchema.safeParse({
+      nome: "C",
+      duracaoMinutos: "30",
+      preco: "",
+      valorSinal: "-5",
+    });
+    expect(r.success).toBe(false);
   });
 
   it("aceita preço vazio como nulo", () => {

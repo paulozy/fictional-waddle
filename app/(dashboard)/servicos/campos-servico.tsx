@@ -17,19 +17,31 @@ export type ValoresServico = {
   nome: string;
   duracaoMinutos: number;
   preco: string;
+  valorSinal: string;
 };
 
 export function CamposServico({
   inicial,
   erros,
+  cobraSinal = false,
 }: {
   inicial?: Partial<ValoresServico>;
   erros?: Record<string, string[]>;
+  /**
+   * O campo de sinal só existe para quem pode cobrar.
+   *
+   * Mostrá-lo desabilitado, ou mostrá-lo e ignorar o valor, seria pior que
+   * escondê-lo: o dono preencheria, salvaria sem erro nenhum e concluiria que a
+   * cobrança está ligada — descobrindo que não no primeiro cliente que agendou
+   * sem pagar.
+   */
+  cobraSinal?: boolean;
 }) {
   const [duracao, setDuracao] = useState(inicial?.duracaoMinutos ?? 30);
   const idNome = useId();
   const idDuracao = useId();
   const idPreco = useId();
+  const idSinal = useId();
 
   const semPreset = !PRESETS_DURACAO.includes(duracao);
 
@@ -126,6 +138,25 @@ export function CamposServico({
           />
         )}
       />
+
+      {cobraSinal && (
+        <Campo
+          id={idSinal}
+          rotulo="Sinal para reservar"
+          dica="Opcional — em branco, este serviço é agendado sem cobrança. O valor cai direto na sua conta do Mercado Pago."
+          erros={erros?.valorSinal}
+          render={(props) => (
+            <input
+              {...props}
+              name="valorSinal"
+              inputMode="decimal"
+              defaultValue={inicial?.valorSinal}
+              placeholder="20,00"
+              className={CAMPO}
+            />
+          )}
+        />
+      )}
     </div>
   );
 }

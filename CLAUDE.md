@@ -4,12 +4,14 @@ Este arquivo orienta o Claude Code (e qualquer instância do Claude) ao trabalha
 
 ## Visão geral do produto
 
-**Nome:** **Encaixaria** (`encaixaria.com.br`). O nome anterior, "AgendaZap", foi abandonado por um motivo que não é estético: **10+ produtos homônimos no mesmo nicho** no Brasil (`agendezap.com.br`, `agendazap.me`, `appagendazap.com`, `agendazap.app`, `agendazap.top`, `agenda-zap.com`, `minhaagendazap.com`, e um `agendazap-ai.vercel.app` já indexado), todos de agendamento por WhatsApp para salão/barbearia/clínica. Buscar a marca era uma consulta ambígua que o Google resolve por sinais de entidade — domínio de correspondência exata, links, menções — e não por markup, então nenhum esforço de SEO técnico tornaria o produto encontrável pelo nome. "Encaixaria" foi escolhido por ter busca exata **sem nenhuma entidade comercial** (só verbetes de dicionário), `.com.br` e `.com` livres, e significado transparente para o dono ("onde se dá encaixe", com a terminação de barbearia/padaria). **Evitar o sufixo `-zap` em qualquer nome derivado**: é onde mora a saturação. Uma busca de anterioridade no INPI (classes 42 e 35) segue pendente — não foi possível consultar o portal. **O `.com.br` ainda não foi registrado** (situação em 2026-07-30): o endereço em uso é `encaixaria.vercel.app`. `SITE_URL` fica vazia justamente por isso — `urlSite()` cai no alias estável da Vercel, que resolve. Preencher com o domínio próprio no dia do registro, e revisar todo material de divulgação já publicado, que carrega o endereço escrito à mão.
+**Nome:** **Encaixaria** (`encaixaria.com.br`). O nome anterior, "AgendaZap", foi abandonado por um motivo que não é estético: **10+ produtos homônimos no mesmo nicho** no Brasil (`agendezap.com.br`, `agendazap.me`, `appagendazap.com`, `agendazap.app`, `agendazap.top`, `agenda-zap.com`, `minhaagendazap.com`, e um `agendazap-ai.vercel.app` já indexado), todos de agendamento por WhatsApp para salão/barbearia/clínica. Buscar a marca era uma consulta ambígua que o Google resolve por sinais de entidade — domínio de correspondência exata, links, menções — e não por markup, então nenhum esforço de SEO técnico tornaria o produto encontrável pelo nome. "Encaixaria" foi escolhido por ter busca exata **sem nenhuma entidade comercial** (só verbetes de dicionário), `.com.br` e `.com` livres, e significado transparente para o dono ("onde se dá encaixe", com a terminação de barbearia/padaria). **Evitar o sufixo `-zap` em qualquer nome derivado**: é onde mora a saturação. Uma busca de anterioridade no INPI (classes 42 e 35) segue pendente — não foi possível consultar o portal. **O `.com.br` ainda NÃO foi registrado** (situação em 2026-08-11). O endereço em produção é **`https://encaixaria.newgensoftware.xyz`**, subdomínio do domínio da empresa, e é esse o valor de `SITE_URL` — que **precisa estar definida na Vercel**, senão `canonical`, `og:url` e sitemap voltam a anunciar o alias `*.vercel.app` em silêncio. Se o `.com.br` for registrado depois, é só esse valor que muda, mas todo material de divulgação já publicado carrega o endereço escrito à mão e precisa ser revisto no mesmo dia.
 **O que é:** SaaS de nicho que automatiza agendamento e triagem via WhatsApp para negócios de serviço com horário marcado (salões, clínicas, barbearias, esteticistas). O bot responde **pelo próprio número de WhatsApp do estabelecimento**, mostra horários disponíveis, confirma agendamento e envia lembrete automático.
 
 **Problema que resolve:** o dono/atendente perde agendamento porque não consegue responder mensagem na hora (está atendendo outro cliente), e o cliente desiste e procura concorrente. Também reduz falta (no-show) via lembrete automático.
 
-**Modelo de negócio:** assinatura mensal de **R$ 49,90, faixa única** (`lib/plano.ts` é a fonte única — landing e `/precos` leem daí).
+**Modelo de negócio:** assinatura mensal em **duas faixas** — **Essencial R$ 49,90** e **Garantido R$ 64,90** (`lib/plano.ts` é a fonte única: landing, `/precos`, `/termos`, a FAQ, as páginas de comparação e a tela da Conta leem daí, e nenhum preço é escrito à mão em página nenhuma).
+
+**Os nomes são comerciais; o banco não mudou.** `perfis.plano` continua valendo `basico` e `sinal`, que é o que `lib/pagamentos/capacidade.ts` e a constraint `perfis_plano_valido` leem. `nomeDoPlano`/`precoDoPlano` fazem a ponte. Renomear a coluna para acompanhar o nome de venda custaria uma migration e um gate de capacidade em troca de nada. **Nenhum nome cita Pix nem Mercado Pago**, de propósito: o PSP é decisão de implementação (três alternativas foram descartadas, ver a seção do sinal), e um plano chamado "Pix" obrigaria a renomear o produto no dia em que o provedor mudar.
 
 O número tem ancoragem medida, e mexer nele sem refazer a pesquisa desfaz o raciocínio. A mediana do nicho "bot que **agenda** por WhatsApp" é ~R$ 90: RobotiZap R$ 89,90 (plano único, API oficial da Meta), AgendeZap Profissional R$ 89,90, agendazap.me Básico R$ 99,90. Abaixo disso o mercado só tem tier de lembrete-só (AgendeZap Start R$ 39,90) ou teto de volume (R$ 29,90/100 créditos; R$ 49,99/150 agendamentos). No grupo estabelecido: Trinks R$ 76 (1-2 profissionais), AppBarber R$ 79,90, Avec R$ 88,90, Booksy R$ 99,99, Belasis R$ 99.
 
@@ -19,7 +21,14 @@ Três consequências que não são óbvias:
 - **Não descer para R$ 39,90.** É exatamente o tier de lembrete-só do AgendeZap: precificar ali comunica "sou ferramenta de lembrete", e o bot que agenda é justamente o que existe aqui.
 - **Os R$ 19,90 anteriores estavam abaixo do piso da categoria inteira.** O argumento decisivo para subir não é infra (o socket Baileys custa uns R$ 2-4/tenant) — é que **sem gateway cada conversão é uma conversa de ~20 min no WhatsApp mais suporte recorrente**, e vinte reais não pagam isso. Subir depois, sem gateway, é uma conversa individual com cada cliente: a janela barata é antes dos pilotos converterem.
 
-**Faixa única é decisão, não etapa.** O único eixo que o mercado usa para escalonar é número de profissionais — e o produto é declaradamente "um estabelecimento, um número". Cada faixa extra também é trabalho manual permanente num campo (`status_assinatura`) digitado à mão, onde typo = cliente pagante sem bot. "Preço único, não conto cadeira nem cliente nem mensagem" é frase que só a Encaixaria pode dizer no nicho.
+**Duas faixas, e o eixo é capacidade — nunca tamanho.** O argumento contra escalonar por porte continua valendo inteiro: o único eixo que o mercado usa é número de profissionais, e o produto é declaradamente "um estabelecimento, um número", então cobrar por cadeira exigiria prometer multi-profissional, que não existe. "Não conto cadeira, cliente nem mensagem" segue sendo frase que só a Encaixaria diz no nicho, e vale nos **dois** planos. O que justifica a segunda faixa é que a cobrança de sinal passou a existir de fato e **não é grátis para nós** — cada tenant com ela ligada é uma conexão OAuth para renovar, um webhook de pagamento para atender e um caminho de devolução para suportar. Embutir isso na faixa de quem não cobra sinal faria a maioria pagar pela minoria.
+
+Duas consequências de redação que não são óbvias, e desfazê-las custa cliente:
+
+- **O Essencial é apresentado como completo, não como versão reduzida.** Ele resolve inteiro o problema que o produto existe para resolver; o Garantido resolve um segundo problema, que não é de todo mundo. Uma página que empurra o plano de cima faz o dono de salão pequeno pagar por uma conta de Mercado Pago que ele nunca vai conectar — e quem assinou o plano errado cancela.
+- **A exigência de conta no Mercado Pago aparece junto do preço, nunca só na tela de conexão.** Descobrir depois de assinar que precisa abrir conta em outro lugar é a pior hora possível. Por isso o cartão do Garantido diz isso e linka `/precos#mercado-pago`, que é a seção que explica o motivo sem citar norma nenhuma (ver `MERCADO_PAGO_PORQUE` em `lib/plano.ts`).
+
+Mais faixas continuam fora: cada uma é trabalho manual permanente num campo digitado à mão, onde typo = cliente pagante sem bot.
 
 **ROI, com fonte.** Corte a R$ 50-65 na maior parte do país, então **uma falta evitada paga o mês**. A base defensável para o efeito de lembrete é Cochrane CD007458 (comparecimento 67,8% → 78,6%) e meta-análise de SMS (RR 0,77, ~23% menos falta) — evidência de **saúde**, não de barbearia: usar como ordem de grandeza, nunca como promessa. Os "20-30% de falta caem para 3%" que aparecem em toda busca são material de venda de fornecedor, sem metodologia; **não citar**.
 
@@ -31,7 +40,7 @@ Três consequências que não são óbvias:
 
 **Não é escopo deste produto (evitar scope creep):**
 - Não é um CRM completo de clientes.
-- Não faz cobrança/pagamento — esse produto trata apenas de agendamento e triagem via WhatsApp.
+- Não recebe o pagamento do serviço. **Cobrar sinal por Pix existe no plano Garantido** (ver a seção própria), e mesmo nela o dinheiro nunca passa por nós: o dono conecta a conta dele e o Pix pousa lá. Financeiro, comissão e controle de caixa continuam fora.
 - Na v0, não usa IA/NLP para entender linguagem natural — o fluxo é máquina de estados com menu numerado.
 
 ---
@@ -54,6 +63,7 @@ Essa diferença afeta o desenho de dados, onboarding e o roteamento de webhooks 
 | Auth | **Supabase Auth** via `@supabase/ssr` | Sessão sincronizada via cookies, compatível com RLS |
 | WhatsApp | **Evolution API** (self-hosted), **modelo multi-instância** | Uma instância por usuário/estabelecimento, cada uma conectada ao número de WhatsApp real do negócio via QR code (protocolo Baileys/WhatsApp Web) |
 | Scheduler | **Vercel Cron Jobs** | Dispara 1x/dia um Route Handler pra verificar agendamentos do dia seguinte e enviar lembretes |
+| Pagamento (plano Garantido) | **Mercado Pago via OAuth**, modelo *nunca custodiar* | O dono autoriza a própria conta; a cobrança é criada com o token dele e o Pix cai direto nele. Pix a 0%, aceita CPF. Alternativas foram investigadas e descartadas com motivo — ver a seção de sinal |
 
 **Importante:** não sugerir trocar Supabase, nem propor backend Express separado, nem migrar pra API oficial da Meta sem pedido explícito — essas decisões já foram avaliadas e fechadas para a fase atual.
 
@@ -94,6 +104,8 @@ Essa diferença afeta o desenho de dados, onboarding e o roteamento de webhooks 
 | `conversas_estado` | Estado da conversa por instância + interlocutor |
 | `log_envio` | Registro de lembretes enviados. O CHECK aceita `tipo = 'confirmacao'`, mas **nada escreve esse valor**: o único escritor é o cron, sempre com `'lembrete'`. A confirmação sai pelo webhook e não é registrada |
 | `log_conexao` | Histórico append-only de transições de conexão e de motivo de queda. Único escritor é o webhook |
+| `credenciais_pagamento` | Tokens OAuth do PSP do dono, **cifrados**. RLS com zero policies |
+| `cobrancas_sinal` | Rastro de cada Pix de sinal: id no provedor, valor, prazo, desfecho |
 
 `conversas_estado` também guarda `pausado_ate` — ver "Pausa para atendimento humano".
 
@@ -185,12 +197,397 @@ O one-liner acima duplica a lógica de `lib/trial-numero.ts`. `lib/trial-numero.
 
 Ainda **não** implementado, e adiado de propósito: canonicalização de e-mail (dots e `+tag` do Gmail), bloqueio de domínio descartável e log de IP de signup via `before_user_created` hook. Com o trial atrelado ao número, N contas por e-mail rendem N trials **inúteis**, então aquilo deixa de proteger receita e passa a proteger só recurso (sockets Baileys). Fazer quando incomodar.
 
+### Cobrança de sinal por Pix (plano Garantido)
+
+O bot pode pedir um sinal antes de fechar o agendamento, segurando o horário até
+o Pix cair. Desligada por padrão: exige `perfis.plano = 'sinal'` **e** a conta do
+PSP conectada. O gate é `lib/pagamentos/capacidade.ts`, função pura no molde de
+`lib/assinatura.ts`, com os dois campos **obrigatórios** no tipo pelo mesmo
+motivo de `trial_bloqueado_em` — o TypeScript quebra no `select` incompleto em
+vez de deixar o gate cego.
+
+**O eixo é regulatório, não técnico.** O art. 90-A do Regulamento do Pix
+(Res. BCB 269/2022) veda a "conta bolsão": ninguém pode receber Pix por meio de
+conta transacional provida por terceiro. Logo o dinheiro **tem** de pousar numa
+conta do próprio dono, e o único modelo viável para dev solo é *nunca custodiar*
+— ele autoriza a conta dele por OAuth, a cobrança é criada com o token dele, e o
+`collector_id` é ele por construção. **Não passar `application_fee` e não propor
+split** é o que mantém isso verdadeiro. (O spike citava a Res. 522/2025; aquela
+trata de *subcredenciador*, figura de arranjo de **cartão**, e é a citação errada
+para Pix.)
+
+**Três provedores foram descartados com motivo, e reabrir custa a mesma
+pesquisa.** "Sem conta para o dono" **não existe** — é norma, não limitação de
+PSP. **AbacatePay** é carteira: os Termos só permitem saque "para contas de mesma
+titularidade", então não há como pagar o dono, e o split está "em
+desenvolvimento" sem data. **Stripe** tem Pix *invite-only* no Brasil, exigindo
+**60 dias de pagamentos já processados** (pré-requisito circular para quem é
+pré-receita), e o Brasil está fora dos cross-border payouts, o que fecha o
+Connect. **Asaas/Iugu/Pagar.me** oferecem onboarding embutido de verdade, mas
+exigem **CNPJ nosso**, movem o atrito em vez de removê-lo (selfie e documento
+passam a ser coletados por nós, contra a linha de LGPD do projeto) e custam
+R$ 1,99 fixo ou preço não público — 10% de um sinal de R$ 20.
+
+#### Decisões de schema que não são óbvias
+
+**Não existe `status = 'aguardando_sinal'`, e criar um reintroduz um bug já
+resolvido.** O agendamento nasce `confirmado` e portanto **bloqueia o slot desde
+o primeiro instante**, pela `agendamentos_sem_sobreposicao` que já existia; o
+sinal vive em `sinal_status`/`sinal_expira_em`. O argumento está escrito em
+`20260730025014_cancelamento_agendamento.sql`: `status` participa da EXCLUDE
+parcial e de três `.eq("status","confirmado")` no app, então um valor a mais
+obrigaria todo lugar que pergunta "está ocupado?" a conhecer os dois — e o
+primeiro que esquecesse um reofereceria vaga já reservada. Vencido o prazo, o
+agendamento é **cancelado** pela máquina que já existe, o que libera o slot sem
+nenhuma regra nova.
+
+**`sinal_aguardando_tem_prazo` existe porque `null < now()` é NULL, não falso.**
+Um sinal exigido com prazo nulo nunca venceria, e o horário ficaria bloqueado
+para sempre — exatamente o bug que a migration de cancelamento existiu para
+eliminar.
+
+**`cancelado_por` ganhou `'sistema'`.** A expiração não é decisão de ninguém;
+atribuí-la a `'dono'` faria o relatório de ocupação da V2 culpar quem não
+desmarcou.
+
+**As colunas de sinal ficam FORA do `grant update` de `authenticated`, e isso é a
+feature.** `sinal_status` é a afirmação de que dinheiro entrou: se o dono pudesse
+escrevê-la com a anon key e o próprio JWT, o registro deixaria de valer como
+prova numa disputa. Quem escreve é sempre o webhook de pagamento, via service
+role, e só depois de reconsultar o PSP. Pelo mesmo motivo `plano` e
+`pagamento_conectado_em` continuam fora — quem os escrevesse se autoconcederia a
+capacidade.
+
+**`credenciais_pagamento` e `cobrancas_sinal` levam `revoke all from anon,
+authenticated` antes do grant.** O `alter default privileges` do Supabase concede
+`Dxtm` em toda tabela nova, e **TRUNCATE não passa por RLS** — sem o revoke,
+qualquer dono logado apagaria o registro financeiro de todos os tenants. É o
+mesmo raciocínio de `trials_numero_whatsapp`.
+
+**O token é cifrado com AES-256-GCM (`lib/cripto.ts`), não hasheado**: diferente
+do trial por número, aqui o valor precisa **voltar** para assinar a chamada. GCM
+e não CBC porque adulterar o texto cifrado tem de **lançar**, não devolver bytes
+diferentes — um token trocado no banco significaria emitir cobrança para a conta
+errada. A chave vive em `PAGAMENTO_CRYPTO_KEY` e **trocá-la invalida todas as
+conexões**.
+
+#### O plano é escolhido no cadastro; a troca é manual
+
+O trial pode nascer **no Garantido**: o passo 2 do cadastro
+(`app/(auth)/registro/estabelecimento/escolha-plano.tsx`) mostra os dois cartões
+lidos de `PLANOS`, e a escolha vai para `perfis.plano`. Antes disso, quem clicava
+no cartão do Garantido em `/precos` caía num trial Essencial sem nenhum caminho na
+interface para dizer o que queria.
+
+**O `grant update` de `plano` continua fechado — nada foi afrouxado.** Quem escreve
+é `escolher_plano_trial(p_plano)`, e a guarda tem quatro condições porque **três
+estados diferentes mantêm `status_assinatura = 'trial'`**. Verificado contra o banco
+local, uma conta por estado:
+
+| estado do perfil | desfecho |
+|---|---|
+| trial em curso | `trocado` |
+| **VIP/isento** (`trial_expira_em is null`) | `nao_permitido` |
+| trial vencido | `nao_permitido` |
+| número bloqueado | `nao_permitido` |
+| pagante (`ativo`) | `nao_permitido` |
+
+O VIP é o vazamento que custaria caro e o menos óbvio: isenção manual é
+`trial_expira_em = null` com status `'trial'`, `lib/assinatura.ts` a trata como
+válida **para sempre**, e sem a condição `trial_expira_em is not null` toda conta de
+cortesia se autoconcederia o Garantido vitalício. Corolário contraintuitivo:
+**chamar `assinaturaValida` aqui seria o bug** — ela devolve `true` para `'ativo'` e
+para o VIP, os dois estados que não podem escolher. A guarda é estritamente mais
+forte que ela.
+
+O contrato textual existe porque `update ... where <guarda>` **não devolve erro** no
+supabase-js: devolve sucesso com zero linhas, e a tela afirmaria ter salvo. O
+chamador (`salvarEstabelecimento`) registra a recusa e **segue para o passo 3** —
+travar o cadastro na escolha de faixa perderia a conta inteira pelo item mais barato
+de consertar depois.
+
+**Ativar assinatura é um `update` de DUAS colunas, sempre.** Como os dois eixos são
+independentes por decisão da migration do sinal, um trial que escolheu Garantido e é
+promovido só com `status_assinatura = 'ativo'` fica com a capacidade **pagando preço
+de Essencial**, e nada no sistema reclama:
+
+```sql
+-- Nunca só o status. O plano é o que o cliente combinou pagar.
+update perfis set status_assinatura = 'ativo', plano = '<basico|sinal>' where id = '<uuid>';
+
+-- Fila de conversas que precisam acontecer ANTES de o trial acabar:
+select id, trial_expira_em from perfis where plano = 'sinal' and status_assinatura = 'trial';
+-- Quem deveria estar pagando a faixa de cima:
+select id from perfis where plano = 'sinal' and status_assinatura = 'ativo';
+```
+
+**Durante o trial o sinal é dinheiro real, e isso é dito em voz alta.** Não existe
+modo de simulação (o sandbox do MP não cobre este fluxo), então o que é gratuito são
+os 14 dias da **nossa** mensalidade — o Pix do cliente final cai de verdade na conta
+do dono desde o primeiro dia. Está escrito em `/termos`, na FAQ e em `/precos`:
+"período de teste" se lê como "simulado" se ninguém disser o contrário, e a hora de
+dizer é antes do primeiro Pix.
+
+**Rebaixar de plano deixava uma autorização sem saída.** `SemPlano`, em
+`/pagamentos`, é o único braço que um tenant vê depois de perder a capacidade — e
+agora ele pode ter conectado o Mercado Pago durante o trial. O botão de revogar só
+existia no braço de quem **tem** o plano, então a credencial ficava cifrada no banco
+sem caminho de revogação pela nossa interface, contradizendo a promessa da política
+de privacidade ("a qualquer momento, no painel da Encaixaria ou no do Mercado
+Pago"). `SemPlano` passa a mostrar `BotaoRevogar` quando `pagamento_conectado_em`
+existe.
+
+#### Expiração é preguiçosa, e o cron é rede de segurança
+
+`expirar_sinais_vencidos(p_usuario_id)` roda no **início de `montarContexto`**,
+imediatamente antes do cálculo de disponibilidade — o único instante em que um
+slot indevidamente travado causa dano. É o idioma das 6h de `conversas_estado`, e
+existe porque o cron da Vercel no plano Hobby é 1x/dia, grosso demais para um
+prazo de 30 minutos. Sequencial e **fora do `Promise.all`** de propósito: é uma
+escrita que muda o resultado da leitura seguinte.
+
+**O mesmo cron diário varre TODOS os tenants, e essa parte não é redundante.** A
+varredura do bot só roda para quem tem a capacidade ligada; quem **desliga** —
+desconectando a conta ou saindo do plano — deixaria de ser varrido para sempre,
+com os holds abertos prendendo aqueles horários sem nenhum caminho de liberação.
+O cron fica **acima do gate de assinatura** pelo mesmo motivo: liberar horário
+não é entrega de feature, é higiene de dados.
+
+A RPC também **reconcilia** agendamento cancelado por outro caminho (dono no
+painel, cliente pelo bot): os dois gravam `status = 'cancelado'` e não sabem nada
+sobre sinal, e sem isso a agenda mostraria "Aguardando sinal" ao lado de um
+horário cancelado, com a cobrança `pendente` para sempre.
+
+**O terceiro ponto de varredura é a LEITURA do painel** (`lib/pagamentos/expirar.ts`,
+chamado por `/agendamentos` e `/pagamentos`), e existe porque os dois primeiros
+cobriam dois dos três danos e não o terceiro. Horário bloqueado para outro cliente:
+coberto, porque quem tenta agendar dispara a varredura antes de ver a lista.
+Lembrete indevido: coberto, porque o cron expira antes de montar os lembretes.
+**A agenda do dono mostrando "aguardando sinal" num horário que já venceu não
+estava coberta** — quem abre o painel não disparava varredura nenhuma, e no plano
+Hobby o registro só se corrigia 1x/dia. Medido: prazo de 2 min vencido, agendamento
+seguia `confirmado`/`aguardando` cinco minutos depois.
+
+Três detalhes desse ponto não são livres. É **service role**, porque a RPC é
+`security invoker` com `execute` só para `service_role` — ela escreve nas colunas de
+sinal, que ficam fora do `grant` de `authenticated` de propósito; logo o `usuarioId`
+tem de vir **sempre da sessão**, nunca de `searchParams`, ou a tela viraria "expire
+os sinais de qualquer tenant". É **sequencial e antes** da leitura dos agendamentos,
+pelo mesmo motivo de `montarContexto`. E é **guardada por `cobrancaSinalHabilitada`**,
+para não custar uma escrita a cada abertura de agenda da maioria que não cobra sinal
+— quem desligou a capacidade com holds abertos segue coberto pelo cron, que ignora
+essa condição de propósito. Não precisa de `export const dynamic`: as duas páginas
+já são dinâmicas por usarem `cookies()`, o que o build confirma marcando as duas
+com `ƒ`.
+
+**A ordem de lock das duas RPCs é a mesma — `cobrancas_sinal` e só então
+`agendamentos` — e inverter uma delas cria deadlock.** Elas foram desenhadas para
+correr juntas: a varredura está no caminho quente de toda mensagem, e um Pix que
+cai rente ao prazo é o caso central. Em ordens opostas o Postgres aborta uma com
+40P01, e se a abortada for o webhook, um pagamento real depende de reentrega.
+
+#### O webhook de pagamento
+
+Três invariantes, e a terceira custou uma correção:
+
+1. **A assinatura é o único portão**, validada **antes** de qualquer I/O — sem
+   isso, uma lista de ids viraria amplificador de tráfego contra o nosso banco e
+   a API do PSP. Fail-closed com segredo vazio.
+2. **O corpo do POST não é confiável.** A assinatura cobre um manifesto montado
+   com id, `x-request-id` e `ts` — **não** o payload. Um POST forjado com
+   `status: "approved"` é idêntico a um legítimo, então o status vem sempre de
+   `GET /v1/payments/{id}` com o token do dono. O valor comparado é o da
+   reconsulta.
+3. **Responder 200 e pedir reentrega são coisas diferentes.** 200 é para o que
+   não muda tentando de novo (id desconhecido, reentrega já processada, valor
+   divergente, pagamento não aprovado). Timeout, erro de RPC, falha de leitura e
+   `/oauth/token` fora do ar devolvem **503**. Não há reconciliação em lugar
+   nenhum — este endpoint é o único chamador de `consultarPagamento` —, então um
+   200 por engano é confirmação perdida **para sempre**, com o cliente pagando e
+   o agendamento sendo cancelado pela varredura minutos depois, sem sequer
+   levantar `estorno_pendente`.
+
+**Não há janela de validade sobre o `ts`, de propósito.** O PSP reentrega horas
+depois, e uma janela apertada recusaria justamente a retentativa de um pagamento
+que a primeira tentativa não registrou. O replay já é inócuo:
+`confirmar_sinal_pago` é idempotente por `provedor_pagamento_id`.
+
+**`confirmar_sinal_pago` nunca ressuscita agendamento cancelado pelo DONO nem
+horário já vencido.** Reconfirmar por causa de um Pix atrasado desfaria uma
+decisão humana pelas costas dele; e a EXCLUDE não barra passado, então sem a
+guarda o agendamento voltaria vencido e o lembrete nunca sairia. Nos dois casos,
+e no 23P01 (slot tomado na janela), o desfecho é `estorno_pendente`.
+
+#### Falhar ao cobrar NÃO derruba o agendamento
+
+Toda exceção de `cobrarSinal` é engolida e o horário fica de pé sem sinal. A
+direção é **oposta** à do gate de assinatura: lá a falha aceitável é "cliente
+reclama que parou"; aqui é "o dono não recebeu o sinal desta vez". Cancelar um
+agendamento real porque o PSP estava fora do ar puniria o cliente por um problema
+que não é dele — e o produto existe para não perder agendamento.
+
+A guarda de `collector_id`, porém, falha **fechada**, inclusive quando o campo não
+vem: não mandar o código custa um agendamento sem sinal; mandar custa o dinheiro
+do cliente na conta errada.
+
+#### Detalhes que custam um build ou uma cobrança
+
+- **Arquivo `"use server"` só exporta função async.** Exportar uma constante de
+  lá não vira erro de tipo — vira um módulo sem exports em tempo de build. É por
+  isso que `COOKIE_STATE` mora em `lib/pagamentos/oauth-state.ts`.
+- **O campo de sinal só é renderizado para quem pode cobrar**, então ele
+  realmente não existe no FormData da maioria. `servicoSchema` usa `preprocess`
+  para tolerar a ausência, e `criarServico`/`editarServico` só escrevem
+  `valor_sinal` quando `formData.has("valorSinal")` — sem isso, editar o nome de
+  um serviço com a capacidade desligada **zerava o valor do sinal em silêncio**.
+- **O copia-e-cola Pix vai sozinho na mensagem.** No WhatsApp o cliente segura
+  para copiar, e texto em volta entra na cópia — o banco recusa e ele não tem
+  como saber por quê. Com sinal, a mensagem de "agendamento confirmado" **não**
+  é enviada: as duas se contradiriam.
+- **`date_of_expiration` vai com offset explícito**, nunca com o `Z` que
+  `toISOString()` produz.
+- **`X-Idempotency-Key` é o id da cobrança**, decidido por nós antes de falar com
+  o PSP: sem um id estável, uma retentativa de rede criaria uma segunda cobrança
+  e o cliente poderia pagar as duas.
+- **Nunca colocar a resposta crua do `/oauth/token` num erro.** Quando falta só o
+  `refresh_token` (o caso comum, `offline_access` desmarcado), aquele corpo ainda
+  traz um `access_token` válido, e quem captura o erro costuma logar o objeto
+  inteiro.
+- **O `refresh_token` rotaciona.** A gravação do par novo é a mesma operação da
+  renovação, com compare-and-set sobre `expira_em` — perder isso mata a conexão
+  do tenant em silêncio, e o sintoma chega dias depois como "o bot parou de mandar
+  o Pix".
+
+#### A política de cancelamento é condição para cobrar
+
+O bot pedia R$ 20 e **não dizia nada** sobre o que acontece com aquele dinheiro se
+o cliente desmarcar ou não aparecer. Os Termos jogam a política de cancelamento
+para o estabelecimento, o que resolve entre nós e o dono e **não resolve nada com o
+cliente final** — que é quem paga, é consumidor, e nunca leu os nossos Termos.
+
+`perfis.politica_sinal` é a correção, e ela é de produto e não de texto: sem
+política declarada, `motivoSemCobranca` devolve `"sem_politica"` e a cobrança **não
+acontece**. Quatro decisões que não são óbvias:
+
+- **Não existe padrão de fábrica**, e isso é o ponto. Um texto nosso ("devolvemos
+  em até X dias") seria a Encaixaria decidindo a política comercial de terceiro e
+  anunciando ao cliente dele, em nome dele. A tela oferece um exemplo no
+  `placeholder` — a versão menos arriscada, sinal abatido e devolvido com aviso
+  prévio — que **não é gravado**. Reter por falta é decisão do dono, escrita por ele.
+- **Coluna em `perfis`, não chave em `mensagens_tenant`.** Aquela tabela é
+  personalização opcional, onde vazio cai num padrão nosso — exatamente o
+  comportamento errado aqui. E o gate já lê `perfis` em todos os caminhos, então a
+  condição sai de graça no `select` que já existia.
+- **Entra no `grant update` de `authenticated`**, ao contrário de `plano` e
+  `pagamento_conectado_em`. A distinção que governa a tabela inteira: aqueles são
+  afirmações sobre dinheiro e direito, este é conteúdo autoral do dono, como
+  `nome_estabelecimento`. Preencher aqui *habilita* a cobrança, mas não é
+  autoconcessão — a capacidade continua exigindo os dois campos que ele não escreve.
+- **O fecho da mensagem deixou de ser editável**, e isso reverte uma decisão
+  anterior de propósito. `MODELO_PADRAO_COBRANCA` terminava com "Copie o código
+  Pix…", e o JSDoc registrava que um modelo personalizado perdia esse aviso —
+  "decisão do dono". Não vale mais: a ordem é fixa em **corpo → política → fecho →
+  código**, porque a política só muda uma decisão se estiver imediatamente antes de
+  a decisão ser tomada. Dita no começo é lida como termo de serviço e ignorada;
+  depois do código, chega tarde. O dono segue dono do corpo, não da ordem das duas
+  últimas coisas.
+
+O CHECK exige entre 20 e 400 caracteres com `btrim`. O piso não é burocracia: o
+campo existe para informar, e "ok" satisfaria um `not null` sem informar nada — com
+o efeito colateral de nos deixar afirmar que houve divulgação. O teto existe porque
+isto entra em toda cobrança, e o WhatsApp trunca com "Ler mais" justamente na parte
+que precisa ser lida antes de pagar.
+
+#### O que foi conscientemente adiado no jurídico, e os gatilhos
+
+Sem verba e sem acesso a advogado, a triagem foi por **custo do erro**, não por
+completude. O que segue vale enquanto a base for pequena — o risco de tudo aqui é
+proporcional ao volume.
+
+**Adiado, com razão registrada:**
+
+- **"Somos participantes do arranjo Pix?"** O desenho já É a resposta conservadora:
+  nunca custodiar, `collector_id` do dono, receita fixa sem relação com volume. Um
+  parecer confirmaria, não mudaria. **Gatilho para reabrir: qualquer proposta de
+  `application_fee` ou split.** Há teste em `lib/pagamentos/mercado-pago.test.ts`
+  falhando com o motivo escrito, justamente porque documento não impede um PR.
+- **Limitação de responsabilidade.** Ganhou "na máxima extensão permitida pela
+  legislação aplicável". Se o CDC derrubar o teto, derruba com ou sem cláusula, e
+  uma cláusula inválida não cria responsabilidade nova.
+- **LGPD do fluxo de pagamento.** Os Termos ganharam a seção que os torna o
+  instrumento de instruções do Art. 39 (dono é controlador, nós operadores). A
+  parte substantiva já estava certa: minimização, nenhum dado de pagador, token
+  cifrado.
+- **"Não somos intermediários".** A frase saiu de todas as páginas — **não** porque
+  é falsa, mas porque era autoqualificação jurídica, que alguém contesta. No lugar,
+  a descrição do mecanismo: o dinheiro não passa por nós, a receita é mensalidade
+  fixa. Fato é verificável e não envelhece.
+
+**Não adiado, porque o conserto era código:** a política de cancelamento (seção
+acima). Era o item de maior probabilidade de virar problema real, e o problema não
+seria com um regulador — seria o cliente do nosso cliente, cobrando do salão, que
+cobra de nós.
+
+**Os termos de desenvolvedor do Mercado Pago foram lidos (2026-08-11).** Quatro
+achados que dirigem código, e um que dirige expectativa:
+
+- **O desenho está no caminho documentado.** O fluxo `authorization_code` é
+  descrito por eles como o que "deve ser configurado quando for utilizar as
+  credenciais para acessar um recurso em nome de terceiros, devendo contar com a
+  intervenção do usuário (vendedor) para autorizar explicitamente". Não há
+  credenciamento obrigatório — certificação é discricionária deles — e **nada
+  condiciona operar em nome de terceiro a `application_fee`, split ou modo
+  marketplace**, o que confirma que não usá-los não nos tira de um caminho
+  suportado.
+- **Cláusula 4.1 (marca)** exige deixar claro que o aplicativo **não pertence ao
+  Mercado Pago**, e proíbe usar "mercado", "livre", "pago" e "shops" como palavra-
+  chave. Daí o aviso de não-afiliação em `/sobre` e `/termos` cobrir os dois — Meta
+  e Mercado Pago. Não usamos o logotipo deles, e não devemos passar a usar sem reler
+  essa cláusula.
+- **Cláusula 6.1** diz que o usuário que autoriza é Controlador e o desenvolvedor é
+  Operador. É a mesma divisão de papéis que os nossos Termos declaram por causa do
+  Art. 39 da LGPD — o contrato deles já a impõe, então as duas coisas concordam.
+- **Cláusula 7.2 (a)** é a que merece atenção ao mudar o produto: proíbe
+  "comercializar ou sublicenciar a API para o uso de e por terceiros" e "criar um
+  Aplicativo que funcione substancialmente da mesma forma que a API e oferecer seu
+  uso para e por terceiros". A leitura que nos mantém dentro: **não revendemos
+  acesso à API** — cada tenant autoriza a própria conta, para uso próprio, e nós
+  emitimos cobranças dele para ele. Expor um endpoint genérico de pagamento, ou
+  atender um tenant com a credencial de outro, sairia disso.
+- **Cláusula 15**: eles podem revogar o acesso "de forma imotivada e a qualquer
+  tempo, independente de notificação". Não há mitigação contratual — a mitigação é
+  de produto, e já existe: `cobrarSinal` é fail-open, então credencial morta vira
+  agendamento sem sinal, e não agendamento perdido. Se um dia isso mudar para
+  falhar fechado, esta cláusula é o motivo para não mudar.
+
+**Fora do código, e pendente:** conferir o CNAE do CNPJ com o contador — é pergunta
+de contador, não de advogado.
+
+**Gatilhos para deixar de adiar:** a primeira contestação de Pix, o primeiro contato
+de Procon, ou o dia em que o Garantido virar a maioria da base.
+
+#### O que ainda não foi medido
+
+O teste ponta a ponta (`tests/e2e/sinal-pix.test.ts`) valida a **nossa** lógica
+contra stubs, não o comportamento do Mercado Pago. Continuam abertas, e **só uma
+segunda conta real responde** — a candidata é o primeiro salão piloto:
+liquidação de fato, webhook em produção, taxa efetiva no extrato, e o piso real
+do `date_of_expiration` (hoje travado em 30 min por leitura de doc). O sandbox do
+MP **não cobre este fluxo** (`user_allowed_only_in_test`); insistir nele não
+compra informação. **Ir ao ar pede revisão jurídica** — GO técnico não é
+autorização para enviar.
+
 ### RPCs
 
-Duas operações precisam de atomicidade real. O query builder do supabase-js não abre transação, mas `rpc()` roda dentro de uma. Ambas são `security invoker`, **não** `definer`: uma versão definer que recebe `p_usuario_id` como parâmetro seria escalada de privilégio.
+Duas operações precisam de atomicidade real. O query builder do supabase-js não abre transação, mas `rpc()` roda dentro de uma. Quase todas são `security invoker`, **não** `definer`: uma versão definer que recebe `p_usuario_id` como parâmetro seria escalada de privilégio.
+
+**A exceção é `escolher_plano_trial`, e a diferença está no parâmetro, não no `definer`.** Ela é chamada com a sessão do dono, escreve uma coluna que `authenticated` não pode escrever, e **não aceita identidade**: o alvo é `(select auth.uid())` lido dentro dela, então não existe valor que o chamador passe para agir sobre outro tenant. É a mesma forma de `reivindicar_numero_trial`. Um `definer` que recebesse `p_usuario_id` continuaria sendo escalada — a regra original vale inteira.
 
 - `reordenar_fluxo_etapas(p_ids uuid[])` — regrava `ordem` na sequência dos ids via `unnest ... with ordinality`. Índices densos regravados em bloco em vez de ranks fracionários (LexoRank): são ~10 linhas por usuário. Rejeita lista parcial e id de outro tenant.
-- `confirmar_agendamento(...)` — garante o cliente (upsert por `remote_jid`, sem sobrescrever nome conhecido com `null`) e cria o agendamento na mesma transação. Deixa o `23P01` propagar.
+- `confirmar_agendamento(...)` — garante o cliente (upsert por `remote_jid`, sem sobrescrever nome conhecido com `null`) e cria o agendamento na mesma transação. Deixa o `23P01` propagar. **O uuid devolvido deixou de ser descartado**: é o elo com a cobrança de sinal.
+- `expirar_sinais_vencidos(p_usuario_id)` — libera slots de sinal vencido e reconcilia cancelamentos. Ver a seção de sinal para a ordem de lock, que não é livre.
+- `confirmar_sinal_pago(p_provedor_pagamento_id, p_valor_centavos)` — promove o agendamento depois da reconsulta ao PSP. Idempotente, e devolve contrato textual: cada valor é um caminho de UX distinto no webhook.
+- `escolher_plano_trial(p_plano)` — `security definer`, sem identidade por parâmetro. Deixa o dono escolher a faixa **enquanto o trial estiver em curso**. Ver a seção própria: a guarda de quatro condições não é zelo.
 
 ### RLS
 
@@ -216,9 +613,9 @@ O dono opera isto **entre atendimentos, no celular, com uma mão**. O dashboard 
 
 **`viewportFit: "cover"` em `app/layout.tsx` é pré-requisito, não enfeite.** Sem ele `env(safe-area-inset-*)` resolve para **zero**, e a barra de abas inferior fica embaixo da barra de gestos do iPhone.
 
-**A navegação são duas ilhas de cliente dentro de um layout RSC.** `components/navegacao-dashboard.tsx` (barra inferior, abaixo de `md`) e `components/barra-lateral.tsx` (menu lateral, `md`+) são os únicos `"use client"` do shell: `app/(dashboard)/layout.tsx` continua Server Component lendo sessão e perfil. Só elas hidratam, porque marcar a página atual exige `usePathname`. Os seis destinos são declarados **uma vez só** no layout e recortados de dois jeitos (`ABAS_PRINCIPAIS`/`ITENS_EXTRAS` para o celular, `GRUPOS_LATERAIS` para a lateral) — montar a lista dentro de cada componente faria um destino novo aparecer numa e não na outra. As duas importam `ICONES` e `ehAtivo` do mesmo módulo, para não haver duas noções de "página atual". O ícone vai por chave num mapa, não por prop: componente React não atravessa a fronteira RSC → client.
+**A navegação são duas ilhas de cliente dentro de um layout RSC.** `components/navegacao-dashboard.tsx` (barra inferior, abaixo de `md`) e `components/barra-lateral.tsx` (menu lateral, `md`+) são os únicos `"use client"` do shell: `app/(dashboard)/layout.tsx` continua Server Component lendo sessão e perfil. Só elas hidratam, porque marcar a página atual exige `usePathname`. Os sete destinos são declarados **uma vez só** no layout e recortados de dois jeitos (`ABAS_PRINCIPAIS`/`ITENS_EXTRAS` para o celular, `GRUPOS_LATERAIS` para a lateral) — montar a lista dentro de cada componente faria um destino novo aparecer numa e não na outra. As duas importam `ICONES` e `ehAtivo` do mesmo módulo, para não haver duas noções de "página atual". O ícone vai por chave num mapa, não por prop: componente React não atravessa a fronteira RSC → client.
 
-**Continuam sendo quatro abas no celular, agora com seis destinos.** Seis dariam ~55px cada em 375px e exigiriam rótulo de 9px; o corte é por frequência — agenda é diária, fluxo é configuração inicial, WhatsApp só importa quando a conexão cai, conta é quase nunca. **A lateral não substitui a barra inferior**: uma gaveta custaria um toque a mais em toda navegação, e o dono opera isto com uma mão entre atendimentos.
+**Continuam sendo quatro abas no celular, agora com sete destinos.** Cinco abas dariam ~65px cada em 375px, e seis ~55px com rótulo de 9px; o corte é por frequência — agenda é diária, fluxo é configuração inicial, WhatsApp só importa quando a conexão cai, pagamentos é a conexão do Mercado Pago que se faz uma vez, conta é quase nunca. **A lateral não substitui a barra inferior**: uma gaveta custaria um toque a mais em toda navegação, e o dono opera isto com uma mão entre atendimentos.
 
 **A lateral não tem token de cor próprio, e não deve ganhar um.** O design pinta a sidebar em `#F8F4EC` sobre papel `#FDFBF7`, item ativo branco e divisória `#E4DCCC` — que é exatamente `bg-secondary` / `bg-card` / `border-border` do `app/globals.css`. Reusar dispensa rodar o `verificar:contraste` de novo e dá o par escuro de graça.
 
@@ -331,12 +728,14 @@ O objetivo declarado era ser encontrado pesquisando o nome no Google. Isso depen
     schema.ts / actions.ts            → Zod e as Server Actions das sete telas (inclui `sair`)
     login/                            → entrar; é a única com `current-password`
     registro/                         → passo 1, `passos.tsx`, e confirmar-email/ estabelecimento/ whatsapp/
+                                        o passo 2 traz `escolha-plano.tsx`: o trial nasce na faixa escolhida
     recuperar-senha/ redefinir-senha/ → pedir o link e definir a senha nova
   /auth
     confirmar/route.ts                → aterrissagem dos links de e-mail: verifyOtp / exchangeCodeForSession
   /(dashboard)
-    layout.tsx                      → sessão, gate soft de assinatura, e a fonte única dos 6 destinos
+    layout.tsx                      → sessão, gate soft de assinatura, e a fonte única dos 7 destinos
     conexao-whatsapp/page.tsx        → QR code, estado da instância, as 3 métricas e o atendimento por conversa
+    pagamentos/page.tsx               → conectar conta do PSP, prazo do sinal, devoluções pendentes
     servicos/page.tsx                 → lista + cartão "novo serviço", duas colunas em `lg`
     horarios/page.tsx
     agendamentos/page.tsx             → dashboard com visão de calendário dos agendamentos
@@ -347,7 +746,11 @@ O objetivo declarado era ser encontrado pesquisando o nome no Google. Isso depen
       enviar-lembretes/route.ts      → chamado 1x/dia pelo Vercel Cron
     /webhook
       whatsapp/[instance]/route.ts   → recebe mensagens da Evolution API, processa conversas_estado
+      pagamento/mercadopago/route.ts → confirma o sinal; reconsulta o pagamento antes de promover
+    /pagamentos
+      mercadopago/callback/route.ts  → volta do OAuth, valida `state`, cifra e grava o token
 /components
+  cta-upgrade.tsx                     → caminho para o Garantido; sem "use client", serve RSC e ilha
   navegacao-dashboard.tsx             → ilha de cliente: barra de abas, só abaixo de `md`
   barra-lateral.tsx                   → ilha de cliente: menu lateral colapsável, só a partir de `md`
   cartao-lateral.tsx                  → moldura da coluna de "adicionar" (serviços e fluxo)
@@ -363,6 +766,14 @@ O objetivo declarado era ser encontrado pesquisando o nome no Google. Isso depen
   preferencias-ui.ts                  → nome do cookie da lateral; puro, para o RSC poder importar
   metricas-whatsapp.ts                → janelas de "hoje"/"ontem" no fuso do negócio, e tempo relativo
   evolution-api.ts                    → funções: criar instância, gerar QR code, enviar mensagem, checar status
+  cripto.ts                           → AES-256-GCM, chave por parâmetro (único uso: token do PSP)
+  pagamentos/
+    mercado-pago.ts                   → OAuth, criar Pix, consultar, estornar. Base URL sobrescrevível
+    assinatura-webhook.ts             → HMAC do `x-signature` (puro)
+    capacidade.ts                     → "este tenant pode cobrar sinal?" — plano + conta + política declarada
+    credenciais.ts                    → guarda/recupera o token, com renovação e compare-and-set
+    cobranca-sinal.ts                 → emite o Pix pós-confirmação e devolve as mensagens
+    oauth-state.ts                    → só a constante do cookie (arquivo "use server" não exporta const)
   telefone.ts                         → normaliza o número do dono para o código de pareamento
   calendario.ts                       → layout da grade semanal (puro)
   agenda-lista.ts                     → deriva a lista de um dia do mesmo Calendario (puro)
@@ -451,14 +862,16 @@ Antes dela, `nome_estabelecimento` e `fuso_horario` só eram graváveis no passo
 
 **Trocar senha dispara `enviarLinkRecuperacao`, não um campo de senha nesta tela.** Um segundo caminho para definir senha significaria duas implementações da mesma regra de força — e a sessão do painel pode estar aberta há semanas num aparelho emprestado, prova de posse que o e-mail dá e ela não. Trocar de **e-mail** ficou de fora: exige reconfirmar o endereço novo, que é fluxo próprio.
 
-**`encerrarConta` é o terceiro ponto de uso da service role**, e o único com sessão. Só `auth.admin.deleteUser` apaga `auth.users`, e é o cascade dela que leva os dados do tenant (LGPD). A ordem dos passos não é intercambiável e está no JSDoc da action; o que não pode cair:
+**`encerrarConta` é um dos quatro pontos de uso da service role** (com o webhook, o cron e `lib/pagamentos/expirar.ts`), e um dos dois com sessão. Só `auth.admin.deleteUser` apaga `auth.users`, e é o cascade dela que leva os dados do tenant (LGPD). A ordem dos passos não é intercambiável e está no JSDoc da action; o que não pode cair:
 
 - **O alvo é sempre `claims.sub`, nunca um id do `FormData`** — senão a action vira "apague a conta de qualquer um".
 - **A instância da Evolution sai antes do banco.** Depois do `deleteUser` não há mais de onde ler `evolution_instance_name`, e a instância órfã deixa o socket Baileys aberto respondendo por um número cujo dono não tem mais painel.
 - **A exclusão da instância é fail-open.** Serviço externo fora do ar não pode recusar um pedido de exclusão de dados; instância órfã é limpeza manual nossa.
 - **`trials_numero_whatsapp` não cascateia**, e é o comportamento certo: um livro-caixa antiabuso que some com a conta é um livro-caixa que o abusador apaga sozinho.
 
-O cartão de assinatura lê `resumoAssinatura` (`lib/assinatura.ts`) e o preço de `lib/plano.ts` — nunca "R$ 49,90" escrito à mão. `linkAssinatura()` saiu do layout para `lib/assinatura.ts` porque agora tem dois consumidores; **só pode ser chamada no servidor**, já que `WHATSAPP_CONTATO` não tem prefixo `NEXT_PUBLIC_` e num bundle de cliente devolveria `null` em silêncio.
+O cartão de assinatura lê `resumoAssinatura` (`lib/assinatura.ts`) e o preço **do plano do tenant** via `precoDoPlano(perfil.plano)` — com duas faixas, o valor fixo diria "R$ 49,90" para quem paga 64,90, e esta é a tela onde o dono confere quanto paga. `linkAssinatura(intencao)` saiu do layout para `lib/assinatura.ts` porque agora tem vários consumidores; **só pode ser chamada no servidor**, já que `WHATSAPP_CONTATO` não tem prefixo `NEXT_PUBLIC_` e num bundle de cliente devolveria `null` em silêncio. A intenção (`"assinar"` | `"upgrade"`) muda a mensagem pré-escrita, e isso não é enfeite: sem gateway, cada troca de plano é uma conversa humana, e um texto genérico obriga uma pergunta de ida e volta antes de qualquer coisa acontecer.
+
+**O CTA de upgrade aparece em quatro lugares e a condição é uma só**, decidida em `app/(dashboard)/layout.tsx`: `plano = 'basico'` **e** sem `motivoBloqueio`. `components/cta-upgrade.tsx` não tem `"use client"` de propósito — os consumidores estão dos dois lados da fronteira RSC (a barra lateral e a folha "Mais" são ilhas de cliente; `/conta` é Server Component), e um componente sem estado atravessa os dois sem virar duas peças que divergem. A segunda metade da condição evita competição: com o bot parado, o banner logo acima já pede "assine para voltar a atender", e um segundo CTA com outra oferta na mesma tela não ajuda ninguém a decidir. Vale **em trial e para pagante** — quem está testando é exatamente quem ainda decide a faixa. E ele existe na folha do celular porque a barra lateral só nasce a partir de `md`: sem isso, quem usa o painel no celular só encontraria o caminho em `/conta` e `/pagamentos`.
 
 ---
 
@@ -569,7 +982,8 @@ Decisões que não são óbvias:
 - **O fail-safe é o INVERSO do de assinatura, de propósito.** Data inválida em `pausado_ate` **libera** o bot. Lá o risco de errar é receita, então bloqueia; aqui é o cliente do dono esperando resposta para sempre, então solta.
 - **A retomada não interpreta a mensagem que chegou.** `retomarConversa` reapresenta a etapa com um aviso. Durante a pausa o cliente conversou com uma pessoa, então a última lista que o bot apresentou pode estar dez mensagens atrás — ler um "1" daquele diálogo humano como opção de menu faria o bot avançar etapa por engano.
 - **A janela é renovada, não somada** (`fimDaPausa` a cada mensagem do dono), e o TTL de 60 min é constante de módulo: configurável por tenant é mais um campo digitado à mão onde typo vira bot mudo.
-- **O cron de lembrete ignora `pausado_ate`.** Lembrete é sobre agendamento confirmado, não sobre a conversa — e é ele que reduz no-show, que é o ROI que paga o mês.
+- **O cron de lembrete ignora `pausado_ate`, e o webhook de pagamento também.** Os dois são sobre um agendamento que já existe, não sobre a conversa: o lembrete é o que reduz no-show (o ROI que paga o mês) e o "sinal recebido" é confirmação de dinheiro que entrou. Pausa é do fluxo de agendamento, e só dele.
+- **O gate de pausa fica antes de `montarContexto`, que é onde a cobrança de sinal varre os holds vencidos — e isso parece bug até se ler a invariante do outro lado.** A varredura preguiçosa existe para rodar imediatamente antes de calcular disponibilidade, que é o único instante em que um slot indevidamente bloqueado causa dano. O caminho de pausa **nunca calcula disponibilidade**, então a garantia continua de pé: qualquer outra conversa do tenant varre antes do próprio cálculo, e um tenant cuja única mensagem caiu numa conversa pausada não tem ninguém agendando para prejudicar. Mover a varredura para antes do gate só compraria escrita no caminho quente de uma mensagem que o bot não vai responder.
 
 **A saída pelo lado do cliente (`0` / "atendente") é léxico fechado com comparação exata, nunca `includes`.** Substring transformaria "vou levar uma pessoa comigo" numa etapa `texto_livre` em silêncio do bot, e o modo de falha mudaria de "não entendi, aqui está o menu" para "entendi algo que você não quis dizer" — que é o que `/como-funciona` afirma em público que este produto não faz. O `0` só vale em etapa de menu (nos menus é livre porque `lerIndice` é 1-based; numa `texto_livre` é resposta legítima), e o intercepto fica **antes de tudo** em `decidir`, para funcionar na primeira mensagem, no meio do fluxo e dentro do cancelamento. A linha que anuncia a opção é colada no fim da mensagem da etapa, e só no primeiro contato e nas reapresentações de erro — anunciar em toda etapa inflaria cada pergunta, e mensagem separada seria duas notificações no celular do cliente.
 
@@ -604,8 +1018,38 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 EVOLUTION_API_URL=
 EVOLUTION_API_ADMIN_KEY=
+WEBHOOK_BASE_URL=
+APP_PUBLIC_URL=
 CRON_SECRET=
+MERCADO_PAGO_CLIENT_ID=
+MERCADO_PAGO_CLIENT_SECRET=
+MERCADO_PAGO_REDIRECT_URI=
+MERCADO_PAGO_WEBHOOK_SECRET=
+PAGAMENTO_CRYPTO_KEY=
 ```
+
+O `.env.example` é a fonte com as explicações: cada variável documenta **o que
+acontece quando ela está vazia**, que é a informação que falta na hora do
+incidente.
+
+**`WEBHOOK_BASE_URL` e `APP_PUBLIC_URL` são duas porque as exigências são
+opostas, e por um tempo foram uma só.** A primeira é onde a **Evolution API**
+alcança este app: com a Evolution em container na mesma máquina, o valor certo é
+o gateway da rede dela (`172.20.0.1:3000`, de `docker exec <container> ip route`),
+privado de propósito — assim o bot não passa a depender de um túnel de
+desenvolvimento para responder. A segunda é o `notification_url` do Pix, ou seja,
+por onde os **servidores do Mercado Pago** chamam de volta, e tem de ser roteável
+da internet. Em produção as duas coincidem na URL da Vercel; em dev, a pública é a URL do
+túnel apontando para a porta do app, e a outra segue privada.
+
+Com uma variável só, consertar um lado quebrava o outro em silêncio — e o modo de
+falha é o pior do produto: o cliente paga, a confirmação nunca chega, a varredura
+de holds vencidos cancela o agendamento e, como o webhook nunca rodou, nem
+`estorno_pendente` é levantado. Ninguém descobre que há dinheiro para devolver.
+Por isso `urlDeNotificacao` **lança** quando o host resolvido é loopback ou RFC
+1918, em vez de emitir um Pix impossível de confirmar: recusar custa um
+agendamento sem sinal, emitir custa o dinheiro do cliente. É a mesma direção da
+guarda de `collector_id`.
 
 ---
 
@@ -619,6 +1063,12 @@ CRON_SECRET=
 - Dashboard completo de agendamentos com visão de calendário.
 - Lembrete automático 1 dia antes via cron.
 - Testar com 2-3 estabelecimentos reais antes de expandir.
+
+**Segunda faixa, já implementada (plano Garantido, R$ 64,90):**
+- Cobrança de sinal por Pix (`perfis.plano = 'sinal'`), com a conta do dono
+  conectada por OAuth. O trial pode nascer nesta faixa, escolhido no passo 2 do
+  cadastro; a troca depois é manual. **Aguarda piloto real** para medir liquidação,
+  webhook em produção e taxa — e revisão jurídica antes de ir ao ar.
 
 **V1:**
 - Cancelamento/reagendamento pelo próprio WhatsApp.

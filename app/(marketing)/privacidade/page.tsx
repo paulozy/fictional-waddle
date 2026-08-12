@@ -142,6 +142,11 @@ export default function PrivacidadePage() {
           duas vezes e para investigar reclamação de mensagem não recebida.
         </li>
         <li>Impedir que o mesmo número faça o teste gratuito repetidas vezes.</li>
+        <li>
+          No plano Garantido, gerar a cobrança de sinal em nome do
+          estabelecimento e registrar o desfecho dela — pago, expirado ou
+          devolvido.
+        </li>
       </ul>
       <p>
         Não vendemos dados, não fazemos publicidade com eles e não compartilhamos
@@ -165,7 +170,59 @@ export default function PrivacidadePage() {
           <strong>Cumprimento de obrigação legal</strong> (Art. 7º, II) quando
           houver.
         </li>
+        <li>
+          <strong>Execução de contrato</strong>, também, para a cobrança de sinal
+          no plano Garantido: ela existe porque o estabelecimento a contratou e a
+          autorizou, e os dados tratados são os mínimos para emitir a cobrança e
+          saber se ela foi paga.
+        </li>
       </ul>
+
+      <h2>Se a cobrança de sinal estiver ativa (plano Garantido)</h2>
+      <p>
+        A cobrança de sinal existe apenas no plano Garantido, e só passa a
+        funcionar depois de o dono autorizar a própria conta do Mercado Pago —
+        conta da qual ele é o titular — o que pode ser feito já durante o período
+        de teste —, porque{" "}
+        <strong>
+          a regulação do Pix não permite receber pagamento por meio de conta de
+          terceiro
+        </strong>
+        . Quando isso acontece, três coisas passam a ser guardadas — e uma que{" "}
+        <em>não</em> é:
+      </p>
+      <ul>
+        <li>
+          <strong>A autorização de acesso à conta do dono</strong>, guardada
+          cifrada. Ela permite gerar cobranças em nome dele e nada além disso: não
+          dá acesso a senha, a saldo nem a movimentação da conta. O dono pode
+          revogá-la a qualquer momento, no painel da Encaixaria ou no do Mercado
+          Pago.
+        </li>
+        <li>
+          <strong>O registro de cada cobrança</strong>: valor, prazo, o código Pix
+          gerado, o identificador do pagamento no Mercado Pago e se foi pago,
+          expirou ou foi devolvido.
+        </li>
+        <li>
+          <strong>A ligação com o agendamento</strong>, para saber qual horário
+          aquele pagamento reservou.
+        </li>
+        <li>
+          <strong>Não guardamos dado de pagador.</strong> Não pedimos CPF, nome
+          completo nem e-mail do cliente para gerar a cobrança — a identidade dele
+          no sistema continua sendo o identificador do WhatsApp, como no resto do
+          produto.
+        </li>
+      </ul>
+      <p>
+        <strong>O dinheiro não passa por nós em momento nenhum.</strong> O Pix é
+        pago diretamente à conta do estabelecimento; a Encaixaria não recebe, não
+        retém e não repassa valores. Também não
+        temos acesso a saldo, extrato ou movimentação da conta do dono: a
+        autorização serve para gerar cobranças e consultar o resultado delas, e
+        nada além disso.
+      </p>
 
       <h2>Com quem os dados são compartilhados</h2>
       <p>
@@ -173,6 +230,11 @@ export default function PrivacidadePage() {
         aplicação, banco de dados e o serviço que faz a ponte com o WhatsApp. Eles
         atuam como operadores, sob instrução nossa, e não recebem os dados para
         finalidade própria.
+      </p>
+      <p>
+        Com a cobrança de sinal ativa, entra também o <strong>Mercado Pago</strong>,
+        que é quem processa o pagamento. O tratamento que ele faz dos dados da
+        transação é regido pela política dele, não pela nossa.
       </p>
       <p>
         As mensagens trafegam pelo WhatsApp, cuja operação e política de

@@ -3,6 +3,7 @@ import { XIcon } from "lucide-react";
 import type { AgendaDoDia } from "@/lib/agenda-lista";
 import {
   coresDoStatus,
+  rotuloDoSinal,
   rotuloDoStatus,
   type DiaDoCalendario,
 } from "@/lib/calendario";
@@ -77,6 +78,18 @@ export function AgendaLista({
                 {item.status !== "confirmado" && (
                   <span className="shrink-0 self-start text-xs font-medium no-underline opacity-80">
                     {rotuloDoStatus(item.status)}
+                  </span>
+                )}
+
+                {/**
+                 * O sinal é EIXO SEPARADO, então aparece junto com o status e
+                 * não no lugar dele: um agendamento pode estar `confirmado` e
+                 * ainda `aguardando` pagamento, e é justamente essa combinação
+                 * que o dono precisa enxergar antes de contar com o horário.
+                 */}
+                {rotuloDoSinal(item.sinalStatus) && (
+                  <span className="shrink-0 self-start text-xs font-medium no-underline opacity-80">
+                    {rotuloDoSinal(item.sinalStatus)}
                   </span>
                 )}
 

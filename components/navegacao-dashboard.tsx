@@ -9,11 +9,13 @@ import {
   MenuIcon,
   MessagesSquareIcon,
   ScissorsIcon,
+  BanknoteIcon,
   SmartphoneIcon,
   UserIcon,
   type LucideIcon,
 } from "lucide-react";
 import { AlternarTema } from "@/components/alternar-tema";
+import { CtaUpgrade } from "@/components/cta-upgrade";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -65,16 +67,24 @@ export const ICONES = {
   horarios: ClockIcon,
   fluxo: MessagesSquareIcon,
   whatsapp: SmartphoneIcon,
+  pagamentos: BanknoteIcon,
   conta: UserIcon,
 } satisfies Record<string, LucideIcon>;
 
 export function NavegacaoDashboard({
   abas,
   itensExtras,
+  linkUpgrade,
   aoSair,
 }: {
   abas: ItemNavegacao[];
   itensExtras: ItemNavegacao[];
+  /**
+   * `null` esconde o CTA. Precisa existir aqui, e não só na barra lateral: a
+   * lateral só existe a partir de `md`, então sem isto quem usa celular só
+   * encontraria o caminho de upgrade em `/conta` e `/pagamentos`.
+   */
+  linkUpgrade: string | null;
   /** Server Action de logout, repassada pelo layout. */
   aoSair: () => void | Promise<void>;
 }) {
@@ -165,6 +175,10 @@ export function NavegacaoDashboard({
                   );
                 })}
               </ul>
+
+              {/* Sem borda própria: quem separa é a do rodapé logo abaixo.
+                  `min-h-11` porque aqui o alvo é dedo, não ponteiro. */}
+              <CtaUpgrade href={linkUpgrade} className="mx-2 min-h-11" />
 
               <div className="flex items-center justify-between gap-2 border-t border-border px-4 pt-4">
                 <AlternarTema />

@@ -31,6 +31,8 @@ export type ItemDaAgenda = {
   titulo: string;
   cliente: string;
   status: string;
+  /** Eixo do sinal, independente de `status`. `null` quando não há cobrança. */
+  sinalStatus?: string | null;
   /**
    * O item já terminou em relação ao "agora" do calendário. Só faz sentido no
    * dia de hoje; nos outros dias é sempre `false`.
@@ -124,6 +126,7 @@ export function montarAgendaDoDia(
     titulo: bloco.titulo,
     cliente: bloco.cliente,
     status: bloco.status,
+    sinalStatus: bloco.sinalStatus ?? null,
     passou: minutoAgora !== null && emMinutos(bloco.horaFim) <= minutoAgora,
   }));
 

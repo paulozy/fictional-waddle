@@ -76,6 +76,30 @@ export function rotuloDoStatus(status: string): string {
 }
 
 /**
+ * O sinal em palavra, como EIXO SEPARADO de `status`.
+ *
+ * Não entra em `ROTULO_STATUS` porque não é um valor de `status`, e a migration
+ * `20260809120000_sinal_colunas.sql` explica por quê: `status` participa da
+ * EXCLUDE parcial e de três filtros `.eq("status","confirmado")`, então um valor
+ * a mais ali obrigaria todo lugar que pergunta "está ocupado?" a conhecer os
+ * dois — e o primeiro que esquecesse um reofereceria um horário já reservado.
+ *
+ * `nao_exigido` devolve `null` e some da tela: é o caso da imensa maioria dos
+ * agendamentos, e escrever "sem sinal" em cada linha seria ruído puro.
+ */
+export const ROTULO_SINAL: Record<string, string> = {
+  aguardando: "Aguardando sinal",
+  pago: "Sinal pago",
+  expirado: "Sinal não pago",
+  estornado: "Sinal devolvido",
+};
+
+export function rotuloDoSinal(sinalStatus: string | null | undefined): string | null {
+  if (!sinalStatus || sinalStatus === "nao_exigido") return null;
+  return ROTULO_SINAL[sinalStatus] ?? null;
+}
+
+/**
  * Ids que o dono ainda pode cancelar: confirmados que **não terminaram**.
  *
  * Compara instantes, e é por isso que existe em vez de reusar `ItemDaAgenda.passou`
@@ -174,12 +198,16 @@ export type AgendamentoParaCalendario = {
   data_hora: string;
   duracao_minutos: number;
   status: string;
+  /** Eixo separado de `status` — ver `ROTULO_SINAL`. */
+  sinal_status?: string | null;
   servicos: { nome: string } | null;
   clientes_finais: { nome: string | null } | null;
 };
 
 export type BlocoCalendario = {
   id: string;
+  /** Eixo do sinal, independente de `status`. `null` quando não há cobrança. */
+  sinalStatus?: string | null;
   /** 1-based, para casar com `grid-column`. */
   coluna: number;
   /**
@@ -368,6 +396,7 @@ export function montarCalendario(p: ParametrosCalendario): Calendario {
         titulo: agendamento.servicos?.nome ?? "Agendamento",
         cliente: agendamento.clientes_finais?.nome ?? "Cliente",
         status: agendamento.status,
+        sinalStatus: agendamento.sinal_status ?? null,
         compacto:
           linhasOcupadas * ALTURA_LINHA_REM < ALTURA_MINIMA_COMPLETA_REM,
       };

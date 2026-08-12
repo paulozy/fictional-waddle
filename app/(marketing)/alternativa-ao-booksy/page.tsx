@@ -1,4 +1,4 @@
-import { PRECO_MENSAL } from "@/lib/plano";
+import { PRECO_ESSENCIAL } from "@/lib/plano";
 import { metadataPagina } from "@/lib/site";
 import {
   ChamadaComparacao,
@@ -55,7 +55,7 @@ const LINHAS: LinhaComparacao[] = [
   },
   {
     aspecto: "Como o preço escala",
-    encaixaria: `Faixa única de R$ ${PRECO_MENSAL}, sem contar profissional.`,
+    encaixaria: `A partir de R$ ${PRECO_ESSENCIAL}, sem contar profissional.`,
     concorrente: "Por agenda: uma faixa inicial e um valor por agenda adicional.",
   },
   {
@@ -65,7 +65,7 @@ const LINHAS: LinhaComparacao[] = [
   },
   {
     aspecto: "Gestão além da agenda",
-    encaixaria: "Não tem: sem financeiro, comissão ou pagamento.",
+    encaixaria: "Não tem: sem financeiro nem comissão. Só cobrança de sinal, como adicional.",
     concorrente: "Bem mais completo nesse aspecto.",
   },
 ];
@@ -123,8 +123,10 @@ export default function AlternativaAoBooksyPage() {
             <strong className="font-medium text-foreground">
               Ele faz muito mais que agenda.
             </strong>{" "}
-            Financeiro, comissão, controle de equipe, pagamento. A Encaixaria faz
-            uma coisa só, de propósito. Se você precisa de sistema de gestão, está
+            Financeiro, comissão, controle de equipe, pagamento do serviço. A
+            Encaixaria faz uma coisa só, de propósito — o mais perto disso que
+            ela chega é cobrar sinal por Pix, como adicional, com o dinheiro indo
+            direto para a conta do dono. Se você precisa de sistema de gestão, está
             comparando produtos de categorias diferentes.
           </p>
         </div>

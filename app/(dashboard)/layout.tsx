@@ -16,6 +16,7 @@ import {
   motivoBloqueio,
   type PerfilAssinatura,
 } from "@/lib/assinatura";
+import { PLANO_PADRAO } from "@/lib/plano";
 import { COOKIE_SIDEBAR_RECOLHIDA } from "@/lib/preferencias-ui";
 import { ROBOTS_PRIVADO } from "@/lib/site";
 import { criarClienteServidor, obterClaims } from "@/lib/supabase/server";
@@ -35,7 +36,7 @@ import type { EstadoConexao } from "@/lib/tipos";
 export const metadata: Metadata = { robots: ROBOTS_PRIVADO };
 
 /**
- * Os seis destinos do painel, declarados uma vez só.
+ * Os sete destinos do painel, declarados uma vez só.
  *
  * As duas navegações recortam esta lista de jeitos diferentes, e é de propósito
  * que o recorte more aqui: se cada componente montasse a sua, um destino novo
@@ -75,6 +76,17 @@ const WHATSAPP: ItemNavegacao = {
   rotulo: "WhatsApp",
   icone: "whatsapp",
 };
+/**
+ * Em `ITENS_EXTRAS`, e **não** nas abas do celular: as 4 abas são decisão
+ * registrada no CLAUDE.md, porque 5 destinos dariam ~65px cada a 375px. Conectar
+ * o Mercado Pago é configuração que se mexe uma vez, como fluxo e WhatsApp — não
+ * é uso diário como a agenda.
+ */
+const PAGAMENTOS: ItemNavegacao = {
+  href: "/pagamentos",
+  rotulo: "Pagamentos",
+  icone: "pagamentos",
+};
 const CONTA: ItemNavegacao = {
   href: "/conta",
   rotulo: "Conta",
@@ -82,11 +94,11 @@ const CONTA: ItemNavegacao = {
 };
 
 const ABAS_PRINCIPAIS: ItemNavegacao[] = [AGENDAMENTOS, SERVICOS, HORARIOS];
-const ITENS_EXTRAS: ItemNavegacao[] = [FLUXO, WHATSAPP, CONTA];
+const ITENS_EXTRAS: ItemNavegacao[] = [FLUXO, WHATSAPP, PAGAMENTOS, CONTA];
 
 const GRUPOS_LATERAIS: GrupoNavegacao[] = [
   { titulo: "Operação", itens: [AGENDAMENTOS] },
-  { titulo: "Configuração", itens: [SERVICOS, HORARIOS, FLUXO, WHATSAPP] },
+  { titulo: "Configuração", itens: [SERVICOS, HORARIOS, FLUXO, WHATSAPP, PAGAMENTOS] },
 ];
 
 export default async function DashboardLayout({
@@ -114,11 +126,28 @@ export default async function DashboardLayout({
   const { data: perfil } = await supabase
     .from("perfis")
     .select(
-      "status_assinatura, trial_expira_em, trial_bloqueado_em, status_conexao_whatsapp",
+      "status_assinatura, trial_expira_em, trial_bloqueado_em, status_conexao_whatsapp, plano",
     )
     .eq("id", claims.sub)
-    .maybeSingle<PerfilAssinatura & { status_conexao_whatsapp: EstadoConexao }>();
+    .maybeSingle<
+      PerfilAssinatura & { status_conexao_whatsapp: EstadoConexao; plano: string }
+    >();
   const motivo = motivoBloqueio(perfil, new Date());
+
+  /**
+   * O caminho para subir de faixa, no shell — e não só em `/pagamentos`.
+   *
+   * `plano` entrou no `select` acima por causa disto: até agora só a tela de
+   * Conta o lia. A condição tem duas metades e a segunda não é zelo — com
+   * bloqueio ativo o banner logo abaixo já pede "assine para o bot voltar", e um
+   * segundo CTA oferecendo outra coisa na mesma tela competiria com ele.
+   *
+   * Vale em trial e para pagante: quem está testando é exatamente quem ainda
+   * decide a faixa, e esconder o caminho até ele pagar é escondê-lo de quem mais
+   * precisa dele.
+   */
+  const podeSubirDePlano = perfil?.plano === PLANO_PADRAO && !motivo;
+  const linkUpgrade = podeSubirDePlano ? linkAssinatura("upgrade") : null;
 
   /**
    * Lido no servidor, não em `localStorage`: o menu precisa sair na largura
@@ -138,6 +167,7 @@ export default async function DashboardLayout({
         itemConta={CONTA}
         estadoConexao={perfil?.status_conexao_whatsapp ?? "desconectado"}
         recolhidaInicial={recolhidaInicial}
+        linkUpgrade={linkUpgrade}
         aoSair={sair}
       />
 
@@ -165,6 +195,7 @@ export default async function DashboardLayout({
         <NavegacaoDashboard
           abas={ABAS_PRINCIPAIS}
           itensExtras={ITENS_EXTRAS}
+          linkUpgrade={linkUpgrade}
           aoSair={sair}
         />
 

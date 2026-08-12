@@ -9,7 +9,11 @@ import type { EstadoFormulario } from "@/lib/validacao/agenda";
 import { criarServico } from "./actions";
 import { CamposServico } from "./campos-servico";
 
-export function FormularioServico() {
+export function FormularioServico({
+  cobraSinal = false,
+}: {
+  cobraSinal?: boolean;
+}) {
   const [estado, acao, enviando] = useActionState<EstadoFormulario, FormData>(
     criarServico,
     undefined,
@@ -30,7 +34,10 @@ export function FormularioServico() {
   return (
     <CartaoLateral titulo="Novo serviço">
       <form ref={form} action={acao} className="mt-4">
-        <CamposServico erros={erros} />
+        {/* `cobraSinal` habilita os campos de sinal só para quem conectou o
+            Mercado Pago — a decisão vem do Server Component, ver
+            `lib/pagamentos/capacidade.ts`. */}
+        <CamposServico erros={erros} cobraSinal={cobraSinal} />
 
         {estado && "erro" in estado && !estado.campos && (
           <p role="alert" className="mt-3 text-sm text-destructive">

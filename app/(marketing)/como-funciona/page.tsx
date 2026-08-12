@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { CheckIcon } from "lucide-react";
 import { ConversaDemo } from "@/components/conversa-demo";
 import { Button } from "@/components/ui/button";
+import { PRECO_GARANTIDO } from "@/lib/plano";
 import { metadataPagina } from "@/lib/site";
 
 /**
@@ -49,6 +51,20 @@ const ETAPAS = [
   },
 ];
 
+/**
+ * As quatro linhas que respondem "o que a pausa quebra?".
+ *
+ * A segunda é a que mais importa e é a menos óbvia: pausar o bot **não** desfaz
+ * agendamento nem cancela lembrete. Sem ela escrita, o dono hesita em assumir a
+ * conversa justamente na hora em que deveria.
+ */
+const O_QUE_A_PAUSA_FAZ = [
+  "Vale só para aquele contato — os outros seguem sendo atendidos",
+  "Não cancela agendamento já marcado nem o lembrete dele",
+  "Expira sozinha no prazo, e o bot retoma de onde a conversa parou",
+  "Pode ser encerrada antes da hora pelo painel",
+];
+
 export default function ComoFuncionaPage() {
   return (
     <>
@@ -82,6 +98,50 @@ export default function ComoFuncionaPage() {
               </li>
             ))}
           </ol>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-5xl px-4 sm:px-6 py-16">
+        <div className="grid gap-10 lg:grid-cols-[1fr_0.9fr] lg:items-start">
+          <div>
+            <h2 className="font-heading text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
+              Assumir uma conversa quando o assunto pede gente
+            </h2>
+            <p className="mt-4 max-w-[36rem] text-muted-foreground lg:max-w-none">
+              O bot é bom em marcar horário. Ele não é quem deve responder uma
+              reclamação, explicar um procedimento ou negociar preço. Para esses
+              casos você assume a conversa, e ele sai da frente.
+            </p>
+            <p className="mt-3 max-w-[36rem] text-muted-foreground lg:max-w-none">
+              Basta responder ao cliente pelo WhatsApp de sempre, do seu celular:
+              é isso que pausa o bot naquela conversa. Enquanto a pausa durar, ele
+              não responde nada para aquele contato — nem menu, nem confirmação.
+              O cliente também pode pedir para falar com uma pessoa, e nesse caso
+              você recebe um aviso no seu próprio WhatsApp dizendo quem pediu.
+            </p>
+            <p className="mt-3 max-w-[36rem] text-muted-foreground lg:max-w-none">
+              Terminado o prazo, o bot volta a atender aquele contato sozinho,
+              retomando de onde a conversa parou. Você também pode encerrar a
+              pausa antes da hora pelo painel.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-border bg-card p-6">
+            <p className="font-mono text-sm uppercase tracking-widest text-muted-foreground sm:text-xs">
+              O que a pausa faz
+            </p>
+            <ul className="mt-4 space-y-3 text-base md:text-sm">
+              {O_QUE_A_PAUSA_FAZ.map((item) => (
+                <li key={item} className="flex items-start gap-2.5">
+                  <CheckIcon
+                    aria-hidden
+                    className="mt-0.5 size-4 shrink-0 text-primary"
+                  />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </section>
 
@@ -128,6 +188,48 @@ export default function ComoFuncionaPage() {
             </p>
           </div>
         </div>
+      </section>
+
+      {/*
+        Esta seção existe na página de "como funciona", e não só na de preço,
+        porque a pergunta que ela responde é de mecanismo e não de valor: *como*
+        um sinal por Pix acontece dentro de uma conversa de WhatsApp, e onde o
+        dinheiro para. A parte comercial (quanto custa, o que o plano inclui) fica
+        em `/precos`, com o link daqui para lá.
+      */}
+      <section className="mx-auto max-w-5xl px-4 sm:px-6 py-16">
+        <p className="font-mono text-sm uppercase tracking-widest text-muted-foreground sm:text-xs">
+          Só no plano Garantido
+        </p>
+        <h2 className="mt-4 max-w-[26ch] font-heading text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
+          Cobrar um sinal por Pix antes de fechar o horário
+        </h2>
+        <p className="mt-4 max-w-[36rem] text-muted-foreground">
+          Você define um valor de sinal por serviço — pode pedir só na progressiva
+          e deixar o corte livre. Quando o cliente escolhe um serviço que tem
+          sinal, o bot manda o código Pix na própria conversa e segura o horário
+          pelo prazo que você configurou. Se o pagamento cair, o horário está
+          fechado; se não cair, o agendamento é cancelado sozinho e o horário
+          volta a ser oferecido para outra pessoa.
+        </p>
+        <p className="mt-3 max-w-[36rem] text-muted-foreground">
+          O ponto que mais importa:{" "}
+          <strong className="font-medium text-foreground">
+            o dinheiro não passa por nós.
+          </strong>{" "}
+          Para isso funcionar você conecta uma conta do Mercado Pago no seu nome —
+          é nela que o Pix cai, na hora, direto do cliente para você. A gente não
+          recebe, não retém e não cobra comissão sobre o sinal; em troca, se
+          houver devolução, quem devolve é você. Não precisa de CNPJ: conta de
+          pessoa física serve, e criá-la é de graça.
+        </p>
+        <p className="mt-3 max-w-[36rem] text-muted-foreground">
+          O plano Garantido custa R$ {PRECO_GARANTIDO} por mês.{" "}
+          <Link href="/precos#mercado-pago" className="underline underline-offset-2">
+            A página de preço explica em detalhe por que a conta precisa ser sua
+          </Link>
+          .
+        </p>
       </section>
 
       <section className="mx-auto max-w-5xl px-4 sm:px-6 py-16">

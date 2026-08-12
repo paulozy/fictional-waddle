@@ -48,6 +48,8 @@ export type Database = {
           id: string
           respostas_extras: Json
           servico_id: string
+          sinal_expira_em: string | null
+          sinal_status: string
           status: string
           usuario_id: string
         }
@@ -64,6 +66,8 @@ export type Database = {
           id?: string
           respostas_extras?: Json
           servico_id: string
+          sinal_expira_em?: string | null
+          sinal_status?: string
           status?: string
           usuario_id: string
         }
@@ -80,6 +84,8 @@ export type Database = {
           id?: string
           respostas_extras?: Json
           servico_id?: string
+          sinal_expira_em?: string | null
+          sinal_status?: string
           status?: string
           usuario_id?: string
         }
@@ -127,6 +133,62 @@ export type Database = {
         }
         Relationships: []
       }
+      cobrancas_sinal: {
+        Row: {
+          agendamento_id: string
+          criado_em: string
+          estornado_em: string | null
+          estorno_pendente: boolean
+          expira_em: string
+          id: string
+          pago_em: string | null
+          provedor: string
+          provedor_pagamento_id: string
+          qr_code: string
+          status: string
+          usuario_id: string
+          valor_centavos: number
+        }
+        Insert: {
+          agendamento_id: string
+          criado_em?: string
+          estornado_em?: string | null
+          estorno_pendente?: boolean
+          expira_em: string
+          id?: string
+          pago_em?: string | null
+          provedor?: string
+          provedor_pagamento_id: string
+          qr_code: string
+          status?: string
+          usuario_id: string
+          valor_centavos: number
+        }
+        Update: {
+          agendamento_id?: string
+          criado_em?: string
+          estornado_em?: string | null
+          estorno_pendente?: boolean
+          expira_em?: string
+          id?: string
+          pago_em?: string | null
+          provedor?: string
+          provedor_pagamento_id?: string
+          qr_code?: string
+          status?: string
+          usuario_id?: string
+          valor_centavos?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cobrancas_sinal_agendamento_id_fkey"
+            columns: ["agendamento_id"]
+            isOneToOne: true
+            referencedRelation: "agendamentos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversas_estado: {
         Row: {
           atualizado_em: string
@@ -166,6 +228,39 @@ export type Database = {
           ultima_mensagem_id?: string | null
           usuario_id?: string
           versao?: number
+        }
+        Relationships: []
+      }
+      credenciais_pagamento: {
+        Row: {
+          access_token_cifrado: string
+          atualizado_em: string
+          conta_externa_id: string
+          criado_em: string
+          expira_em: string
+          provedor: string
+          refresh_token_cifrado: string
+          usuario_id: string
+        }
+        Insert: {
+          access_token_cifrado: string
+          atualizado_em?: string
+          conta_externa_id: string
+          criado_em?: string
+          expira_em: string
+          provedor?: string
+          refresh_token_cifrado: string
+          usuario_id: string
+        }
+        Update: {
+          access_token_cifrado?: string
+          atualizado_em?: string
+          conta_externa_id?: string
+          criado_em?: string
+          expira_em?: string
+          provedor?: string
+          refresh_token_cifrado?: string
+          usuario_id?: string
         }
         Relationships: []
       }
@@ -300,6 +395,27 @@ export type Database = {
           },
         ]
       }
+      mensagens_tenant: {
+        Row: {
+          atualizado_em: string
+          chave: string
+          texto: string
+          usuario_id: string
+        }
+        Insert: {
+          atualizado_em?: string
+          chave: string
+          texto: string
+          usuario_id: string
+        }
+        Update: {
+          atualizado_em?: string
+          chave?: string
+          texto?: string
+          usuario_id?: string
+        }
+        Relationships: []
+      }
       perfis: {
         Row: {
           antecedencia_maxima_dias: number
@@ -309,8 +425,11 @@ export type Database = {
           fuso_horario: string
           id: string
           nome_estabelecimento: string | null
+          pagamento_conectado_em: string | null
           passo_slot_minutos: number
           plano: string
+          politica_sinal: string | null
+          sinal_minutos_validade: number
           status_assinatura: string
           status_conexao_whatsapp: string
           trial_bloqueado_em: string | null
@@ -324,8 +443,11 @@ export type Database = {
           fuso_horario?: string
           id: string
           nome_estabelecimento?: string | null
+          pagamento_conectado_em?: string | null
           passo_slot_minutos?: number
           plano?: string
+          politica_sinal?: string | null
+          sinal_minutos_validade?: number
           status_assinatura?: string
           status_conexao_whatsapp?: string
           trial_bloqueado_em?: string | null
@@ -339,8 +461,11 @@ export type Database = {
           fuso_horario?: string
           id?: string
           nome_estabelecimento?: string | null
+          pagamento_conectado_em?: string | null
           passo_slot_minutos?: number
           plano?: string
+          politica_sinal?: string | null
+          sinal_minutos_validade?: number
           status_assinatura?: string
           status_conexao_whatsapp?: string
           trial_bloqueado_em?: string | null
@@ -357,6 +482,7 @@ export type Database = {
           nome: string
           preco: number | null
           usuario_id: string
+          valor_sinal: number | null
         }
         Insert: {
           ativo?: boolean
@@ -366,6 +492,7 @@ export type Database = {
           nome: string
           preco?: number | null
           usuario_id: string
+          valor_sinal?: number | null
         }
         Update: {
           ativo?: boolean
@@ -375,6 +502,7 @@ export type Database = {
           nome?: string
           preco?: number | null
           usuario_id?: string
+          valor_sinal?: number | null
         }
         Relationships: []
       }
@@ -413,6 +541,15 @@ export type Database = {
           p_usuario_id: string
         }
         Returns: string
+      }
+      confirmar_sinal_pago: {
+        Args: { p_provedor_pagamento_id: string; p_valor_centavos: number }
+        Returns: string
+      }
+      escolher_plano_trial: { Args: { p_plano: string }; Returns: string }
+      expirar_sinais_vencidos: {
+        Args: { p_usuario_id: string }
+        Returns: number
       }
       faixa_horaria_multirange: { Args: never; Returns: unknown }
       registrar_lembrete_pendente: {

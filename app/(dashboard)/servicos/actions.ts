@@ -13,7 +13,28 @@ function lerCampos(formData: FormData) {
     nome: formData.get("nome"),
     duracaoMinutos: formData.get("duracaoMinutos") ?? "",
     preco: formData.get("preco") ?? "",
+    valorSinal: formData.get("valorSinal") ?? "",
   };
+}
+
+/**
+ * `valor_sinal` só entra na escrita se o campo EXISTIU no formulário.
+ *
+ * `CamposServico` só o renderiza quando o tenant pode cobrar sinal. Sem esta
+ * distinção, um dono que desconectasse a conta do Mercado Pago e abrisse
+ * "Editar" num serviço apenas para corrigir o nome zeraria o valor do sinal
+ * daquele serviço — o campo ausente virava `""`, que o schema transforma em
+ * `null`, gravado por cima do valor real. Reconectar não traria de volta, e nada
+ * seria registrado: o bot simplesmente voltaria a agendar sem cobrar.
+ *
+ * Ausente e vazio são coisas diferentes aqui: vazio é o dono dizendo "sem
+ * sinal", ausente é o formulário nunca ter perguntado.
+ */
+function campoSinal(
+  formData: FormData,
+  valor: number | null,
+): { valor_sinal: number | null } | Record<string, never> {
+  return formData.has("valorSinal") ? { valor_sinal: valor } : {};
 }
 
 export async function criarServico(
@@ -32,6 +53,7 @@ export async function criarServico(
     nome: parsed.data.nome,
     duracao_minutos: parsed.data.duracaoMinutos,
     preco: parsed.data.preco,
+    ...campoSinal(formData, parsed.data.valorSinal),
   });
 
   if (error) return { erro: "Não foi possível salvar o serviço." };
@@ -67,6 +89,7 @@ export async function editarServico(
       nome: parsed.data.nome,
       duracao_minutos: parsed.data.duracaoMinutos,
       preco: parsed.data.preco,
+      ...campoSinal(formData, parsed.data.valorSinal),
     })
     .eq("id", id)
     // Redundante com a RLS, mas é o filtro que deixa o planner usar o índice.

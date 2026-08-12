@@ -1,4 +1,4 @@
-import { DIAS_TRIAL, PRECO_MENSAL } from "@/lib/plano";
+import { DIAS_TRIAL, PRECO_ESSENCIAL } from "@/lib/plano";
 import { metadataPagina } from "@/lib/site";
 import {
   ChamadaComparacao,
@@ -42,7 +42,7 @@ const LINHAS: LinhaComparacao[] = [
   },
   {
     aspecto: "Como o preço escala",
-    encaixaria: `Faixa única de R$ ${PRECO_MENSAL}, independente de quanta gente atende.`,
+    encaixaria: `A partir de R$ ${PRECO_ESSENCIAL}, independente de quanta gente atende.`,
     concorrente:
       "Por número de profissionais, com faixas — e as maiores sob consulta.",
   },
@@ -116,7 +116,8 @@ export default function EncaixariaVsTrinksPage() {
             </p>
             <p className="mt-3 text-muted-foreground">
               Aqui o valor não muda porque a agenda encheu. Também não há cobrança
-              por mensagem enviada.
+              por mensagem enviada. Cobrar sinal do cliente final é adicional, e
+              não muda com o volume.
             </p>
           </div>
 

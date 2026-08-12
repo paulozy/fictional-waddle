@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { DIAS_TRIAL, PRECO_MENSAL } from "@/lib/plano";
+import { DIAS_TRIAL, PRECO_ESSENCIAL, PRECO_GARANTIDO } from "@/lib/plano";
 import {
   IDENTIFICACAO_LEGAL,
   identificacaoPendente,
@@ -56,7 +56,8 @@ export default function TermosPage() {
 
       <h2>O que o serviço não faz</h2>
       <ul>
-        <li>Não recebe pagamento e não cobra sinal do seu cliente.</li>
+        <li>Não recebe o pagamento do serviço. A cobrança de sinal por Pix existe no plano Garantido, e mesmo nela o dinheiro nunca passa por nós.</li>
+        <li>Não tem financeiro, comissão nem controle de caixa.</li>
         <li>Não divide a agenda por profissional.</li>
         <li>Não interpreta texto livre: o cliente responde por números.</li>
         <li>Não integra com Google Calendar nem com outros sistemas de agenda.</li>
@@ -70,6 +71,21 @@ export default function TermosPage() {
         continuam acessíveis no painel.
       </p>
       <p>
+        O teste pode começar em <strong>qualquer um dos dois planos</strong>,
+        escolhido no cadastro. Se você escolher o Garantido, a cobrança de sinal só
+        passa a funcionar depois de conectar sua conta do Mercado Pago; sem ela, o
+        bot simplesmente não pede sinal e o restante funciona igual.
+      </p>
+      <p>
+        <strong>
+          Durante o teste, o sinal cobrado é dinheiro real, não simulação.
+        </strong>{" "}
+        O que é gratuito nesses {DIAS_TRIAL} dias é a nossa mensalidade. O Pix que
+        o seu cliente pagar cai de verdade na sua conta do Mercado Pago desde o
+        primeiro dia, e a devolução, se houver, também sai de lá. Não existe modo
+        de simulação — recomendamos experimentar primeiro com um valor pequeno.
+      </p>
+      <p>
         <strong>O teste é um por número de WhatsApp</strong>, não por e-mail. Como
         o bot atende pelo número do estabelecimento, é ele que identifica o
         negócio. Se você trocou de número ou assumiu um estabelecimento que já
@@ -79,9 +95,26 @@ export default function TermosPage() {
 
       <h2>Assinatura e pagamento</h2>
       <p>
-        O valor é de <strong>R$ {PRECO_MENSAL} por mês</strong>, em faixa única,
-        sem cobrança por profissional, por cliente ou por mensagem, e sem limite de
-        agendamentos.
+        São dois planos, por estabelecimento, sem cobrança por profissional, por
+        cliente ou por mensagem, e sem limite de agendamentos:
+      </p>
+      <ul>
+        <li>
+          <strong>Essencial — R$ {PRECO_ESSENCIAL} por mês.</strong> Atendimento
+          e agendamento pelo WhatsApp, cancelamento pelo cliente e lembrete no dia
+          anterior.
+        </li>
+        <li>
+          <strong>Garantido — R$ {PRECO_GARANTIDO} por mês.</strong> Tudo do
+          Essencial, mais a cobrança de sinal por Pix descrita abaixo. Depende de
+          você conectar uma conta do Mercado Pago da qual seja titular; sem essa
+          conta conectada, o bot simplesmente não pede sinal, e as demais funções
+          seguem valendo.
+        </li>
+      </ul>
+      <p>
+        A troca de plano é feita pelo mesmo canal da assinatura e passa a valer no
+        período seguinte.
       </p>
       <p>
         Nesta fase <strong>não há cobrança automática</strong>: nenhum cartão é
@@ -123,7 +156,61 @@ export default function TermosPage() {
         <strong>A política de cancelamento é a do seu estabelecimento</strong>, não
         a nossa: prazo para desmarcar, cobrança por falta e o que você combina com
         cada cliente são decisões suas. A Encaixaria registra o cancelamento e
-        transmite o aviso — não fazemos e não intermediamos cobrança de nenhum tipo.
+        transmite o aviso.
+      </p>
+
+      <h2>Cobrança de sinal (plano Garantido)</h2>
+      <p>
+        No plano Garantido, com a sua conta do Mercado Pago conectada, o bot pode
+        pedir um sinal por Pix antes de fechar o agendamento. Quatro pontos que
+        valem estar escritos:
+      </p>
+      <ul>
+        <li>
+          <strong>O dinheiro nunca passa por nós.</strong> A cobrança é criada em
+          seu nome, com a autorização que você deu, e o Pix cai direto na sua
+          conta. Não retemos, não repassamos e não cobramos comissão sobre ela. O
+          pagamento acontece entre você e o seu cliente: nós apenas geramos a
+          cobrança com a autorização que você concedeu, e a nossa receita é a
+          mensalidade fixa do plano, que não varia com o quanto você cobrou de
+          sinal.
+        </li>
+        <li>
+          <strong>A conta tem de ser sua.</strong> Você declara ser o titular da
+          conta do Mercado Pago que conectar, e é responsável por ela: pelos dados
+          cadastrais, pelos tributos que incidam sobre o que receber e pelo
+          cumprimento das regras do próprio Mercado Pago. A exigência de conta
+          própria não é nossa escolha comercial — a regulação do Pix não permite
+          que alguém receba pagamentos por meio de conta de terceiro.
+        </li>
+        <li>
+          <strong>A devolução é sua.</strong> Se o cliente desmarcar, ou se o
+          pagamento cair depois de o horário já ter sido reservado por outra
+          pessoa, quem decide devolver é você — o painel mostra os casos que
+          pedem essa decisão e oferece o botão, mas a conta é sua.
+        </li>
+        <li>
+          <strong>Contestação bate na sua conta.</strong> O cliente pode acionar o
+          mecanismo de devolução do Pix junto ao banco dele, e nesse caso o valor
+          pode ficar bloqueado enquanto a análise corre. Isso é regra do arranjo
+          de pagamento, não nossa, e não temos como interferir.
+        </li>
+      </ul>
+      <p>
+        O horário fica segurado pelo prazo que você configurar. Passado o prazo
+        sem pagamento, o agendamento é cancelado e o horário volta a ser oferecido.
+      </p>
+      <p>
+        <strong>
+          A cobrança só funciona depois de você declarar, no painel, a sua
+          política de cancelamento e devolução do sinal.
+        </strong>{" "}
+        Esse texto é enviado ao seu cliente na mensagem imediatamente anterior ao
+        código Pix, em toda cobrança. A política é sua — prazo para desmarcar,
+        devolução integral ou parcial, e se você retém em caso de falta são
+        decisões do seu estabelecimento, e você é responsável por cumpri-las. O que
+        a Encaixaria faz é impedir que a cobrança aconteça sem que ela tenha sido
+        informada ao cliente antes do pagamento.
       </p>
 
       <h2>Disponibilidade e limites</h2>
@@ -140,7 +227,9 @@ export default function TermosPage() {
         Meta: o QR code é aceito, mas as mensagens não chegam.
       </p>
       <p>
-        Não prometemos disponibilidade ininterrupta e não nos responsabilizamos por
+        Não prometemos disponibilidade ininterrupta e,{" "}
+        <strong>na máxima extensão permitida pela legislação aplicável</strong>,
+        não nos responsabilizamos por
         agendamento perdido em decorrência de indisponibilidade do WhatsApp, da sua
         conexão ou do seu aparelho. A agenda continua sendo sua
         responsabilidade — a Encaixaria é uma ferramenta, não uma garantia.
@@ -164,10 +253,31 @@ export default function TermosPage() {
         período que você concordar em pagar.
       </p>
 
-      <h2>Sem vínculo com a Meta</h2>
+      <h2>Dados dos seus clientes</h2>
+      <p>
+        Sobre os dados dos clientes que agendam pelo seu WhatsApp,{" "}
+        <strong>você é o controlador e a Encaixaria é operadora</strong>: quem
+        decide o que perguntar no roteiro do bot, o que guardar e por quanto tempo
+        atender é você. Nós tratamos esses dados exclusivamente conforme essa
+        configuração e conforme estes Termos, que registram as suas instruções de
+        tratamento, e não os usamos para nenhuma finalidade própria.
+      </p>
+      <p>
+        O detalhamento do que é coletado, com que finalidade e por quanto tempo
+        está na <Link href="/privacidade">política de privacidade</Link>.
+      </p>
+
+      <h2>Sem vínculo com a Meta nem com o Mercado Pago</h2>
       <p>
         A Encaixaria não tem relação de afiliação, patrocínio ou representação com
         o WhatsApp, com a WhatsApp Inc. ou com a Meta Platforms.
+      </p>
+      <p>
+        Tampouco com o <strong>Mercado Pago</strong> ou o Mercado Livre. A
+        Encaixaria é um aplicativo independente e não pertence a eles; a conexão
+        existe apenas porque e enquanto você a autoriza, e a relação sobre o
+        pagamento em si é entre você, o seu cliente e o Mercado Pago, regida pelos
+        termos deles.
       </p>
     </PaginaTexto>
   );
