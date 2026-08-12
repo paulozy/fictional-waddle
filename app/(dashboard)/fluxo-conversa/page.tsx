@@ -50,7 +50,7 @@ export default async function FluxoConversaPage({
         .order("id"),
       supabase
         .from("perfis")
-        .select("plano, pagamento_conectado_em")
+        .select("plano, pagamento_conectado_em, politica_sinal")
         .eq("id", usuarioId)
         .maybeSingle(),
       supabase

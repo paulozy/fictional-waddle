@@ -183,6 +183,8 @@ async function criarTenantQueCobra(valorSinal: number | null = 20) {
       status_conexao_whatsapp: "conectado",
       plano: "sinal",
       pagamento_conectado_em: new Date().toISOString(),
+      politica_sinal:
+        "O sinal é abatido do valor do serviço. Desmarcando com 24h de antecedência, devolvo integral.",
       sinal_minutos_validade: 30,
     })
     .eq("id", usuarioId);
@@ -523,6 +525,38 @@ describe.skipIf(!stackNoAr)("E2E — sinal por Pix", () => {
       expect((await lerAgendamento(usuarioId))!.sinal_status).toBe("nao_exigido");
       expect(await lerCobranca(usuarioId)).toBeNull();
       expect(enviadas).toHaveLength(1);
+    });
+
+    /*
+      A terceira condição, e a única que existe para o cliente FINAL: sem política
+      declarada ele pagaria sem nunca ter sido informado do que acontece com o
+      dinheiro dele se desmarcar. Bloqueio duro, não aviso no painel.
+    */
+    it("não cobra quando a política de cancelamento não foi declarada", async () => {
+      const { usuarioId } = await criarTenantQueCobra(20);
+      await admin
+        .from("perfis")
+        .update({ politica_sinal: null })
+        .eq("id", usuarioId);
+
+      await agendarAteConfirmar(usuarioId);
+
+      expect((await lerAgendamento(usuarioId))!.sinal_status).toBe("nao_exigido");
+      expect(await lerCobranca(usuarioId)).toBeNull();
+      // O agendamento acontece normalmente: a ausência de política desliga a
+      // cobrança, não o produto.
+      expect(enviadas).toHaveLength(1);
+    });
+
+    it("manda a política na mensagem que antecede o código Pix", async () => {
+      const { usuarioId } = await criarTenantQueCobra(20);
+
+      await agendarAteConfirmar(usuarioId);
+
+      // Duas mensagens: aviso+política, depois o copia-e-cola sozinho.
+      expect(enviadas).toHaveLength(2);
+      expect(enviadas[0]).toMatch(/desmarcando com 24h de antecedência/i);
+      expect(enviadas[1]).not.toMatch(/desmarcando/i);
     });
 
     it("não cobra quando a conta do Mercado Pago não está conectada", async () => {

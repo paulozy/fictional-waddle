@@ -458,6 +458,85 @@ do cliente na conta errada.
   do tenant em silêncio, e o sintoma chega dias depois como "o bot parou de mandar
   o Pix".
 
+#### A política de cancelamento é condição para cobrar
+
+O bot pedia R$ 20 e **não dizia nada** sobre o que acontece com aquele dinheiro se
+o cliente desmarcar ou não aparecer. Os Termos jogam a política de cancelamento
+para o estabelecimento, o que resolve entre nós e o dono e **não resolve nada com o
+cliente final** — que é quem paga, é consumidor, e nunca leu os nossos Termos.
+
+`perfis.politica_sinal` é a correção, e ela é de produto e não de texto: sem
+política declarada, `motivoSemCobranca` devolve `"sem_politica"` e a cobrança **não
+acontece**. Quatro decisões que não são óbvias:
+
+- **Não existe padrão de fábrica**, e isso é o ponto. Um texto nosso ("devolvemos
+  em até X dias") seria a Encaixaria decidindo a política comercial de terceiro e
+  anunciando ao cliente dele, em nome dele. A tela oferece um exemplo no
+  `placeholder` — a versão menos arriscada, sinal abatido e devolvido com aviso
+  prévio — que **não é gravado**. Reter por falta é decisão do dono, escrita por ele.
+- **Coluna em `perfis`, não chave em `mensagens_tenant`.** Aquela tabela é
+  personalização opcional, onde vazio cai num padrão nosso — exatamente o
+  comportamento errado aqui. E o gate já lê `perfis` em todos os caminhos, então a
+  condição sai de graça no `select` que já existia.
+- **Entra no `grant update` de `authenticated`**, ao contrário de `plano` e
+  `pagamento_conectado_em`. A distinção que governa a tabela inteira: aqueles são
+  afirmações sobre dinheiro e direito, este é conteúdo autoral do dono, como
+  `nome_estabelecimento`. Preencher aqui *habilita* a cobrança, mas não é
+  autoconcessão — a capacidade continua exigindo os dois campos que ele não escreve.
+- **O fecho da mensagem deixou de ser editável**, e isso reverte uma decisão
+  anterior de propósito. `MODELO_PADRAO_COBRANCA` terminava com "Copie o código
+  Pix…", e o JSDoc registrava que um modelo personalizado perdia esse aviso —
+  "decisão do dono". Não vale mais: a ordem é fixa em **corpo → política → fecho →
+  código**, porque a política só muda uma decisão se estiver imediatamente antes de
+  a decisão ser tomada. Dita no começo é lida como termo de serviço e ignorada;
+  depois do código, chega tarde. O dono segue dono do corpo, não da ordem das duas
+  últimas coisas.
+
+O CHECK exige entre 20 e 400 caracteres com `btrim`. O piso não é burocracia: o
+campo existe para informar, e "ok" satisfaria um `not null` sem informar nada — com
+o efeito colateral de nos deixar afirmar que houve divulgação. O teto existe porque
+isto entra em toda cobrança, e o WhatsApp trunca com "Ler mais" justamente na parte
+que precisa ser lida antes de pagar.
+
+#### O que foi conscientemente adiado no jurídico, e os gatilhos
+
+Sem verba e sem acesso a advogado, a triagem foi por **custo do erro**, não por
+completude. O que segue vale enquanto a base for pequena — o risco de tudo aqui é
+proporcional ao volume.
+
+**Adiado, com razão registrada:**
+
+- **"Somos participantes do arranjo Pix?"** O desenho já É a resposta conservadora:
+  nunca custodiar, `collector_id` do dono, receita fixa sem relação com volume. Um
+  parecer confirmaria, não mudaria. **Gatilho para reabrir: qualquer proposta de
+  `application_fee` ou split.** Há teste em `lib/pagamentos/mercado-pago.test.ts`
+  falhando com o motivo escrito, justamente porque documento não impede um PR.
+- **Limitação de responsabilidade.** Ganhou "na máxima extensão permitida pela
+  legislação aplicável". Se o CDC derrubar o teto, derruba com ou sem cláusula, e
+  uma cláusula inválida não cria responsabilidade nova.
+- **LGPD do fluxo de pagamento.** Os Termos ganharam a seção que os torna o
+  instrumento de instruções do Art. 39 (dono é controlador, nós operadores). A
+  parte substantiva já estava certa: minimização, nenhum dado de pagador, token
+  cifrado.
+- **"Não somos intermediários".** A frase saiu de todas as páginas — **não** porque
+  é falsa, mas porque era autoqualificação jurídica, que alguém contesta. No lugar,
+  a descrição do mecanismo: o dinheiro não passa por nós, a receita é mensalidade
+  fixa. Fato é verificável e não envelhece.
+
+**Não adiado, porque o conserto era código:** a política de cancelamento (seção
+acima). Era o item de maior probabilidade de virar problema real, e o problema não
+seria com um regulador — seria o cliente do nosso cliente, cobrando do salão, que
+cobra de nós.
+
+**Fora do código, e pendente:** conferir o CNAE do CNPJ com o contador (é pergunta
+de contador, não de advogado) e ler os termos de desenvolvedor do Mercado Pago —
+este último é o de consequência mais rápida da lista, porque eles derrubam
+credencial de app sem aviso, e aí a feature morre para todos os tenants ao mesmo
+tempo.
+
+**Gatilhos para deixar de adiar:** a primeira contestação de Pix, o primeiro contato
+de Procon, ou o dia em que o Garantido virar a maioria da base.
+
 #### O que ainda não foi medido
 
 O teste ponta a ponta (`tests/e2e/sinal-pix.test.ts`) valida a **nossa** lógica
@@ -662,7 +741,7 @@ O objetivo declarado era ser encontrado pesquisando o nome no Google. Isso depen
   pagamentos/
     mercado-pago.ts                   → OAuth, criar Pix, consultar, estornar. Base URL sobrescrevível
     assinatura-webhook.ts             → HMAC do `x-signature` (puro)
-    capacidade.ts                     → "este tenant pode cobrar sinal?" (puro, molde de assinatura.ts)
+    capacidade.ts                     → "este tenant pode cobrar sinal?" — plano + conta + política declarada
     credenciais.ts                    → guarda/recupera o token, com renovação e compare-and-set
     cobranca-sinal.ts                 → emite o Pix pós-confirmação e devolve as mensagens
     oauth-state.ts                    → só a constante do cookie (arquivo "use server" não exporta const)

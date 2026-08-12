@@ -27,7 +27,21 @@ import { aplicarModelo, renderizarOuPadrao } from "@/lib/bot/modelo-mensagem";
  */
 export const MODELO_PADRAO_COBRANCA =
   "Separei seu horário de {servico}. Para confirmar, é preciso um sinal de {valor}.\n\n" +
-  "Você tem até {prazo} para pagar — depois disso o horário volta a ficar disponível.\n\n" +
+  "Você tem até {prazo} para pagar — depois disso o horário volta a ficar disponível.";
+
+/**
+ * Fecho fixo, colado depois da política. **Não** é editável, e a mudança é
+ * deliberada.
+ *
+ * Antes, este aviso era a última linha de `MODELO_PADRAO_COBRANCA`, e o JSDoc
+ * registrava que um modelo personalizado o perdia — "decisão do dono". Isso
+ * deixou de valer quando a política de cancelamento passou a existir: ela precisa
+ * ficar **imediatamente antes** do código, que é o momento em que a pessoa
+ * decide pagar, e um modelo personalizado não pode empurrá-la para o meio do
+ * texto nem enterrá-la depois do fecho. O dono continua dono do corpo da
+ * mensagem; o que ele não escolhe mais é a ordem das duas últimas coisas.
+ */
+const FECHO_COBRANCA =
   "Copie o código Pix da próxima mensagem e cole no seu banco:";
 
 export const MODELO_PADRAO_RECEBIDO =
@@ -87,6 +101,15 @@ export function montarTextoCobrancaSinal(dados: {
   dataHora: string;
   /** Texto personalizado do dono (`mensagens_tenant`). Vazio = usa o padrão. */
   modelo?: string | null;
+  /**
+   * A política de cancelamento do estabelecimento (`perfis.politica_sinal`).
+   *
+   * **Obrigatória**, e o tipo diz isso: sem ela `lib/pagamentos/capacidade.ts` já
+   * teria bloqueado a cobrança lá atrás, então chegar aqui sem política é estado
+   * impossível — e se um caminho novo tornar possível, o compilador reclama antes
+   * de um cliente pagar sem saber o que acontece com o dinheiro dele.
+   */
+  politica: string;
 }): string {
   const prazo = formatarPrazo(dados.expiraEm, dados.fusoHorario);
 
@@ -103,11 +126,21 @@ export function montarTextoCobrancaSinal(dados: {
    * cópia do cliente. Um modelo personalizado **não** perde essa garantia — o
    * código continua vindo separado —, mas perde o aviso, e é decisão do dono.
    */
-  return renderizarOuPadrao(
+  const corpo = renderizarOuPadrao(
     dados.modelo,
     valores,
     aplicarModelo(MODELO_PADRAO_COBRANCA, valores),
   );
+
+  /*
+    Ordem fixa: corpo → política → fecho → (próxima mensagem) código.
+
+    A política vai colada no fecho porque é onde ela tem função. Dita no começo,
+    ela é lida como termo de serviço e ignorada; dita depois do código, chega
+    tarde — a pessoa já colou no banco. O único lugar em que ela muda uma decisão
+    é imediatamente antes de a decisão ser tomada.
+  */
+  return `${corpo}\n\n${dados.politica.trim()}\n\n${FECHO_COBRANCA}`;
 }
 
 /**

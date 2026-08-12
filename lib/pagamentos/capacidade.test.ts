@@ -10,7 +10,12 @@ import {
 const CONECTADO = "2026-08-01T10:00:00.000Z";
 
 function perfil(over: Partial<PerfilCobranca> = {}): PerfilCobranca {
-  return { plano: "sinal", pagamento_conectado_em: CONECTADO, ...over };
+  return {
+    plano: "sinal",
+    pagamento_conectado_em: CONECTADO,
+    politica_sinal: "Devolvo o sinal se você desmarcar com 24h de antecedência.",
+    ...over,
+  };
 }
 
 describe("motivoSemCobranca", () => {
@@ -35,8 +40,39 @@ describe("motivoSemCobranca", () => {
   it("o plano tem precedência sobre a conexão", () => {
     // Sem o plano, "conecte sua conta" seria conselho inútil.
     expect(
-      motivoSemCobranca({ plano: "basico", pagamento_conectado_em: null }),
+      motivoSemCobranca({
+        plano: "basico",
+        pagamento_conectado_em: null,
+        politica_sinal: null,
+      }),
     ).toBe("plano");
+  });
+
+  /*
+    A terceira condição existe para o cliente FINAL, não para o dono: cobrar sem
+    ter dito o que acontece com o dinheiro deixa quem pagou sem informação sobre o
+    próprio dinheiro. Por isso é bloqueio duro, e não aviso no painel.
+  */
+  it.each([null, "", "   ", "\n"])(
+    "bloqueia quando a política é %o, mesmo com plano e conta",
+    (politica) => {
+      expect(motivoSemCobranca(perfil({ politica_sinal: politica }))).toBe(
+        "sem_politica",
+      );
+      expect(cobrancaSinalHabilitada(perfil({ politica_sinal: politica }))).toBe(
+        false,
+      );
+    },
+  );
+
+  it("a conexão tem precedência sobre a política", () => {
+    // "escreva sua política" antes de "conecte sua conta" seria a ordem errada
+    // de onboarding: a política só importa se houver como cobrar.
+    expect(
+      motivoSemCobranca(
+        perfil({ pagamento_conectado_em: null, politica_sinal: null }),
+      ),
+    ).toBe("nao_conectado");
   });
 
   describe("fail-safe", () => {

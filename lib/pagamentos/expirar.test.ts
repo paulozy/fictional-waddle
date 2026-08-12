@@ -30,7 +30,7 @@ const TENANT = "11111111-1111-1111-1111-111111111111";
 
 /** Tenant que cobra sinal: plano certo e conta conectada. */
 function cobra() {
-  return { plano: "sinal", pagamento_conectado_em: "2026-08-01T00:00:00Z" };
+  return { politica_sinal: "Devolvo com 24h de antecedência combinada.", plano: "sinal", pagamento_conectado_em: "2026-08-01T00:00:00Z" };
 }
 
 beforeEach(() => {
@@ -56,8 +56,8 @@ describe("expirarSinaisDoDono", () => {
     for (const perfil of [
       null,
       undefined,
-      { plano: "basico", pagamento_conectado_em: "2026-08-01T00:00:00Z" },
-      { plano: "sinal", pagamento_conectado_em: null },
+      { politica_sinal: null, plano: "basico", pagamento_conectado_em: "2026-08-01T00:00:00Z" },
+      { politica_sinal: "Devolvo com 24h de antecedência combinada.", plano: "sinal", pagamento_conectado_em: null },
     ]) {
       await expirarSinaisDoDono(TENANT, perfil);
     }

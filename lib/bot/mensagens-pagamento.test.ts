@@ -35,6 +35,7 @@ describe("montarTextoCobrancaSinal", () => {
     // 12:30 UTC = 09:30 em São Paulo. Só alimenta o `{quando}` do modelo do dono;
     // o texto padrão não cita o horário do agendamento.
     dataHora: "2026-08-10T12:30:00.000Z",
+    politica: "Devolvo o sinal se você desmarcar com 24h de antecedência.",
   };
 
   it("diz valor, prazo e serviço", () => {
@@ -61,6 +62,46 @@ describe("montarTextoCobrancaSinal", () => {
     // O copia-e-cola vai numa mensagem própria: no WhatsApp o cliente segura
     // para copiar, e texto em volta entra na cópia e faz o banco recusar.
     expect(montarTextoCobrancaSinal(dados)).not.toContain(COPIA_E_COLA);
+  });
+
+  /*
+    A política é a razão de a cobrança existir na forma atual: sem ela, o cliente
+    paga sem nunca ter sido informado do que acontece com o dinheiro se desmarcar.
+    Os três testes abaixo prendem as três metades disso — que ela aparece, que
+    aparece na POSIÇÃO certa, e que um modelo personalizado não a engole.
+  */
+  it("inclui a política do estabelecimento", () => {
+    expect(montarTextoCobrancaSinal(dados)).toContain(
+      "Devolvo o sinal se você desmarcar com 24h de antecedência.",
+    );
+  });
+
+  it("põe a política imediatamente antes do fecho que aponta o código", () => {
+    // Dita no começo, ela é lida como termo de serviço e ignorada; depois do
+    // código, chega tarde. O único lugar em que muda uma decisão é logo antes.
+    const texto = montarTextoCobrancaSinal(dados);
+
+    expect(texto.indexOf("Devolvo o sinal")).toBeGreaterThan(
+      texto.indexOf("R$ 20,00"),
+    );
+    expect(texto.indexOf("Devolvo o sinal")).toBeLessThan(
+      texto.indexOf("Copie o código"),
+    );
+  });
+
+  it("mantém política e fecho mesmo com modelo personalizado do dono", () => {
+    // Antes, o fecho era a última linha do modelo padrão e um texto próprio o
+    // perdia — "decisão do dono". Isso deixou de valer: o dono é dono do corpo,
+    // não da ordem das duas últimas coisas.
+    const texto = montarTextoCobrancaSinal({
+      ...dados,
+      modelo: "Oi! Manda {valor} de sinal aí até {prazo} 🙏",
+    });
+
+    // `\s?` porque o Intl separa símbolo e número com espaço NÃO-QUEBRÁVEL.
+    expect(texto).toMatch(/Manda R\$\s?20,00 de sinal/);
+    expect(texto).toContain("Devolvo o sinal se você desmarcar");
+    expect(texto).toContain("Copie o código");
   });
 });
 
@@ -138,6 +179,7 @@ describe("modelo personalizado", () => {
     fusoHorario: FUSO,
     servicoNome: "Corte masculino",
     dataHora: "2026-08-10T12:30:00.000Z",
+    politica: "Devolvo o sinal se você desmarcar com 24h de antecedência.",
   };
 
   it("sem modelo, mantém o texto padrão", () => {
@@ -196,6 +238,7 @@ describe("modelo padrão é a fonte do texto enviado", () => {
       fusoHorario: FUSO,
       servicoNome: "Corte masculino",
       dataHora: "2026-08-10T12:30:00.000Z",
+      politica: "Devolvo o sinal se você desmarcar com 24h de antecedência.",
     };
 
     expect(montarTextoCobrancaSinal(dados)).toBe(

@@ -105,7 +105,7 @@ export async function POST(
   const { data: perfil } = await admin
     .from("perfis")
     .select(
-      "id, fuso_horario, passo_slot_minutos, antecedencia_minima_minutos, antecedencia_maxima_dias, status_conexao_whatsapp, status_assinatura, trial_expira_em, trial_bloqueado_em, plano, pagamento_conectado_em, sinal_minutos_validade",
+      "id, fuso_horario, passo_slot_minutos, antecedencia_minima_minutos, antecedencia_maxima_dias, status_conexao_whatsapp, status_assinatura, trial_expira_em, trial_bloqueado_em, plano, pagamento_conectado_em, politica_sinal, sinal_minutos_validade",
     )
     .eq("evolution_instance_name", instance)
     .maybeSingle();
@@ -468,6 +468,7 @@ type Perfil = {
    */
   plano: string;
   pagamento_conectado_em: string | null;
+  politica_sinal: string | null;
   sinal_minutos_validade: number;
 };
 

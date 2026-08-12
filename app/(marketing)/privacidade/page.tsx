@@ -218,7 +218,7 @@ export default function PrivacidadePage() {
       <p>
         <strong>O dinheiro não passa por nós em momento nenhum.</strong> O Pix é
         pago diretamente à conta do estabelecimento; a Encaixaria não recebe, não
-        retém, não repassa valores e não é intermediária do pagamento. Também não
+        retém e não repassa valores. Também não
         temos acesso a saldo, extrato ou movimentação da conta do dono: a
         autorização serve para gerar cobranças e consultar o resultado delas, e
         nada além disso.

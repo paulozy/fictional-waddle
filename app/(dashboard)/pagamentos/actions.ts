@@ -200,6 +200,59 @@ export async function estornarSinal(
  *
  * Valor não numérico não grava nada, e o formulário volta com o valor atual.
  */
+/**
+ * A política de cancelamento do sinal, escrita pelo dono.
+ *
+ * **Sem ela a cobrança não liga** (`lib/pagamentos/capacidade.ts`), e o motivo não
+ * é burocracia: o bot pedia um Pix sem nunca dizer ao cliente final o que
+ * acontece com aquele dinheiro se ele desmarcar. Os Termos jogam a política para
+ * o estabelecimento — o que resolve entre nós e o dono, e não resolve nada com
+ * quem paga.
+ *
+ * **Não existe padrão de fábrica**, de propósito. Um texto nosso ("devolvemos em
+ * até X dias") seria a Encaixaria decidindo a política comercial de terceiro e
+ * anunciando isso ao cliente dele, em nome dele. O que a tela oferece é um
+ * exemplo no `placeholder`, que ensina o formato sem ser gravado.
+ *
+ * Escrita pelo client que respeita RLS: esta coluna **está** no grant por coluna
+ * de `perfis`, diferente de `plano` e `pagamento_conectado_em`. A distinção é a
+ * mesma do resto da tabela — aqueles são afirmações sobre dinheiro e direito,
+ * este é conteúdo autoral do dono, como `nome_estabelecimento`.
+ */
+export async function salvarPoliticaSinal(formData: FormData): Promise<void> {
+  const usuarioId = await exigirUsuario();
+
+  const texto = String(formData.get("politica") ?? "").trim();
+
+  /*
+    Os limites espelham o CHECK `perfis_politica_sinal_tamanho`, e são checados
+    aqui para virar mensagem em vez de erro 23514 sem contexto.
+
+    O piso de 20 não é arbitrário: o campo existe para **informar**, e "ok"
+    satisfaria um `not null` sem informar nada — com o efeito colateral de nos
+    deixar afirmar que houve divulgação. O teto de 400 existe porque isto entra em
+    toda cobrança, e o WhatsApp trunca mensagem longa com "Ler mais" justamente na
+    parte que precisa ser lida antes de pagar.
+  */
+  if (texto.length < 20 || texto.length > 400) return;
+
+  const supabase = await criarClienteServidor();
+  const { error } = await supabase
+    .from("perfis")
+    .update({ politica_sinal: texto })
+    .eq("id", usuarioId);
+
+  if (error) {
+    console.error("falha ao salvar política do sinal", {
+      usuario_id: usuarioId,
+      codigo: error.code,
+    });
+    return;
+  }
+
+  revalidatePath("/pagamentos");
+}
+
 export async function salvarPrazoSinal(formData: FormData): Promise<void> {
   const usuarioId = await exigirUsuario();
 

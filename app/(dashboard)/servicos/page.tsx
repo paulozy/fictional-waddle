@@ -25,7 +25,7 @@ export default async function ServicosPage() {
    */
   const { data: perfil, error: erroPerfil } = await supabase
     .from("perfis")
-    .select("plano, pagamento_conectado_em")
+    .select("plano, pagamento_conectado_em, politica_sinal")
     .eq("id", usuarioId)
     .maybeSingle();
 

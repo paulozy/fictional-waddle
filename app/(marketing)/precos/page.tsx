@@ -220,10 +220,13 @@ export default function PrecoPage() {
           </dl>
 
           <p className="mt-10 max-w-[36rem] text-base leading-7 text-muted-foreground md:text-sm md:leading-6">
-            Conectar a conta é uma tela do painel, uma vez só: você clica,
-            entra no Mercado Pago, autoriza e volta. Se preferir não conectar, o
-            plano Essencial atende igual em tudo o mais — e o bot simplesmente
-            não pede sinal.
+            Conectar a conta é uma tela do painel, uma vez só: você clica, entra
+            no Mercado Pago, autoriza e volta. No mesmo lugar você escreve a sua
+            política de cancelamento — o que acontece com o sinal se o cliente
+            desmarcar —, e ela é obrigatória: vai na mensagem logo antes do
+            código Pix, para que quem paga saiba a regra antes de pagar. Se
+            preferir não conectar nada, o plano Essencial atende igual em tudo o
+            mais, e o bot simplesmente não pede sinal.
           </p>
         </div>
       </section>

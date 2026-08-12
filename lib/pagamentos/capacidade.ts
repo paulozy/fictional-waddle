@@ -20,10 +20,16 @@
 export type PerfilCobranca = {
   plano: string;
   pagamento_conectado_em: string | null;
+  /**
+   * A política de cancelamento/devolução escrita pelo dono. Nulo = cobrança
+   * desligada, e o TypeScript quebra em todo `select` que esquecer a coluna pelo
+   * mesmo motivo dos dois campos acima.
+   */
+  politica_sinal: string | null;
 };
 
 /** Por que a cobrança não está disponível. `null` = está. */
-export type MotivoSemCobranca = "plano" | "nao_conectado";
+export type MotivoSemCobranca = "plano" | "nao_conectado" | "sem_politica";
 
 /**
  * Diagnóstico para o painel.
@@ -47,6 +53,22 @@ export function motivoSemCobranca(
   // contratação, e não um erro. Mas cobrar nele seria prometer ao cliente final
   // um Pix que não temos como emitir.
   if (!perfil.pagamento_conectado_em) return "nao_conectado";
+
+  /*
+    A terceira condição, e a única que não é sobre a nossa relação com o dono —
+    é sobre a relação dele com o cliente final.
+
+    Cobrar um sinal sem ter dito o que acontece com o dinheiro quando o cliente
+    desmarca deixa a pessoa que pagou sem nenhuma informação sobre o próprio
+    dinheiro, e o produto seria o instrumento dessa omissão. O bloqueio é
+    deliberadamente **duro** (não é aviso no painel, é a cobrança não acontecer),
+    porque o custo de errar aqui não cai sobre quem decidiu: cai sobre o cliente
+    do nosso cliente.
+
+    `btrim` porque o CHECK do banco aceita nulo, e um campo com espaços passaria
+    por um teste de string vazia.
+  */
+  if (!perfil.politica_sinal?.trim()) return "sem_politica";
 
   return null;
 }

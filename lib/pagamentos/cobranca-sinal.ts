@@ -258,6 +258,7 @@ export async function cobrarSinal(dados: {
       servicoNome: dados.servicoNome,
       dataHora: dados.dataHora,
       modelo: modelo?.texto,
+      politica: perfil.politica_sinal ?? "",
     }),
     // Sozinho na mensagem: o cliente segura para copiar, e qualquer texto em
     // volta entra na cópia e faz o banco recusar o código.

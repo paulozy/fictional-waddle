@@ -200,10 +200,43 @@ describe("criarPagamentoPix", () => {
     });
   });
 
-  it("NÃO manda application_fee — não há comissão sobre a transação do dono", async () => {
+  /**
+   * ═════════════════════════════════════════════════════════════════════════
+   *  Estes protegem um argumento jurídico, não um comportamento.
+   * ═════════════════════════════════════════════════════════════════════════
+   *
+   * A tese que sustenta a cobrança de sinal na forma atual é que a Encaixaria é
+   * software e **não participante do arranjo de pagamento**: o dinheiro sai do
+   * cliente final e cai na conta do dono, sem escala, e a nossa receita é uma
+   * mensalidade fixa sem nenhuma relação com volume ou valor transacionado.
+   *
+   * Uma linha derruba isso. `application_fee` reserva uma fatia da transação
+   * para a aplicação; `sponsor_id` e os campos de split declaram um segundo
+   * recebedor. Qualquer um deles nos coloca recebendo parte do pagamento de
+   * terceiro, e aí a pergunta "somos intermediários?" muda de resposta — junto
+   * com o desenho, que passaria a exigir um parceiro licenciado.
+   *
+   * O CLAUDE.md registra a decisão, mas documento não impede um
+   * `application_fee` de entrar num PR futuro "para monetizar melhor". Isto
+   * impede, e falha dizendo por quê.
+   */
+  it.each([
+    "application_fee",
+    "marketplace_fee",
+    "sponsor_id",
+    "disbursements",
+    "additional_info_integrator_id",
+  ])("NÃO manda %s — não recebemos parte da transação do dono", async (campo) => {
     servidor.use(capturar("/v1/payments", RESPOSTA_PIX));
     await criarPagamentoPix(ARGS);
-    expect(capturada?.corpo).not.toHaveProperty("application_fee");
+
+    expect(
+      capturada?.corpo,
+      `\n\n  "${campo}" no corpo da cobrança faz a Encaixaria receber, ou declarar\n` +
+        `  que recebe, parte do pagamento do cliente final. Isso derruba a tese de\n` +
+        `  "software, não participante do arranjo" que sustenta o desenho inteiro\n` +
+        `  do sinal. Leia a seção de cobrança de sinal no CLAUDE.md antes de mexer.\n`,
+    ).not.toHaveProperty(campo);
   });
 
   it("falha quando o MP não devolve o código Pix", async () => {

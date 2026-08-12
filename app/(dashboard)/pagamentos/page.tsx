@@ -8,7 +8,11 @@ import { motivoSemCobranca } from "@/lib/pagamentos/capacidade";
 import { expirarSinaisDoDono } from "@/lib/pagamentos/expirar";
 import { PRECO_GARANTIDO } from "@/lib/plano";
 import { criarClienteServidor, exigirUsuario } from "@/lib/supabase/server";
-import { conectarMercadoPago, salvarPrazoSinal } from "./actions";
+import {
+  conectarMercadoPago,
+  salvarPoliticaSinal,
+  salvarPrazoSinal,
+} from "./actions";
 import { BotaoEstornar, BotaoRevogar } from "./painel-pagamentos";
 
 export const metadata: Metadata = { title: "Pagamentos" };
@@ -70,7 +74,7 @@ export default async function PagamentosPage({
      * seguinte. O erro é invisível em desenvolvimento, porque a máquina do dono
      * já está no fuso certo. Mesmo motivo de `lib/metricas-whatsapp.ts` existir.
      */
-    .select("plano, pagamento_conectado_em, sinal_minutos_validade, fuso_horario")
+    .select("plano, pagamento_conectado_em, politica_sinal, sinal_minutos_validade, fuso_horario")
     .eq("id", usuarioId)
     .maybeSingle();
 
@@ -314,6 +318,86 @@ export default async function PagamentosPage({
               mínimo é 15 minutos: com prazo curto demais, o código Pix morre
               antes de o cliente conseguir pagar, e o app do banco dele diz que
               sua conta não pode receber.
+            </p>
+          </section>
+
+          {/*
+            A política de cancelamento, e o cartão muda de tom quando falta.
+
+            Não é campo opcional de configuração: sem ele o gate de
+            `capacidade.ts` devolve "sem_politica" e o bot **não cobra**. Por isso
+            o estado vazio usa a moldura de aviso e diz a consequência em voz alta
+            — um campo em branco com rótulo cinza seria lido como "depois eu
+            preencho", e o dono descobriria que não cobra quando o primeiro
+            cliente agendasse.
+          */}
+          <section
+            className={`mt-12 max-w-2xl rounded-xl border p-6 ${
+              motivo === "sem_politica"
+                ? "border-aviso bg-aviso-suave"
+                : "border-border"
+            }`}
+          >
+            <h2 className="font-heading text-lg font-semibold tracking-tight">
+              Política de cancelamento do sinal
+            </h2>
+
+            {motivo === "sem_politica" ? (
+              <p className="mt-2 max-w-[56ch] text-base leading-relaxed md:text-sm">
+                <strong className="font-medium">
+                  Enquanto isto estiver em branco, o bot não pede sinal nenhum.
+                </strong>{" "}
+                Seu cliente precisa saber o que acontece com o dinheiro se ele
+                desmarcar — e essa regra é sua, não nossa, então é você que
+                escreve.
+              </p>
+            ) : (
+              <p className="mt-2 max-w-[56ch] text-base leading-relaxed text-muted-foreground md:text-sm">
+                Este texto vai na mensagem logo antes do código Pix, em toda
+                cobrança. É o que seu cliente lê antes de decidir pagar.
+              </p>
+            )}
+
+            <form action={salvarPoliticaSinal} className="mt-4">
+              <label htmlFor="politica" className="sr-only">
+                Política de cancelamento do sinal
+              </label>
+              {/* Sem `text-sm`: herda os 16px do corpo, que é o que impede o
+                  zoom de foco do iOS. Mesmo motivo do campo de prazo acima. */}
+              <textarea
+                id="politica"
+                name="politica"
+                rows={3}
+                minLength={20}
+                maxLength={400}
+                defaultValue={perfil.politica_sinal ?? ""}
+                placeholder="Ex.: O sinal é abatido do valor do serviço. Se você desmarcar com 24 horas de antecedência, devolvo o valor integral."
+                className="w-full rounded-lg border border-input bg-background px-3 py-2.5 leading-relaxed outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              />
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button
+                  type="submit"
+                  className="inline-flex h-11 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground md:h-10"
+                >
+                  Salvar política
+                </button>
+                <span className="text-xs text-muted-foreground">
+                  Entre 20 e 400 caracteres.
+                </span>
+              </div>
+            </form>
+
+            {/*
+              O exemplo do `placeholder` é a versão menos arriscada — sinal
+              abatido do serviço e devolvido com aviso prévio —, mas ele NÃO é
+              gravado: um padrão nosso seria a Encaixaria decidindo a política
+              comercial de terceiro e anunciando em nome dele. Reter por falta é
+              decisão do dono, e tem de ser escrita por ele.
+            */}
+            <p className="mt-4 max-w-[56ch] text-xs leading-relaxed text-muted-foreground">
+              Se você pretende ficar com o sinal quando o cliente não aparece,
+              diga isso aqui com todas as letras. O que não estiver escrito antes
+              do pagamento vira discussão depois dele.
             </p>
           </section>
 

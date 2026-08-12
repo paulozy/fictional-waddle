@@ -169,10 +169,11 @@ export default function TermosPage() {
         <li>
           <strong>O dinheiro nunca passa por nós.</strong> A cobrança é criada em
           seu nome, com a autorização que você deu, e o Pix cai direto na sua
-          conta. Não retemos, não repassamos e não cobramos comissão sobre ela.
-          Não somos parte da transação nem intermediários dela: juridicamente, o
-          pagamento é entre você e o seu cliente, e nós apenas geramos a cobrança
-          com a autorização que você concedeu.
+          conta. Não retemos, não repassamos e não cobramos comissão sobre ela. O
+          pagamento acontece entre você e o seu cliente: nós apenas geramos a
+          cobrança com a autorização que você concedeu, e a nossa receita é a
+          mensalidade fixa do plano, que não varia com o quanto você cobrou de
+          sinal.
         </li>
         <li>
           <strong>A conta tem de ser sua.</strong> Você declara ser o titular da
@@ -199,6 +200,18 @@ export default function TermosPage() {
         O horário fica segurado pelo prazo que você configurar. Passado o prazo
         sem pagamento, o agendamento é cancelado e o horário volta a ser oferecido.
       </p>
+      <p>
+        <strong>
+          A cobrança só funciona depois de você declarar, no painel, a sua
+          política de cancelamento e devolução do sinal.
+        </strong>{" "}
+        Esse texto é enviado ao seu cliente na mensagem imediatamente anterior ao
+        código Pix, em toda cobrança. A política é sua — prazo para desmarcar,
+        devolução integral ou parcial, e se você retém em caso de falta são
+        decisões do seu estabelecimento, e você é responsável por cumpri-las. O que
+        a Encaixaria faz é impedir que a cobrança aconteça sem que ela tenha sido
+        informada ao cliente antes do pagamento.
+      </p>
 
       <h2>Disponibilidade e limites</h2>
       <p>
@@ -214,7 +227,9 @@ export default function TermosPage() {
         Meta: o QR code é aceito, mas as mensagens não chegam.
       </p>
       <p>
-        Não prometemos disponibilidade ininterrupta e não nos responsabilizamos por
+        Não prometemos disponibilidade ininterrupta e,{" "}
+        <strong>na máxima extensão permitida pela legislação aplicável</strong>,
+        não nos responsabilizamos por
         agendamento perdido em decorrência de indisponibilidade do WhatsApp, da sua
         conexão ou do seu aparelho. A agenda continua sendo sua
         responsabilidade — a Encaixaria é uma ferramenta, não uma garantia.
@@ -236,6 +251,20 @@ export default function TermosPage() {
         pelo canal de contato da conta. Mudança de preço é avisada com
         antecedência, e como não há débito automático, ela só passa a valer no
         período que você concordar em pagar.
+      </p>
+
+      <h2>Dados dos seus clientes</h2>
+      <p>
+        Sobre os dados dos clientes que agendam pelo seu WhatsApp,{" "}
+        <strong>você é o controlador e a Encaixaria é operadora</strong>: quem
+        decide o que perguntar no roteiro do bot, o que guardar e por quanto tempo
+        atender é você. Nós tratamos esses dados exclusivamente conforme essa
+        configuração e conforme estes Termos, que registram as suas instruções de
+        tratamento, e não os usamos para nenhuma finalidade própria.
+      </p>
+      <p>
+        O detalhamento do que é coletado, com que finalidade e por quanto tempo
+        está na <Link href="/privacidade">política de privacidade</Link>.
       </p>
 
       <h2>Sem vínculo com a Meta</h2>

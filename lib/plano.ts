@@ -203,9 +203,9 @@ export const MERCADO_PAGO_PORQUE = [
       "Pela regra do Pix no Brasil, quem recebe um pagamento tem de ser o titular da conta que recebe. Ninguém pode receber Pix por dentro da conta de outra empresa — nem nós por você. Então a cobrança é criada no seu nome, com a autorização que você dá uma vez, e o valor cai na sua conta na mesma hora.",
   },
   {
-    titulo: "Não somos intermediários do seu dinheiro",
+    titulo: "O dinheiro não passa por nós",
     texto:
-      "O sinal não passa pela Encaixaria em momento nenhum. Não recebemos, não retemos, não repassamos e não cobramos comissão sobre ele. Também não vemos seu saldo nem sua movimentação: a autorização serve para gerar cobranças e nada além disso, e você pode revogá-la quando quiser. O que a gente cobra é a mensalidade do plano, e só ela.",
+      "O Pix vai do celular do seu cliente para a sua conta, sem escala. A Encaixaria não recebe, não retém, não repassa e não desconta comissão — o único dinheiro que entra para nós é a mensalidade do plano, que é fixa e não muda com o quanto você cobrou de sinal. Também não vemos seu saldo nem sua movimentação: a autorização serve para gerar cobranças e consultar o resultado delas, e você pode revogá-la quando quiser.",
   },
   {
     titulo: "Criar a conta é de graça, e serve CPF",

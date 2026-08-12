@@ -39,7 +39,7 @@ export default async function AgendamentosPage({
      * `plano` e `pagamento_conectado_em` entram só para a varredura de sinais
      * vencidos logo abaixo — é a mesma leitura, sem query nova.
      */
-    .select("fuso_horario, plano, pagamento_conectado_em")
+    .select("fuso_horario, plano, pagamento_conectado_em, politica_sinal")
     .eq("id", usuarioId)
     .single();
 

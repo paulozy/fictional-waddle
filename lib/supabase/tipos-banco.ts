@@ -428,6 +428,7 @@ export type Database = {
           pagamento_conectado_em: string | null
           passo_slot_minutos: number
           plano: string
+          politica_sinal: string | null
           sinal_minutos_validade: number
           status_assinatura: string
           status_conexao_whatsapp: string
@@ -445,6 +446,7 @@ export type Database = {
           pagamento_conectado_em?: string | null
           passo_slot_minutos?: number
           plano?: string
+          politica_sinal?: string | null
           sinal_minutos_validade?: number
           status_assinatura?: string
           status_conexao_whatsapp?: string
@@ -462,6 +464,7 @@ export type Database = {
           pagamento_conectado_em?: string | null
           passo_slot_minutos?: number
           plano?: string
+          politica_sinal?: string | null
           sinal_minutos_validade?: number
           status_assinatura?: string
           status_conexao_whatsapp?: string
@@ -543,10 +546,7 @@ export type Database = {
         Args: { p_provedor_pagamento_id: string; p_valor_centavos: number }
         Returns: string
       }
-      escolher_plano_trial: {
-        Args: { p_plano: string }
-        Returns: string
-      }
+      escolher_plano_trial: { Args: { p_plano: string }; Returns: string }
       expirar_sinais_vencidos: {
         Args: { p_usuario_id: string }
         Returns: number
