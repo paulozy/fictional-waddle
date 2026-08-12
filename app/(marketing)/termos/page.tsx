@@ -267,10 +267,17 @@ export default function TermosPage() {
         está na <Link href="/privacidade">política de privacidade</Link>.
       </p>
 
-      <h2>Sem vínculo com a Meta</h2>
+      <h2>Sem vínculo com a Meta nem com o Mercado Pago</h2>
       <p>
         A Encaixaria não tem relação de afiliação, patrocínio ou representação com
         o WhatsApp, com a WhatsApp Inc. ou com a Meta Platforms.
+      </p>
+      <p>
+        Tampouco com o <strong>Mercado Pago</strong> ou o Mercado Livre. A
+        Encaixaria é um aplicativo independente e não pertence a eles; a conexão
+        existe apenas porque e enquanto você a autoriza, e a relação sobre o
+        pagamento em si é entre você, o seu cliente e o Mercado Pago, regida pelos
+        termos deles.
       </p>
     </PaginaTexto>
   );

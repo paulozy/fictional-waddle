@@ -93,12 +93,19 @@ export default function SobrePage() {
         assinatura nos <Link href="/termos">termos de uso</Link>.
       </p>
 
-      <h2>Sem vínculo com a Meta</h2>
+      <h2>Sem vínculo com a Meta nem com o Mercado Pago</h2>
       <p>
         A Encaixaria não tem nenhuma relação de afiliação, patrocínio ou
         representação com o WhatsApp, com a WhatsApp Inc. ou com a Meta
         Platforms. &quot;WhatsApp&quot; é marca dos respectivos titulares, citada
         aqui apenas para descrever com o que o produto se conecta.
+      </p>
+      <p>
+        O mesmo vale para o <strong>Mercado Pago</strong>, usado no plano
+        Garantido: a Encaixaria é um aplicativo independente, que{" "}
+        <strong>não pertence ao Mercado Pago nem ao Mercado Livre</strong> e não é
+        patrocinada, endossada ou operada por eles. Nós apenas nos conectamos à
+        conta que você autoriza, e as marcas são dos respectivos titulares.
       </p>
     </PaginaTexto>
   );

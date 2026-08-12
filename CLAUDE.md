@@ -528,11 +528,40 @@ acima). Era o item de maior probabilidade de virar problema real, e o problema n
 seria com um regulador — seria o cliente do nosso cliente, cobrando do salão, que
 cobra de nós.
 
-**Fora do código, e pendente:** conferir o CNAE do CNPJ com o contador (é pergunta
-de contador, não de advogado) e ler os termos de desenvolvedor do Mercado Pago —
-este último é o de consequência mais rápida da lista, porque eles derrubam
-credencial de app sem aviso, e aí a feature morre para todos os tenants ao mesmo
-tempo.
+**Os termos de desenvolvedor do Mercado Pago foram lidos (2026-08-11).** Quatro
+achados que dirigem código, e um que dirige expectativa:
+
+- **O desenho está no caminho documentado.** O fluxo `authorization_code` é
+  descrito por eles como o que "deve ser configurado quando for utilizar as
+  credenciais para acessar um recurso em nome de terceiros, devendo contar com a
+  intervenção do usuário (vendedor) para autorizar explicitamente". Não há
+  credenciamento obrigatório — certificação é discricionária deles — e **nada
+  condiciona operar em nome de terceiro a `application_fee`, split ou modo
+  marketplace**, o que confirma que não usá-los não nos tira de um caminho
+  suportado.
+- **Cláusula 4.1 (marca)** exige deixar claro que o aplicativo **não pertence ao
+  Mercado Pago**, e proíbe usar "mercado", "livre", "pago" e "shops" como palavra-
+  chave. Daí o aviso de não-afiliação em `/sobre` e `/termos` cobrir os dois — Meta
+  e Mercado Pago. Não usamos o logotipo deles, e não devemos passar a usar sem reler
+  essa cláusula.
+- **Cláusula 6.1** diz que o usuário que autoriza é Controlador e o desenvolvedor é
+  Operador. É a mesma divisão de papéis que os nossos Termos declaram por causa do
+  Art. 39 da LGPD — o contrato deles já a impõe, então as duas coisas concordam.
+- **Cláusula 7.2 (a)** é a que merece atenção ao mudar o produto: proíbe
+  "comercializar ou sublicenciar a API para o uso de e por terceiros" e "criar um
+  Aplicativo que funcione substancialmente da mesma forma que a API e oferecer seu
+  uso para e por terceiros". A leitura que nos mantém dentro: **não revendemos
+  acesso à API** — cada tenant autoriza a própria conta, para uso próprio, e nós
+  emitimos cobranças dele para ele. Expor um endpoint genérico de pagamento, ou
+  atender um tenant com a credencial de outro, sairia disso.
+- **Cláusula 15**: eles podem revogar o acesso "de forma imotivada e a qualquer
+  tempo, independente de notificação". Não há mitigação contratual — a mitigação é
+  de produto, e já existe: `cobrarSinal` é fail-open, então credencial morta vira
+  agendamento sem sinal, e não agendamento perdido. Se um dia isso mudar para
+  falhar fechado, esta cláusula é o motivo para não mudar.
+
+**Fora do código, e pendente:** conferir o CNAE do CNPJ com o contador — é pergunta
+de contador, não de advogado.
 
 **Gatilhos para deixar de adiar:** a primeira contestação de Pix, o primeiro contato
 de Procon, ou o dia em que o Garantido virar a maioria da base.
